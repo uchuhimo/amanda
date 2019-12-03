@@ -1,0 +1,10 @@
+name: mmx
+dependencies:
+    - python=3.7
+    - pip
+    - tensorflow=1.14.0=mkl*
+    - pytorch::pytorch=1.3.0
+    - pytorch::torchvision=0.4.1
+    - cudatoolkit=10.1
+    - pip:
+        - poetry==1.0.0b8 --index-url https://pypi.org/simple
