@@ -1,4 +1,5 @@
 import itertools
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Iterator, Set
 
@@ -39,10 +40,10 @@ class InputPort:
     input_index: int
 
     def is_control(self) -> bool:
-        return self.input_index == Edge.CONTROL_EDGE_INDEX
+        return self.input_index == ControlEdge.CONTROL_EDGE_INDEX
 
 
-class Edge:
+class Edge(ABC):
     def __init__(self, src_port: OutputPort, dst_port: InputPort):
         self.src: Op = src_port.op
         self.src_output_index = src_port.output_index
@@ -51,21 +52,27 @@ class Edge:
         self.dst_input_index = dst_port.input_index
         self.dst_port: InputPort = dst_port
 
+    @abstractmethod
+    def is_control_edge(self) -> bool:
+        ...
+
+
+class DataEdge(Edge):
+    def is_control_edge(self) -> bool:
+        return False
+
+
+class ControlEdge(Edge):
+    def __init__(self, src: Op, dst: Op):
+        super().__init__(
+            src_port=OutputPort(src, self.CONTROL_EDGE_INDEX),
+            dst_port=InputPort(dst, self.CONTROL_EDGE_INDEX),
+        )
+
     CONTROL_EDGE_INDEX = -1
 
     def is_control_edge(self) -> bool:
-        return (
-            self.src_output_index == self.CONTROL_EDGE_INDEX
-            and self.dst_input_index == self.CONTROL_EDGE_INDEX
-        )
-
-    @classmethod
-    def control_edge_src(cls, src: Op) -> OutputPort:
-        return OutputPort(src, cls.CONTROL_EDGE_INDEX)
-
-    @classmethod
-    def control_edge_dst(cls, dst: Op) -> InputPort:
-        return InputPort(dst, cls.CONTROL_EDGE_INDEX)
+        return True
 
 
 class Graph(core.Graph[Op]):
@@ -88,10 +95,7 @@ class Graph(core.Graph[Op]):
         for op in self.post_order_ops:
             for input_index, src_port in enumerate(op.inputs):
                 if src_port.op in self.ops:
-                    yield Edge(src_port=src_port, dst_port=op.input(input_index))
+                    yield DataEdge(src_port=src_port, dst_port=op.input(input_index))
             for src in op.control_inputs:
                 if src in self.ops:
-                    yield Edge(
-                        src_port=Edge.control_edge_src(src),
-                        dst_port=Edge.control_edge_dst(op),
-                    )
+                    yield ControlEdge(src=src, dst=op)
