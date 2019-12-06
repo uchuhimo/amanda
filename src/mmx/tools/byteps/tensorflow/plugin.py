@@ -16,13 +16,17 @@ priorities: Dict[str, int] = {}
 
 def rewrite_graph(graph: Graph):
     variables: Dict[str, VariableInfo] = {}
+
+    # find gradients
     for op in graph.ops:
         if op.type == "ApplyGradientDescent":
             var = op.input_op(0)
             grad = op.input_op(2)
             info = VariableInfo(variable_name=var.name, apply_op=op, grad_op=grad)
             variables[var.name] = info
-    for op in graph.post_order_ops:
+
+    # assign priority to gradients, smaller sequence number has higher priority
+    for op in reversed(list(graph.post_order_ops)):
         if op.type in ["Variable", "VariableV2"] and op.name in variables:
             grad_op_name = variables[op.name].grad_op.name
             priorities[grad_op_name] = len(priorities)
@@ -40,19 +44,25 @@ def rewrite_worker(partition_graphs: Dict[str, Graph]):
     for partition_name, graph in partition_graphs.items():
         if "worker" in partition_name:
             tasks: List[WorkerRewriteTask] = []
+
+            # find send ops
             for op in graph.ops:
                 if op.type in ["_Send", "_HostSend"]:
                     send = op
                     grad = send.input_op(0)
                     if grad.name in priorities:
-                        task = WorkerRewriteTask(send_op=send, grad_op=grad,)
+                        task = WorkerRewriteTask(send_op=send, grad_op=grad)
                         tasks.append(task)
+
+            # find downstream ops of send ops
             for edge in graph.edges:
                 for task in tasks:
                     if edge.src == task.send_op:
                         task.recv_ports.append(edge.dst_port)
                     elif edge.src == task.grad_op and edge.dst == task.send_op:
                         task.grad_output_port = edge.src_port
+
+            # replace send ops
             for task in tasks:
                 send_op = task.send_op
                 op_attrs = send_op.attrs
@@ -78,15 +88,21 @@ def rewrite_worker(partition_graphs: Dict[str, Graph]):
                     else:
                         recv_op.inputs[recv_port.input_index] = op.output()
                 graph.remove(send_op)
+
+            # find recv ops
             recv_ops: Dict[Op, List[InputPort]] = {}
             for op in graph.ops:
                 if op.type in ["_Recv", "_HostRecv"]:
                     recv_ops[op] = []
+
+            # find downstream ops of recv ops
             for edge in graph.edges:
                 if edge.src.type in ["_Recv", "_HostRecv"]:
                     recv = edge.src
                     if recv in recv_ops:
                         recv_ops[recv].append(edge.dst_port)
+
+            # replace recv ops
             for recv_op, dst_ports in recv_ops.items():
                 op_attrs = recv_op.attrs
                 op = Op(
@@ -125,6 +141,8 @@ def rewrite_ps(partition_graphs: Dict[str, Graph]):
     task_map: Dict[str, PSRewriteTask] = {}
     for partition_name, graph in partition_graphs.items():
         if "ps" in partition_name:
+
+            # find update ops and recv ops
             for op in graph.ops:
                 if op.type == "ApplyGradientDescent":
                     var_op = op.input_op(0)
@@ -135,12 +153,16 @@ def rewrite_ps(partition_graphs: Dict[str, Graph]):
                         variable_name=var_op.name, update_op=op, recv_op=grad,
                     )
                     task_map[var_op.name] = task
+
+            # find downstream ops of update/recv ops
             for edge in graph.edges:
                 for task in task_map.values():
                     if edge.src == task.update_op:
                         task.update_dst_ports.append(edge.dst_port)
                     elif edge.src == task.send_op:
                         task.recv_ports.append(edge.dst_port)
+
+            # find send ops
             for op in graph.ops:
                 if op.type in ["_Send", "_HostSend"]:
                     var_op = op.input_op(0)
@@ -148,7 +170,10 @@ def rewrite_ps(partition_graphs: Dict[str, Graph]):
                         task = task_map[var_op.name]
                         task.var_op = var_op
                         task.send_op = op
+
+            # replace send/recv/update ops
             for task in task_map.values():
+                # replace recv/update ops with fused recv+update ops
                 update_op = task.update_op
                 var = update_op.inputs[0]
                 lr = update_op.inputs[1]
@@ -178,6 +203,7 @@ def rewrite_ps(partition_graphs: Dict[str, Graph]):
                 graph.remove(update_op)
                 graph.remove(task.recv_op)
 
+                # replace send ops
                 attrs = task.send_op.attrs
                 op = Op(
                     inputs=[task.var_op.output()],
