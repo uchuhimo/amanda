@@ -1,5 +1,6 @@
+import itertools
 from dataclasses import dataclass
-from typing import Iterator
+from typing import Iterator, Set
 
 from mmx import core
 from mmx.core import OutputPort
@@ -70,8 +71,17 @@ class Edge:
 class Graph(core.Graph[Op]):
     @property
     def post_order_ops(self) -> Iterator[Op]:
-        # TODO
-        pass
+        upstream_ops = set(
+            itertools.chain.from_iterable(map(lambda op: op.input_ops, self.ops))
+        )
+        output_ops = list(self.ops - upstream_ops)
+        returned_ops: Set[Op] = set()
+        while len(output_ops) != 0:
+            op = output_ops.pop(0)
+            if op not in returned_ops and op in self.ops:
+                yield op
+                returned_ops.add(op)
+                output_ops.extend(op.input_ops)
 
     @property
     def edges(self) -> Iterator[Edge]:
