@@ -188,4 +188,5 @@ fabric.properties
 .pytest_cache
 pip-wheel-metadata
 
+*.npy
 .dephell_report/
