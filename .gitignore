@@ -187,3 +187,4 @@ fabric.properties
 .DS_Store
 .pytest_cache
 pip-wheel-metadata
+*.npy
