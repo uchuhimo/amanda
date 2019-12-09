@@ -1,30 +1,55 @@
-## Create a virtual environment
+## Development
+
+### Create a virtual environment
 
 ```bash
 conda env create -f environment.yml
 source activate mmx
 ```
 
-## Install dependencies
+### Install dependencies
 
 There are two options:
 
 - Use pip:
+
     ```bash
     pip install -e ".[all]"
     ```
+
 - Use poetry:
+
     ```bash
     poetry install -E all
     ```
 
-## Update dependencies
+### Update dependencies
 
 ```bash
 poetry update
 ```
 
-## Install git pre-commit hooks
+### Bump version
+
+```bash
+bumpversion minor  # major, minor, patch
+```
+
+### Show information about installed packages
+
+```bash
+poetry show
+```
+
+### Show dependency tree
+
+```bash
+dephell deps tree
+# or
+dephell deps tree pytest
+```
+
+### Install git pre-commit hooks
 
 ```bash
 pre-commit install

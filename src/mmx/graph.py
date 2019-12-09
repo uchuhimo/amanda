@@ -1,7 +1,7 @@
 import itertools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Iterator, Set
+from typing import Any, Iterator, List, Set
 
 from mmx import core
 from mmx.core import OutputPort
@@ -32,6 +32,19 @@ class Op(core.Op["Op"]):
     @type.setter
     def type(self, type: str):
         self.attrs["type"] = type
+
+
+class CompositeOp(Op):
+    def __init__(self, graph: "Graph", attrs=None):
+        attrs = attrs or {}
+        attrs["graph"] = graph
+        super().__init__(
+            inputs=graph.inputs, control_inputs=graph.control_inputs, attrs=attrs,
+        )
+
+    @property
+    def graph(self) -> "Graph":
+        return self.attrs["graph"]
 
 
 @dataclass
@@ -79,16 +92,18 @@ class Graph(core.Graph[Op]):
     @property
     def post_order_ops(self) -> Iterator[Op]:
         upstream_ops = set(
-            itertools.chain.from_iterable(map(lambda op: op.input_ops, self.ops))
+            itertools.chain.from_iterable(
+                map(lambda op: self.lift_ops(op.input_ops), self.ops,)
+            )
         )
         output_ops = list(self.ops - upstream_ops)
         returned_ops: Set[Op] = set()
         while len(output_ops) != 0:
             op = output_ops.pop(0)
-            if op not in returned_ops and op in self.ops:
+            if op not in returned_ops and op in self:
                 yield op
                 returned_ops.add(op)
-                output_ops.extend(op.input_ops)
+                output_ops.extend(self.lift_ops(op.input_ops))
 
     @property
     def edges(self) -> Iterator[Edge]:
@@ -99,3 +114,52 @@ class Graph(core.Graph[Op]):
             for src in op.control_inputs:
                 if src in self.ops:
                     yield ControlEdge(src=src, dst=op)
+
+    def set_attr(self, attr: str, value: Any) -> None:
+        for op in self.ops:
+            op.attrs[attr] = value
+
+    def lift_op(self, op: Op) -> Op:
+        if op in self.ops:
+            return op
+        else:
+            for op_in_graph in self.ops:
+                if isinstance(op_in_graph, CompositeOp) and op in op_in_graph.graph:
+                    return op_in_graph
+            return op
+
+    def lift_ops(self, ops: List[Op]) -> List[Op]:
+        return list(map(lambda op: self.lift_op(op), ops))
+
+    @property
+    def inputs(self) -> List[OutputPort[Op]]:
+        def inputs_iter():
+            for op in self.ops:
+                for input in op.inputs:
+                    if input.op not in self:
+                        yield input
+
+        return list(inputs_iter())
+
+    @property
+    def control_inputs(self) -> Set[Op]:
+        def control_inputs_iter():
+            for op in self.ops:
+                for control_input in op.control_inputs:
+                    if control_input not in self:
+                        yield control_input
+
+        return set(control_inputs_iter())
+
+    def __contains__(self, op: Op) -> bool:
+        if op in self.ops:
+            return True
+        else:
+            for op_in_graph in self.ops:
+                if isinstance(op_in_graph, CompositeOp) and op in op_in_graph.graph:
+                    return True
+            return False
+
+    def duplicate(self, split_fn, merge_fn):
+        # TODO
+        ...

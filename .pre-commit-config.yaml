@@ -7,6 +7,7 @@ repos:
       rev: 19.10b0
       hooks:
           - id: black
+            exclude: setup.py
     - repo: https://github.com/PyCQA/flake8
       rev: 3.7.9
       hooks:
@@ -19,3 +20,8 @@ repos:
       rev: v0.740
       hooks:
           - id: mypy
+    - repo: https://github.com/mverteuil/precommit-dephell
+      rev: master
+      hooks:
+        - id: dephell
+        - id: pyproject-toml-to-requirements-txt
