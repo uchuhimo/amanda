@@ -66,3 +66,10 @@ Install git pre-commit hooks
 .. code-block:: bash
 
    pre-commit install
+
+run tests
+^^^^^^^^^
+
+.. code-block:: bash
+
+   pytest

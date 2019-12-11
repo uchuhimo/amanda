@@ -54,3 +54,10 @@ dephell deps tree pytest
 ```bash
 pre-commit install
 ```
+
+
+### run tests
+
+```bash
+pytest
+```
