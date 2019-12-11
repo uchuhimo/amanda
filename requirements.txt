@@ -8,7 +8,7 @@ dephell[full]
 fissix
 flake8
 ipython
-isort
+isort[pyproject]
 mmdnn
 more-itertools
 mypy

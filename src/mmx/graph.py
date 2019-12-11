@@ -12,9 +12,13 @@ class Op(core.Op["Op"]):
         return OutputPort(self, index)
 
     def input(self, index=0) -> "InputPort":
+        if not (0 <= index < len(self.inputs)):
+            raise IndexError
         return InputPort(self, index)
 
     def input_op(self, index: int) -> "Op":
+        if not (0 <= index < len(self.input_ops)):
+            raise IndexError
         return self.input_ops[index]
 
     @property
@@ -55,6 +59,9 @@ class InputPort:
     def is_control(self) -> bool:
         return self.input_index == ControlEdge.CONTROL_EDGE_INDEX
 
+    def __hash__(self):
+        return hash((self.op, self.input_index))
+
 
 class Edge(ABC):
     def __init__(self, src_port: OutputPort, dst_port: InputPort):
@@ -74,6 +81,16 @@ class DataEdge(Edge):
     def is_control_edge(self) -> bool:
         return False
 
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, DataEdge)
+            and self.src_port == other.src_port
+            and self.dst_port == other.dst_port
+        )
+
+    def __hash__(self):
+        return hash((self.src_port, self.dst_port))
+
 
 class ControlEdge(Edge):
     def __init__(self, src: Op, dst: Op):
@@ -87,6 +104,16 @@ class ControlEdge(Edge):
     def is_control_edge(self) -> bool:
         return True
 
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, ControlEdge)
+            and self.src == other.src
+            and self.dst == other.dst
+        )
+
+    def __hash__(self):
+        return hash((self.src, self.dst))
+
 
 class Graph(core.Graph[Op]):
     @property
@@ -98,12 +125,18 @@ class Graph(core.Graph[Op]):
         )
         output_ops = list(self.ops - upstream_ops)
         returned_ops: Set[Op] = set()
-        while len(output_ops) != 0:
-            op = output_ops.pop(0)
-            if op not in returned_ops and op in self:
-                yield op
-                returned_ops.add(op)
-                output_ops.extend(self.lift_ops(op.input_ops))
+
+        def dfs(current_op):
+            if current_op in returned_ops:
+                return
+            else:
+                for input_op in self.lift_ops(current_op.input_ops):
+                    yield from dfs(input_op)
+                yield current_op
+                returned_ops.add(current_op)
+
+        for output_op in output_ops:
+            yield from dfs(output_op)
 
     @property
     def edges(self) -> Iterator[Edge]:

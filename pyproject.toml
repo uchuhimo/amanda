@@ -71,7 +71,7 @@ wheel="*"
 watchdog="*"
 flake8 = "*"
 black = { version = "*", allow-prereleases = true }
-isort = "*"
+isort = { version = "*", extras = [ "pyproject" ] }
 mypy = "*"
 pre-commit = "*"
 pytest = "*"

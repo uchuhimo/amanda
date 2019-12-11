@@ -1,13 +1,15 @@
 from dataclasses import dataclass
 from typing import Any, Dict, Generic, List, Set, TypeVar
 
+from mmx.exception import IrremovableOpError
+
 T = TypeVar("T", bound="Op")
 
 
 class Op(Generic[T]):
     def __init__(self, inputs=None, control_inputs=None, attrs=None):
-        self.inputs: List["OutputPort[T]"] = inputs or []
-        self.control_inputs: Set[T] = control_inputs or set()
+        self.inputs: List["OutputPort[T]"] = list(inputs or [])
+        self.control_inputs: Set[T] = set(control_inputs or set())
         self.attrs: Dict[str, Any] = attrs or {}
 
     def add_control(self, op: T):
@@ -28,10 +30,13 @@ class OutputPort(Generic[T]):
     op: T
     output_index: int
 
+    def __hash__(self) -> int:
+        return hash((self.op, self.output_index))
+
 
 class Graph(Generic[T]):
     def __init__(self, ops=None):
-        self.ops: Set[T] = ops or set()
+        self.ops: Set[T] = set(ops or set())
 
     def add(self, op: T):
         assert op not in self.ops
@@ -47,5 +52,6 @@ class Graph(Generic[T]):
 
     def remove(self, op: T):
         assert op in self.ops
-        assert self.is_removable(op)
+        if not self.is_removable(op):
+            raise IrremovableOpError
         self.ops.remove(op)
