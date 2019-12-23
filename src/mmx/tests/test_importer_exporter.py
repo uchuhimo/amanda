@@ -16,13 +16,9 @@ def test_importer_exporter():
     # download models
     current_dir = os.path.dirname(os.path.abspath(__file__))
     cachedir = Path(current_dir).parents[2] / "test_data" / "cache"
-    tmpdir = Path(current_dir).parents[2] / "test_data" / "tmp"
     cachedir = str(cachedir) + "/"
-    tmpdir = str(tmpdir) + "/"
     if not os.path.exists(cachedir):
         os.makedirs(cachedir)
-    if not os.path.exists(tmpdir):
-        os.makedirs(tmpdir)
     # for a complete list of architecture name supported, see
     # mmdnn/conversion/examples/tensorflow/extractor.py
     architecture_name = "vgg16"
