@@ -7,10 +7,10 @@ T = TypeVar("T", bound="Op")
 
 
 class Op(Generic[T]):
-    def __init__(self, inputs=None, control_inputs=None, attrs=None):
+    def __init__(self, attrs=None, inputs=None, control_inputs=None):
+        self.attrs: Dict[str, Any] = attrs or {}
         self.inputs: List["OutputPort[T]"] = list(inputs or [])
         self.control_inputs: Set[T] = set(control_inputs or set())
-        self.attrs: Dict[str, Any] = attrs or {}
 
     def add_control(self, op: T):
         assert op not in self.control_inputs

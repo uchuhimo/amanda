@@ -21,6 +21,10 @@ class Op(core.Op["Op"]):
             raise IndexError
         return self.input_ops[index]
 
+    def output_ops(self, graph: "Graph") -> List["Op"]:
+        assert self in graph
+        return [op for op in graph.ops if self in op.input_ops]
+
     @property
     def name(self) -> str:
         return self.attrs["name"]

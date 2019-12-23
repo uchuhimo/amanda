@@ -190,3 +190,4 @@ pip-wheel-metadata
 
 *.npy
 .dephell_report/
+test_data/
