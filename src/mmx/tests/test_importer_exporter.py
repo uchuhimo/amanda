@@ -3,12 +3,12 @@ import os
 from pathlib import Path
 
 import google.protobuf.json_format as json_format
-from jsondiff import diff
+from deepdiff import DeepDiff
 from mmdnn.conversion.examples.tensorflow.extractor import tensorflow_extractor
 from mmdnn.conversion.tensorflow.tensorflow_parser import TensorflowParser
 
-from mmx.exporter import Exporter
-from mmx.importer import Importer
+from mmx.exporter import export_to_protobuf
+from mmx.importer import import_from_protobuf
 
 
 # this function tests transformation between IR of MMdnn and IR of mmx
@@ -38,13 +38,11 @@ def test_importer_exporter():
     # check transformation between MMdnn IR and mmx IR
     json_str = json_format.MessageToJson(model, preserving_proto_field_name=True)
     json_object = json.loads(json_str)
-    importer = Importer()
-    importer.import_from_protobuf(model)
-    exporter = Exporter(importer.graph, importer.op_list)
-    new_model = exporter.export_to_protobuf()
+    graph = import_from_protobuf(model)
+    new_model = export_to_protobuf(graph)
     new_json_str = json_format.MessageToJson(
         new_model, preserving_proto_field_name=True
     )
     new_json_object = json.loads(new_json_str)
-    result = diff(json_object, new_json_object)
+    result = DeepDiff(json_object, new_json_object, ignore_order=True)
     assert result == {}

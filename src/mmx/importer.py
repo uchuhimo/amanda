@@ -117,90 +117,85 @@ class LiteralTensor:
             IR_tensor_content.append(element)
 
 
-class Importer:
-    op_list: List["Op"]
-    graph: Graph
+def import_from_protobuf(model) -> Graph:
+    IR_graph = model
+    graph = Graph()
+    name_to_op = {}
+    inputs_dict: DefaultDict[Op, list] = defaultdict(list)
+    for IR_node in IR_graph.node:
+        op = Op()
+        op.type = IR_node.op
+        op.name = IR_node.name
+        name_to_op[op.name] = op
+        for input_string in IR_node.input:
+            inputs_dict[op].append(input_string)
+        #  add attrs into op
+        for key in IR_node.attr:
+            IR_attr_value = IR_node.attr[key]
+            field_set = IR_attr_value.WhichOneof("value")
+            if field_set == "type":
+                op.attrs[key] = DataType(IR_attr_value.type)
+            elif field_set == "shape":
+                op.attrs[key] = TensorShape(IR_attr_value.shape)
+            elif field_set == "tensor":
+                op.attrs[key] = LiteralTensor(IR_attr_value.tensor)
+            elif field_set == "s":
+                op.attrs[key] = IR_attr_value.s
+            elif field_set == "i":
+                op.attrs[key] = IR_attr_value.i
+            elif field_set == "f":
+                op.attrs[key] = IR_attr_value.f
+            elif field_set == "b":
+                op.attrs[key] = IR_attr_value.b
+            elif field_set == "list":
+                IR_list = IR_attr_value.list
+                attr_value_list = []
+                for value in IR_list.s:
+                    attr_value_list.append(value)
+                for value in IR_list.i:
+                    attr_value_list.append(value)
+                for value in IR_list.f:
+                    attr_value_list.append(value)
+                for value in IR_list.b:
+                    attr_value_list.append(value)
+                for value in IR_list.type:
+                    attr_value_list.append(DataType(value))
+                for value in IR_list.shape:
+                    attr_value_list.append(TensorShape(value))
+                for value in IR_list.tensor:
+                    attr_value_list.append(LiteralTensor(value))
+                op.attrs[key] = attr_value_list
+            else:
+                print("unknown field met")
+                assert False
 
-    def import_from_protobuf(self, model) -> Graph:
-        IR_graph = model
-        self.graph = Graph()
-        self.op_list = []
-        name_to_op = {}
-        inputs_dict: DefaultDict[Op, list] = defaultdict(list)
-        for IR_node in IR_graph.node:
-            op = Op()
-            op.type = IR_node.op
-            op.name = IR_node.name
-            name_to_op[op.name] = op
-            for input_string in IR_node.input:
-                inputs_dict[op].append(input_string)
-            #  add attrs into op
-            for key in IR_node.attr:
-                IR_attr_value = IR_node.attr[key]
-                field_set = IR_attr_value.WhichOneof("value")
-                if field_set == "type":
-                    op.attrs[key] = DataType(IR_attr_value.type)
-                elif field_set == "shape":
-                    op.attrs[key] = TensorShape(IR_attr_value.shape)
-                elif field_set == "tensor":
-                    op.attrs[key] = LiteralTensor(IR_attr_value.tensor)
-                elif field_set == "s":
-                    op.attrs[key] = IR_attr_value.s
-                elif field_set == "i":
-                    op.attrs[key] = IR_attr_value.i
-                elif field_set == "f":
-                    op.attrs[key] = IR_attr_value.f
-                elif field_set == "b":
-                    op.attrs[key] = IR_attr_value.b
-                elif field_set == "list":
-                    IR_list = IR_attr_value.list
-                    attr_value_list = []
-                    for value in IR_list.s:
-                        attr_value_list.append(value)
-                    for value in IR_list.i:
-                        attr_value_list.append(value)
-                    for value in IR_list.f:
-                        attr_value_list.append(value)
-                    for value in IR_list.b:
-                        attr_value_list.append(value)
-                    for value in IR_list.type:
-                        attr_value_list.append(DataType(value))
-                    for value in IR_list.shape:
-                        attr_value_list.append(TensorShape(value))
-                    for value in IR_list.tensor:
-                        attr_value_list.append(LiteralTensor(value))
-                    op.attrs[key] = attr_value_list
-                else:
-                    print("unknown field met")
-                    assert False
+        graph.add(op)
 
-            self.op_list.append(op)
-            self.graph.add(op)
+    # second pass: set the inputs of ops
+    for op in graph.ops:
+        for input_string in inputs_dict[op]:
+            input_port_tmp = input_string.split(":")
+            input_op = name_to_op[input_port_tmp[0]]
+            if len(input_port_tmp) < 2:
+                input_op_output_index = 0
+            else:
+                input_op_output_index = int(input_port_tmp[1])
+            input_port = OutputPort(input_op, input_op_output_index)
+            op.inputs.append(input_port)
 
-        # second pass: set the inputs of ops
-        for op in self.graph.ops:
-            for input_string in inputs_dict[op]:
-                input_port_tmp = input_string.split(":")
-                input_op = name_to_op[input_port_tmp[0]]
-                if len(input_port_tmp) < 2:
-                    input_op_output_index = 0
-                else:
-                    input_op_output_index = int(input_port_tmp[1])
-                input_port = OutputPort(input_op, input_op_output_index)
-                op.inputs.append(input_port)
+    return graph
 
-        return self.graph
 
-    def print_graph(self, print_op_num=10):
-        count = 0
-        for op in self.op_list:
-            for input_op in op.input_ops:
-                print("input: ", input_op.name)
-            for key in op.attrs:
-                print(key, ": ", op.attrs[key])
-            print("")
-            count = count + 1
-            if count >= print_op_num:
-                break
+def print_graph(graph: Graph, print_op_num=10):
+    count = 0
+    for op in graph.ops:
+        for input_op in op.input_ops:
+            print("input: ", input_op.name)
+        for key in op.attrs:
+            print(key, ": ", op.attrs[key])
+        print("")
+        count = count + 1
+        if count >= print_op_num:
+            break
 
-        return
+    return
