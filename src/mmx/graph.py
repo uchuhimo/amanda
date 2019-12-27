@@ -1,7 +1,7 @@
 import itertools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Iterator, List, Set
+from typing import Any, Dict, Iterator, List, Optional, Set
 
 from mmx import core
 from mmx.core import OutputPort
@@ -24,6 +24,15 @@ class Op(core.Op["Op"]):
     def output_ops(self, graph: "Graph") -> List["Op"]:
         assert self in graph
         return [op for op in graph.ops if self in op.input_ops]
+
+    def has_name(self) -> bool:
+        return "name" in self.attrs
+
+    def insert_after(self, op: "Op", graph: "Graph") -> None:
+        for downstream_op in op.output_ops(graph):
+            for index, output_port in enumerate(downstream_op.inputs):
+                if output_port.op == op:
+                    downstream_op.inputs[index] = self.output(output_port.output_index)
 
     @property
     def name(self) -> str:
@@ -120,6 +129,29 @@ class ControlEdge(Edge):
 
 
 class Graph(core.Graph[Op]):
+    def __init__(self, ops=None, attrs=None):
+        super().__init__(ops, attrs)
+        self.name_to_op: Dict[str, Op] = {}
+        op: Op
+        for op in self.ops:
+            if op.has_name():
+                assert op.name not in self.name_to_op
+                self.name_to_op[op.name] = op
+
+    def add(self, op: Op) -> None:
+        super().add(op)
+        if op.has_name():
+            assert op.name not in self.name_to_op
+            self.name_to_op[op.name] = op
+
+    def remove(self, op: Op) -> None:
+        super().remove(op)
+        if op.has_name():
+            del self.name_to_op[op.name]
+
+    def get_op_by_name(self, name: str) -> Optional[Op]:
+        return self.name_to_op.get(name)
+
     @property
     def post_order_ops(self) -> Iterator[Op]:
         upstream_ops = set(

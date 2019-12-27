@@ -35,10 +35,11 @@ class OutputPort(Generic[T]):
 
 
 class Graph(Generic[T]):
-    def __init__(self, ops=None):
+    def __init__(self, ops=None, attrs=None):
         self.ops: Set[T] = set(ops or set())
+        self.attrs: Dict[str, Any] = attrs or {}
 
-    def add(self, op: T):
+    def add(self, op: T) -> None:
         assert op not in self.ops
         self.ops.add(op)
 
@@ -50,7 +51,7 @@ class Graph(Generic[T]):
                 return False
         return True
 
-    def remove(self, op: T):
+    def remove(self, op: T) -> None:
         assert op in self.ops
         if not self.is_removable(op):
             raise IrremovableOpError

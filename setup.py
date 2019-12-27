@@ -42,8 +42,8 @@ setup(
     ],
     entry_points={"console_scripts": ["mmx = mmx.cli:mmx"]},
     packages=[
-        'mmx', 'mmx.core', 'mmx.tests', 'mmx.tools', 'mmx.tools.byteps',
-        'mmx.tools.byteps.tensorflow', 'mmx.tools.debugging'
+        'mmx', 'mmx.conversion', 'mmx.core', 'mmx.tests', 'mmx.tools',
+        'mmx.tools.byteps', 'mmx.tools.byteps.tensorflow', 'mmx.tools.debugging'
     ],
     package_dir={"": "src"},
     package_data={},
