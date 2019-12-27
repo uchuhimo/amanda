@@ -124,9 +124,3 @@ def test_control_edge(op1, op2):
 
 def test_post_order_ops(simple_graph, op1, op2, op3):
     assert list(simple_graph.post_order_ops) == [op1, op2, op3]
-
-
-def test_output_ops(simple_graph, op1, op2, op3):
-    output_ops = op1.output_ops(simple_graph)
-    assert len(output_ops) == 2
-    assert set(output_ops) == set([op2, op3])

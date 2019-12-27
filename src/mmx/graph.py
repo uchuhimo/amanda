@@ -21,18 +21,32 @@ class Op(core.Op["Op"]):
             raise IndexError
         return self.input_ops[index]
 
-    def output_ops(self, graph: "Graph") -> List["Op"]:
-        assert self in graph
-        return [op for op in graph.ops if self in op.input_ops]
+    def input_index(self, input_op: "Op") -> int:
+        for input in self.inputs:
+            if input.op == input_op:
+                return input.output_index
+        raise RuntimeError()
+
+    def output_edges_from_port(
+        self, output_port: OutputPort, graph: "Graph",
+    ) -> List["Edge"]:
+        return [
+            edge
+            for edge in graph.edges
+            if not edge.is_control_edge() and edge.src_port == output_port
+        ]
+
+    def output_ports(self, graph: "Graph") -> List[OutputPort]:
+        return list(
+            set(
+                edge.src_port
+                for edge in graph.edges
+                if not edge.is_control_edge() and edge.src == self
+            )
+        )
 
     def has_name(self) -> bool:
         return "name" in self.attrs
-
-    def insert_after(self, op: "Op", graph: "Graph") -> None:
-        for downstream_op in op.output_ops(graph):
-            for index, output_port in enumerate(downstream_op.inputs):
-                if output_port.op == op:
-                    downstream_op.inputs[index] = self.output(output_port.output_index)
 
     @property
     def name(self) -> str:
@@ -49,6 +63,9 @@ class Op(core.Op["Op"]):
     @type.setter
     def type(self, type: str):
         self.attrs["type"] = type
+
+    def __str__(self) -> str:
+        return f"Op(name={self.name}, type={self.type})"
 
 
 class CompositeOp(Op):
@@ -138,6 +155,13 @@ class Graph(core.Graph[Op]):
                 assert op.name not in self.name_to_op
                 self.name_to_op[op.name] = op
 
+    @property
+    def names(self) -> List[str]:
+        return list(self.name_to_op.keys())
+
+    def clone(self) -> "Graph":
+        return Graph(ops=set(self.ops), attrs=dict(self.attrs))
+
     def add(self, op: Op) -> None:
         super().add(op)
         if op.has_name():
@@ -152,21 +176,31 @@ class Graph(core.Graph[Op]):
     def get_op_by_name(self, name: str) -> Optional[Op]:
         return self.name_to_op.get(name)
 
+    def replace_tensor(self, old_tensor: OutputPort, new_tensor: OutputPort):
+        for op in self.ops:
+            if old_tensor in op.inputs:
+                op.inputs[op.input_index(old_tensor.op)] = new_tensor
+
     @property
     def post_order_ops(self) -> Iterator[Op]:
         upstream_ops = set(
             itertools.chain.from_iterable(
-                map(lambda op: self.lift_ops(op.input_ops), self.ops,)
+                map(
+                    lambda op: self.lift_ops(op.input_ops + list(op.control_inputs)),
+                    self.ops,
+                )
             )
         )
-        output_ops = list(self.ops - upstream_ops)
+        output_ops = sorted(list(self.ops - upstream_ops), key=lambda op: op.name)
         returned_ops: Set[Op] = set()
 
         def dfs(current_op):
             if current_op in returned_ops:
                 return
             else:
-                for input_op in self.lift_ops(current_op.input_ops):
+                for input_op in self.lift_ops(
+                    current_op.input_ops + list(current_op.control_inputs)
+                ):
                     yield from dfs(input_op)
                 yield current_op
                 returned_ops.add(current_op)
