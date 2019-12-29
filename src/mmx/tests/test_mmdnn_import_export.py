@@ -7,7 +7,7 @@ from jsondiff import diff
 from mmdnn.conversion.tensorflow.tensorflow_parser import TensorflowParser
 
 from mmx.conversion.mmdnn import export_to_protobuf, import_from_protobuf
-from mmx.tests.utils import root_dir
+from mmx.tests.utils import download_all_tf_models, root_dir
 
 
 @pytest.fixture(
@@ -36,6 +36,7 @@ def arch_name(request):
 
 # this function tests transformation between IR of MMdnn and IR of mmx
 def test_mmdnn_import_export(arch_name):
+    download_all_tf_models()
     checkpoint_dir = root_dir() / "tmp" / "model" / arch_name
     # convert downloaded model to MMdnn IR
     parser = TensorflowParser(

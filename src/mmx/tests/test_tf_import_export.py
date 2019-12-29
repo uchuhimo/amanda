@@ -10,7 +10,7 @@ from mmx.conversion.tensorflow import (
     export_to_checkpoint,
     import_from_checkpoint,
 )
-from mmx.tests.utils import root_dir
+from mmx.tests.utils import download_all_tf_models, root_dir
 
 
 @pytest.fixture(
@@ -96,6 +96,7 @@ input_shapes = {
 
 
 def test_tf_import_export(arch_name):
+    download_all_tf_models()
     input = np.random.rand(*input_shapes[arch_name])
     output = run_model(arch_name, model_dir="model", input=input)
     modify_model(arch_name)
