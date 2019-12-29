@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import pytest
 import tensorflow as tf
@@ -57,7 +59,14 @@ def modify_model(arch_name):
 
 def run_model(arch_name, model_dir, input):
     checkpoint_dir = root_dir() / "tmp" / model_dir / arch_name
+    if not checkpoint_dir.exists():
+        raise FileNotFoundError(f"{checkpoint_dir} is not existed")
     checkpoint_file = tf.train.latest_checkpoint(checkpoint_dir)
+    if checkpoint_file is None:
+        raise FileNotFoundError(
+            f"cannot find checkpoint in {checkpoint_dir}, "
+            f"only find: {os.listdir(checkpoint_dir)}"
+        )
     with tf.Graph().as_default():
         with tf.Session() as sess:
             saver = tf.train.import_meta_graph(checkpoint_file + ".meta")
