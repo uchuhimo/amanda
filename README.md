@@ -59,5 +59,5 @@ pre-commit install
 ### run tests
 
 ```bash
-pytest
+pytest -n auto
 ```

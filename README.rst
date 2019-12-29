@@ -72,4 +72,4 @@ run tests
 
 .. code-block:: bash
 
-   pytest
+   pytest -n auto

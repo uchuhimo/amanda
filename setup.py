@@ -55,10 +55,10 @@ setup(
     extras_require={
         "all": ["tensorflow==1.13.1", "torch==1.3.1", "torchvision==0.4.2"],
         "dev": [
-            "black", "bump2version", "coverage", "dephell[full]", "fissix",
-            "flake8", "ipython", "isort[pyproject]", "jsondiff", "mypy", "pip",
-            "pre-commit", "pytest", "sphinx", "tox", "twine", "watchdog",
-            "wheel"
+            "black", "bump2version", "coverage", "dephell[full]", "filelock",
+            "fissix", "flake8", "ipython", "isort[pyproject]", "jsondiff",
+            "mypy", "pip", "pre-commit", "pytest", "pytest-xdist", "sphinx",
+            "tox", "twine", "watchdog", "wheel"
         ],
         "pytorch": ["torch==1.3.1", "torchvision==0.4.2"],
         "tensorflow": ["tensorflow==1.13.1"]

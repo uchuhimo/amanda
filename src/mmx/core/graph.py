@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Dict, Generic, List, Set, TypeVar
+from typing import Any, Dict, Generic, Iterable, List, Set, TypeVar
 
 from mmx.exception import IrremovableOpError
 
@@ -35,9 +35,12 @@ class OutputPort(Generic[T]):
 
 
 class Graph(Generic[T]):
-    def __init__(self, ops=None, attrs=None):
-        self.ops: Set[T] = set(ops or set())
+    def __init__(self, ops: Iterable[T] = None, attrs=None):
+        self.ops: Set[T] = set()
         self.attrs: Dict[str, Any] = attrs or {}
+        if ops is not None:
+            for op in ops:
+                self.add(op)
 
     def add(self, op: T) -> None:
         assert op not in self.ops

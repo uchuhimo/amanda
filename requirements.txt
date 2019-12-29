@@ -5,6 +5,7 @@ contextvars; python_version < "3.7"
 coverage
 dataclasses; python_version < "3.7"
 dephell[full]
+filelock
 fissix
 flake8
 ipython
@@ -17,6 +18,7 @@ pip
 pre-commit
 protobuf
 pytest
+pytest-xdist
 six
 sphinx
 tensorflow==1.13.1

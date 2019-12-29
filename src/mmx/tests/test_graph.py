@@ -11,17 +11,21 @@ def test_new_graph():
 
 @pytest.fixture
 def op1():
-    return Op()
+    return Op(attrs=dict(name="op1"))
 
 
 @pytest.fixture
 def op2(op1):
-    return Op(inputs=[op1.output()])
+    return Op(inputs=[op1.output()], attrs=dict(name="op2"))
 
 
 @pytest.fixture
 def op3(op1, op2):
-    return Op(inputs=[op1.output(2), op2.output()], control_inputs=[op1])
+    return Op(
+        inputs=[op1.output(2), op2.output()],
+        control_inputs=[op1],
+        attrs=dict(name="op3"),
+    )
 
 
 # graph topology:
@@ -123,4 +127,4 @@ def test_control_edge(op1, op2):
 
 
 def test_post_order_ops(simple_graph, op1, op2, op3):
-    assert list(simple_graph.post_order_ops) == [op1, op2, op3]
+    assert simple_graph.post_order_ops == [op1, op2, op3]

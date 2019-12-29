@@ -1,3 +1,6 @@
+import copy
+from contextlib import ExitStack
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Union
 
@@ -20,7 +23,15 @@ from tensorflow.python.util import compat
 from mmx import Graph, Op, OutputPort
 
 
-def import_from_tf_graph(tf_graph: tf.Graph, saver_def: SaverDef = None) -> Graph:
+class GraphKey:
+    meta_graph = "meta_graph"
+    initialized_variables = "initialized_variables"
+    lower_name_func = "lower_name_func"
+
+
+def import_from_tf_graph(
+    tf_graph: tf.Graph, saver_def: SaverDef = None, session: tf.Session = None,
+) -> Graph:
     graph = Graph()
 
     def add_op(tf_op: tf.Operation):
@@ -36,7 +47,13 @@ def import_from_tf_graph(tf_graph: tf.Graph, saver_def: SaverDef = None) -> Grap
             attr_name: tf_op.get_attr(attr_name) for attr_name in tf_op.node_def.attr
         }
         op = Op(
-            attrs=dict(name=tf_op.name, type=tf_op.type, device=tf_op.device, **attrs),
+            attrs=dict(
+                name=tf_op.name,
+                type=tf_op.type,
+                device=tf_op.device,
+                __dtypes=[output_tensor.dtype for output_tensor in tf_op.outputs],
+                **attrs,
+            ),
             inputs=[
                 from_tf_tensor(input_tensor, graph) for input_tensor in tf_op.inputs
             ],
@@ -53,12 +70,35 @@ def import_from_tf_graph(tf_graph: tf.Graph, saver_def: SaverDef = None) -> Grap
         graph=tf_graph, saver_def=saver_def
     )
     meta_graph.graph_def.Clear()
-    graph.attrs["meta_graph"] = meta_graph
-    graph.attrs["variable_values"] = [
-        variable.read_value()
-        for variable in tf_graph.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
-    ]
+    graph.attrs[GraphKey.meta_graph] = meta_graph
+    graph.attrs[GraphKey.initialized_variables] = {}
+    if session is not None:
+        update_initialized_variables(graph, tf_graph, session)
+    graph.attrs[GraphKey.lower_name_func] = lru_cache(maxsize=None)(
+        lambda name: name.lower()
+    )
     return graph
+
+
+def update_initialized_variables(graph: Graph, tf_graph: tf.Graph, session: tf.Session):
+    with tf_graph.as_default():
+        all_variables = tf.global_variables()
+        uninitialized_variables = session.run(
+            tf.report_uninitialized_variables(tf.global_variables())
+        )
+        if len(all_variables) == len(uninitialized_variables):
+            return
+        initialized_variables = set(
+            map(lambda variable: variable.op.name, all_variables)
+        ) - set(map(lambda x: x.decode(), uninitialized_variables))
+        initialized_variables = session.run(
+            {
+                variable.name: variable.read_value()
+                for variable in all_variables
+                if variable.op.name in initialized_variables
+            }
+        )
+        graph.attrs[GraphKey.initialized_variables].update(initialized_variables)
 
 
 def from_tf_tensor(tensor: Union[tf.Tensor, RefVariable], graph: Graph) -> OutputPort:
@@ -70,26 +110,33 @@ def from_tf_tensor(tensor: Union[tf.Tensor, RefVariable], graph: Graph) -> Outpu
 
 
 def import_from_graph_def(
-    graph_def: Union[tf.GraphDef, str, Path], saver_def: SaverDef = None,
+    graph_def: Union[tf.GraphDef, str, Path],
+    saver_def: SaverDef = None,
+    session: tf.Session = None,
 ) -> Graph:
     if not isinstance(graph_def, tf.GraphDef):
         graph_def = tf.GraphDef()
         graph_def.ParseFromString(Path(graph_def).read_bytes())
     with tf.Graph().as_default() as graph:
         tf.import_graph_def(graph_def)
-        return import_from_tf_graph(graph, saver_def)
+        return import_from_tf_graph(graph, saver_def, session)
 
 
 def import_from_meta_graph(
-    meta_graph: Union[tf.MetaGraphDef, str, Path], checkpoint: Union[str, Path] = None,
+    meta_graph: Union[tf.MetaGraphDef, str, Path],
+    checkpoint: Union[str, Path] = None,
+    session: tf.Session = None,
 ) -> Graph:
     with tf.Graph().as_default() as tf_graph:
         saver = tf.train.import_meta_graph(meta_graph)
-        if checkpoint is not None:
-            with tf.Session() as sess:
-                saver.restore(sess, str(checkpoint))
-        graph = import_from_tf_graph(tf_graph, saver.saver_def)
-        return graph
+        with ExitStack() as exit_stack:
+            if checkpoint is not None:
+                if session is None:
+                    session = tf.Session()
+                    exit_stack.enter_context(session)
+                saver.restore(session, str(checkpoint))
+            graph = import_from_tf_graph(tf_graph, saver.saver_def, session)
+            return graph
 
 
 def import_from_checkpoint(path: Union[str, Path]) -> Graph:
@@ -97,7 +144,7 @@ def import_from_checkpoint(path: Union[str, Path]) -> Graph:
     return import_from_meta_graph(path + ".meta", path)
 
 
-def export_to_tf_graph(graph: Graph) -> Tuple[tf.Graph, tf.train.Saver]:
+def export_to_tf_graph(graph: Graph,) -> Tuple[tf.Graph, tf.train.Saver, tf.Session]:
     tf_graph: tf.Graph
     with tf.Graph().as_default() as tf_graph:
         for op in graph.post_order_ops:
@@ -105,6 +152,7 @@ def export_to_tf_graph(graph: Graph) -> Tuple[tf.Graph, tf.train.Saver]:
             del attrs["name"]
             del attrs["type"]
             del attrs["device"]
+            del attrs["__dtypes"]
             with tf.control_dependencies(
                 [
                     tf_graph.get_operation_by_name(control_input.name)
@@ -126,20 +174,34 @@ def export_to_tf_graph(graph: Graph) -> Tuple[tf.Graph, tf.train.Saver]:
                 )
             if "device" in op.attrs:
                 tf_op._set_device(op.attrs["device"])
-        saver = tf.train.import_meta_graph(graph.attrs["meta_graph"])
-        return tf_graph, saver
+        saver = tf.train.import_meta_graph(graph.attrs[GraphKey.meta_graph])
+        variables = {
+            variable.name: variable
+            for variable in tf_graph.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
+        }
+        session = tf.Session()
+        initializers = [
+            variables[name].initializer
+            for name, value in graph.attrs[GraphKey.initialized_variables].items()
+        ]
+        feed_dict = {
+            variables[name].initializer.inputs[1]: value
+            for name, value in graph.attrs[GraphKey.initialized_variables].items()
+        }
+        session.run(initializers, feed_dict)
+        return tf_graph, saver, session
 
 
 def export_to_checkpoint(graph: Graph, path: Union[str, Path]) -> None:
     path = Path(path)
     if not path.parent.exists():
         path.parent.mkdir(mode=0o755, parents=True)
-    tf_graph, saver = export_to_tf_graph(graph)
-    with tf_graph.as_default():
-        with tf.Session() as sess:
+    tf_graph, saver, session = export_to_tf_graph(graph)
+    with session:
+        with tf_graph.as_default():
             if saver is None:
                 saver = tf.train.Saver()
-            saver.save(sess, str(path))
+            saver.save(session, str(path))
 
 
 def to_attrs_proto(
@@ -243,25 +305,11 @@ def to_attrs_proto(
 
 
 def get_dtypes(op: Op):
-    if "dtype" in op.attrs:
-        return op.attrs["dtype"]
-    elif "dtypes" in op.attrs:
-        return op.attrs["dtypes"]
-    elif "Tout" in op.attrs:
-        return op.attrs["Tout"]
-    elif "T" in op.attrs:
-        return op.attrs["T"]
-    else:
-        return []
+    return op.attrs["__dtypes"]
 
 
 def get_dtype(tensor: OutputPort):
-    dtypes = get_dtypes(tensor.op)
-    assert isinstance(dtypes, (list, tf.DType))
-    if isinstance(dtypes, list):
-        return dtypes[tensor.output_index]
-    else:
-        return dtypes
+    return get_dtypes(tensor.op)[tensor.output_index]
 
 
 def convert_from_tf_func(tf_func, graph: Graph):
@@ -285,8 +333,11 @@ def convert_from_tf_func(tf_func, graph: Graph):
             return tf_args if isinstance(name, int) else tf_kwargs
 
         with tf.Graph().as_default() as tf_graph:
-            for name in graph.names:
-                tf_graph.unique_name(name, mark_as_used=True)
+            # mimic tensorflow.python.framework.ops.Graph.unique_name
+            tf_graph._names_in_use = {
+                graph.attrs[GraphKey.lower_name_func](name): 1 for name in graph.names
+            }
+
             all_args = {**args_dict, **kwargs}
             for name in all_args:
                 arg = get_args(name)[name]
@@ -305,9 +356,13 @@ def convert_from_tf_func(tf_func, graph: Graph):
                 new_graph.remove(placeholder_op)
             for op in new_graph.ops:
                 graph.add(op)
-            meta_graph = graph.attrs["meta_graph"]
-            current_meta_graph = tf.train.export_meta_graph(graph=tf_graph)
-            meta_graph.collection_def.MergeFrom(current_meta_graph.collection_def)
+
+            current_meta_graph = new_graph.attrs[GraphKey.meta_graph]
+            if len(current_meta_graph.collection_def) != 0:
+                meta_graph = copy.deepcopy(graph.attrs[GraphKey.meta_graph])
+                meta_graph.collection_def.MergeFrom(current_meta_graph.collection_def)
+                graph.attrs[GraphKey.meta_graph] = meta_graph
+
             output_op = graph.get_op_by_name(output_tensor.op.name)
             return output_op.output(output_tensor.value_index)
 

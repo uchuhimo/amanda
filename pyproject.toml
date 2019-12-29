@@ -74,6 +74,8 @@ isort = { version = "*", extras = [ "pyproject" ] }
 mypy = "*"
 pre-commit = "*"
 pytest = "*"
+pytest-xdist = "*"
+filelock = "*"
 tox="*"
 coverage="*"
 Sphinx="*"
