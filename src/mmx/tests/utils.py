@@ -17,6 +17,11 @@ def download_tf_model(arch_name, model_dir):
         full_model_dir.mkdir(mode=0o755, parents=True)
     if not (full_model_dir / arch_name / "checkpoint").exists():
         tensorflow_extractor.download(arch_name, str(full_model_dir / arch_name) + "/")
+        if not (full_model_dir / arch_name / "checkpoint").exists():
+            raise FileNotFoundError(
+                f"still cannot find {full_model_dir / arch_name / 'checkpoint'} "
+                f"after downloaded"
+            )
 
 
 def download_all_tf_models():
