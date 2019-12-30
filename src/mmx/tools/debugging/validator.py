@@ -25,8 +25,8 @@ def modify_graph(graph: Graph):
     store_dir = root_dir() / "tmp" / "debug_info" / arch_name
     original_graph = graph.clone()
     for op in original_graph.post_order_ops:
-        for tensor in op.output_tensors(original_graph):
-            output_edges = tensor.output_edges(original_graph)
+        for tensor in op.output_tensors:
+            output_edges = original_graph.edges_from_tensor(tensor)
             debug_output: Tensor = convert_from_tf_func(tf.py_func, graph)(
                 partial(
                     store_as_numpy,

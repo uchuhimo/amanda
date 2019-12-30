@@ -46,12 +46,13 @@ def import_from_tf_graph(
         attrs = {
             attr_name: tf_op.get_attr(attr_name) for attr_name in tf_op.node_def.attr
         }
+        dtypes = [output_tensor.dtype for output_tensor in tf_op.outputs]
         op = Op(
             attrs=dict(
                 name=tf_op.name,
                 type=tf_op.type,
                 device=tf_op.device,
-                __dtypes=[output_tensor.dtype for output_tensor in tf_op.outputs],
+                __dtypes=dtypes,
                 **attrs,
             ),
             input_tensors=[
@@ -61,6 +62,7 @@ def import_from_tf_graph(
                 graph.get_op_by_name(control_input_op.name)
                 for control_input_op in tf_op.control_inputs
             ],
+            output_num=len(dtypes),
         )
         graph.add_op(op)
 

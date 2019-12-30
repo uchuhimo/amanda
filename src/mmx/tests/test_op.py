@@ -38,6 +38,7 @@ def simple_op(input1, input2, control_input1, control_input2):
         input_tensors=[input1.output_tensor(), input2.output_tensor()],
         control_dependencies=[control_input1, control_input2],
         attrs=dict(name="test", type="Conv2d"),
+        output_num=2,
     )
 
 

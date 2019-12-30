@@ -11,7 +11,7 @@ def test_new_graph():
 
 @pytest.fixture
 def op1():
-    return Op(attrs=dict(name="op1"))
+    return Op(attrs=dict(name="op1"), output_num=3)
 
 
 @pytest.fixture

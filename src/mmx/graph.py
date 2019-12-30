@@ -4,30 +4,44 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, cast
 
 from mmx import core
+from mmx.exception import IrremovableOpError
 
 
 class Op(core.Op["Op"]):
+    def __init__(
+        self,
+        attrs=None,
+        input_tensors=None,
+        control_dependencies=None,
+        output_num: int = 1,
+    ):
+        super().__init__(attrs, input_tensors, control_dependencies, output_num)
+        self.output_tensors: List["Tensor"] = [
+            Tensor(self, i) for i in range(self.output_num)
+        ]
+
     def output_tensor(self, index=0) -> "Tensor":
-        return Tensor(self, index)
+        return self.output_tensors[index]
+
+    @property
+    def input_ops(self) -> List["Op"]:
+        return list(map(lambda port: port.op, self.input_tensors))
+
+    def input_op(self, index: int) -> "Op":
+        if not (0 <= index < len(self.input_tensors)):
+            raise IndexError
+        return self.input_ops[index]
 
     def input_port(self, index=0) -> "InputPort":
         if not (0 <= index < len(self.input_tensors)):
             raise IndexError
         return InputPort(self, index)
 
-    def input_op(self, index: int) -> "Op":
-        if not (0 <= index < len(self.input_ops)):
-            raise IndexError
-        return self.input_ops[index]
-
     def input_index(self, input_op: "Op") -> int:
         for input in self.input_tensors:
             if input.op == input_op:
                 return input.output_index
         raise RuntimeError()
-
-    def output_tensors(self, graph: "Graph") -> List["Tensor"]:
-        return graph.tensors_from_op(self)
 
     def has_name(self) -> bool:
         return "name" in self.attrs
@@ -49,7 +63,10 @@ class Op(core.Op["Op"]):
         self.attrs["type"] = type
 
     def __str__(self) -> str:
-        return f"Op(name={self.name}, type={self.type})"
+        attrs_string = ", ".join(
+            [f"{key}={value}" for key, value in self.attrs.items()]
+        )
+        return f"Op({attrs_string})"
 
 
 class CompositeOp(Op):
@@ -68,8 +85,8 @@ class CompositeOp(Op):
 
 
 class Tensor(core.Tensor["Op"]):
-    def output_edges(self, graph: "Graph") -> List["Edge"]:
-        return graph.edges_from_port(self)
+    def __hash__(self) -> int:
+        return hash((self.op, self.output_index))
 
 
 @dataclass
@@ -150,7 +167,7 @@ class Graph(core.Graph[Op]):
         self.cached_edges: List[Edge] = None
         self.cached_data_edges: List[Edge] = None
         self.cached_control_edges: List[Edge] = None
-        self.cached_op_to_tensor_to_edges: Dict[Op, Dict[Tensor, List[Edge]]] = None
+        self.cached_tensor_to_edges: Dict[Tensor, List[Edge]] = None
         super().__init__(ops, attrs)
 
     @property
@@ -171,8 +188,8 @@ class Graph(core.Graph[Op]):
             graph.cached_data_edges = self.cached_data_edges
         if self.cached_control_edges is not None:
             graph.cached_control_edges = self.cached_control_edges
-        if self.cached_op_to_tensor_to_edges is not None:
-            graph.cached_op_to_tensor_to_edges = self.cached_op_to_tensor_to_edges
+        if self.cached_tensor_to_edges is not None:
+            graph.cached_tensor_to_edges = self.cached_tensor_to_edges
         return graph
 
     def invalidate_cache(self):
@@ -180,7 +197,7 @@ class Graph(core.Graph[Op]):
         self.cached_edges = None
         self.cached_data_edges = None
         self.cached_control_edges = None
-        self.cached_op_to_tensor_to_edges = None
+        self.cached_tensor_to_edges = None
 
     def add_op(self, op: Op) -> None:
         super().add_op(op)
@@ -191,7 +208,17 @@ class Graph(core.Graph[Op]):
             self.composite_ops.add(op)
         self.invalidate_cache()
 
+    def is_removable(self, op: Op) -> bool:
+        for other_op in self.ops:
+            if other_op != op and (
+                op in other_op.input_ops or op in other_op.control_dependencies
+            ):
+                return False
+        return True
+
     def remove_op(self, op: Op) -> None:
+        if not self.is_removable(op):
+            raise IrremovableOpError
         super().remove_op(op)
         if op.has_name():
             del self.name_to_op[op.name]
@@ -277,33 +304,22 @@ class Graph(core.Graph[Op]):
         return self.cached_edges
 
     @property
-    def op_to_tensor_to_edges(self) -> Dict[Op, Dict[Tensor, List[Edge]]]:
-        if self.cached_op_to_tensor_to_edges is not None:
-            return self.cached_op_to_tensor_to_edges
-        op_to_tensor_to_edges: Dict[Op, Dict[Tensor, List[Edge]]] = {
-            op: {} for op in self.ops
+    def tensor_to_edges(self) -> Dict[Tensor, List[Edge]]:
+        if self.cached_tensor_to_edges is not None:
+            return self.cached_tensor_to_edges
+        tensor_to_edges: Dict[Tensor, List[Edge]] = {
+            tensor: [] for op in self.ops for tensor in op.output_tensors
         }
         for edge in self.data_edges:
-            tensor_to_edges = op_to_tensor_to_edges[edge.src_op]
-            if edge.src_output_index not in tensor_to_edges:
-                tensor_to_edges[edge.src_tensor] = []
             tensor_to_edges[edge.src_tensor].append(edge)
-        self.cached_op_to_tensor_to_edges = op_to_tensor_to_edges
-        return op_to_tensor_to_edges
+        self.cached_tensor_to_edges = tensor_to_edges
+        return tensor_to_edges
 
-    def tensors_from_op(self, op: Op) -> List[Tensor]:
-        if op not in self.op_to_tensor_to_edges:
+    def edges_from_tensor(self, tensor: Tensor) -> List[Edge]:
+        if tensor not in self.tensor_to_edges:
             return []
         else:
-            return list(self.op_to_tensor_to_edges[op].keys())
-
-    def edges_from_port(self, port: Tensor) -> List[Edge]:
-        if port.op not in self.op_to_tensor_to_edges:
-            return []
-        elif port not in self.op_to_tensor_to_edges[port.op]:
-            return []
-        else:
-            return self.op_to_tensor_to_edges[port.op][port]
+            return self.tensor_to_edges[tensor]
 
     def set_attr(self, attr: str, value: Any) -> None:
         for op in self.ops:

@@ -40,8 +40,8 @@ def arch_name(request):
 def modify_graph(graph: Graph):
     original_graph = graph.clone()
     for op in original_graph.post_order_ops:
-        for tensor in op.output_tensors(original_graph):
-            output_edges = tensor.output_edges(original_graph)
+        for tensor in op.output_tensors:
+            output_edges = original_graph.edges_from_tensor(tensor)
             debug_output = convert_from_tf_func(tf.identity, graph)(tensor)
             for edge in output_edges:
                 if edge.dst_op.type != "Assign":
