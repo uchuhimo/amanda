@@ -102,6 +102,16 @@ def test_input_port_with_too_large_index(simple_op):
     simple_op.input_port(2)
 
 
+def test_input_index(simple_op, input1, input2):
+    assert simple_op.input_index(input1) == 0
+    assert simple_op.input_index(input2) == 1
+
+
+@pytest.mark.xfail(raises=IndexError)
+def test_input_index_with_incorrect_op(simple_op):
+    simple_op.input_index(simple_op)
+
+
 def test_input_op(simple_op, input1, input2):
     assert simple_op.input_op(0) == input1
     assert simple_op.input_op(1) == input2

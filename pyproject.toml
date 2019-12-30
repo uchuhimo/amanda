@@ -18,6 +18,22 @@ default_section = "THIRDPARTY"
 not_skip = "__init__.py"
 # sections = "FUTURE,STDLIB,FIRSTPARTY,THIRDPARTY,LOCALFOLDER"
 
+[tool.coverage.report]
+exclude_lines = [
+    # Have to re-enable the standard pragma
+    "pragma: no cover",
+    # Don't complain about missing debug-only code:
+    "def __repr__",
+    "if self\\.debug",
+    # Don't complain if tests don't hit defensive assertion code:
+    "raise AssertionError",
+    "raise NotImplementedError",
+    # Don't complain if non-runnable code isn't run:
+    "if 0:",
+    "if __name__ == .__main__.:",
+]
+omit = ["src/mmx/tests/*", "src/mmx/tools/*"]
+
 [tool.poetry]
 name = "mmx"
 version = "0.1.0"
@@ -47,7 +63,7 @@ classifiers=[
 ]
 
 [tool.poetry.dependencies]
-python = ">= 3.6"
+python = ">= 3.6, < 4"
 six = "*"
 more-itertools = "*"
 click = "*"
@@ -77,7 +93,7 @@ pytest = "*"
 pytest-xdist = "*"
 filelock = "*"
 tox="*"
-coverage="*"
+coverage= { version = "*", extras = [ "toml" ] }
 Sphinx="*"
 twine="*"
 ipython = "*"

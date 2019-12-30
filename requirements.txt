@@ -2,7 +2,7 @@ black
 bump2version
 click
 contextvars; python_version < "3.7"
-coverage
+coverage[toml]
 dataclasses; python_version < "3.7"
 dephell[full]
 filelock

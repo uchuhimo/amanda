@@ -38,10 +38,10 @@ class Op(core.Op["Op"]):
         return InputPort(self, index)
 
     def input_index(self, input_op: "Op") -> int:
-        for input in self.input_tensors:
+        for index, input in enumerate(self.input_tensors):
             if input.op == input_op:
-                return input.output_index
-        raise RuntimeError()
+                return index
+        raise IndexError
 
     def has_name(self) -> bool:
         return "name" in self.attrs
@@ -62,7 +62,7 @@ class Op(core.Op["Op"]):
     def type(self, type: str):
         self.attrs["type"] = type
 
-    def __str__(self) -> str:
+    def __repr__(self) -> str:
         attrs_string = ", ".join(
             [f"{key}={value}" for key, value in self.attrs.items()]
         )

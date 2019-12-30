@@ -8,7 +8,9 @@ from mmx import Graph
 from mmx.conversion.tensorflow import (
     convert_from_tf_func,
     export_to_checkpoint,
+    export_to_tf_graph,
     import_from_checkpoint,
+    import_from_graph_def,
 )
 from mmx.tests.utils import root_dir
 
@@ -100,4 +102,22 @@ def test_tf_import_export(arch_name):
     output = run_model(arch_name, model_dir="model", input=input)
     modify_model(arch_name)
     new_output = run_model(arch_name, model_dir="modified_model", input=input)
+    assert np.allclose(output, new_output)
+
+
+def test_tf_import_export_graph_def(arch_name):
+    checkpoint_dir = root_dir() / "tmp" / "model" / arch_name
+    checkpoint_file = tf.train.latest_checkpoint(checkpoint_dir)
+    input = np.random.rand(*input_shapes[arch_name])
+    with tf.Graph().as_default() as tf_graph:
+        with tf.Session() as session:
+            saver = tf.train.import_meta_graph(checkpoint_file + ".meta")
+            saver.restore(session, checkpoint_file)
+            output = session.run("MMdnn_Output:0", {"input:0": input})
+            graph = import_from_graph_def(tf_graph.as_graph_def(), saver.saver_def)
+    tf_graph, saver, session = export_to_tf_graph(graph)
+    with tf_graph.as_default():
+        with session:
+            saver.restore(session, checkpoint_file)
+            new_output = session.run("MMdnn_Output:0", {"input:0": input})
     assert np.allclose(output, new_output)

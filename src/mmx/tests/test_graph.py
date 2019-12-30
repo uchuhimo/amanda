@@ -114,6 +114,8 @@ def test_data_edge(op1, op2):
     assert edge.dst_op == op2
     assert edge.dst_port == input_port
     assert edge.dst_input_index == 0
+    assert not edge.is_control_edge()
+    assert not edge.dst_port.is_control()
 
 
 def test_control_edge(op1, op2):
@@ -124,6 +126,8 @@ def test_control_edge(op1, op2):
     assert edge.dst_op == op2
     assert edge.dst_port == InputPort(op2, ControlEdge.CONTROL_EDGE_INDEX)
     assert edge.dst_input_index == ControlEdge.CONTROL_EDGE_INDEX
+    assert edge.is_control_edge()
+    assert edge.dst_port.is_control()
 
 
 def test_post_order_ops(simple_graph, op1, op2, op3):

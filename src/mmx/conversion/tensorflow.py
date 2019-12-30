@@ -112,16 +112,15 @@ def from_tf_tensor(tensor: Union[tf.Tensor, RefVariable], graph: Graph) -> Tenso
 
 
 def import_from_graph_def(
-    graph_def: Union[tf.GraphDef, str, Path],
-    saver_def: SaverDef = None,
-    session: tf.Session = None,
+    graph_def: Union[tf.GraphDef, str, Path], saver_def: SaverDef = None,
 ) -> Graph:
     if not isinstance(graph_def, tf.GraphDef):
         graph_def = tf.GraphDef()
         graph_def.ParseFromString(Path(graph_def).read_bytes())
     with tf.Graph().as_default() as graph:
-        tf.import_graph_def(graph_def)
-        return import_from_tf_graph(graph, saver_def, session)
+        with tf.Session() as session:
+            tf.import_graph_def(graph_def, name="")
+            return import_from_tf_graph(graph, saver_def, session)
 
 
 def import_from_meta_graph(

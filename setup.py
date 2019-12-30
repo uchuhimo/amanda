@@ -23,7 +23,7 @@ setup(
     name='mmx',
     version='0.1.0',
     description='graph instrumentation',
-    python_requires='>=3.6',
+    python_requires='<4,>=3.6',
     project_urls={
         "homepage": "https://github.com/uchuhimo/mmx",
         "repository": "https://github.com/uchuhimo/mmx"
@@ -55,10 +55,10 @@ setup(
     extras_require={
         "all": ["tensorflow==1.13.1", "torch==1.3.1", "torchvision==0.4.2"],
         "dev": [
-            "black", "bump2version", "coverage", "dephell[full]", "filelock",
-            "fissix", "flake8", "ipython", "isort[pyproject]", "jsondiff",
-            "mypy", "pip", "pre-commit", "pytest", "pytest-xdist", "sphinx",
-            "tox", "twine", "watchdog", "wheel"
+            "black", "bump2version", "coverage[toml]", "dephell[full]",
+            "filelock", "fissix", "flake8", "ipython", "isort[pyproject]",
+            "jsondiff", "mypy", "pip", "pre-commit", "pytest", "pytest-xdist",
+            "sphinx", "tox", "twine", "watchdog", "wheel"
         ],
         "pytorch": ["torch==1.3.1", "torchvision==0.4.2"],
         "tensorflow": ["tensorflow==1.13.1"]
