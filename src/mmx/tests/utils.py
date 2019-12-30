@@ -21,26 +21,28 @@ def download_tf_model(arch_name, model_dir):
 
 def download_all_tf_models():
     with ThreadPoolExecutor() as executor:
-        executor.map(
-            partial(download_tf_model, model_dir="model"),
-            # for a complete list of architecture name supported, see
-            # mmdnn/conversion/examples/tensorflow/extractor.py
-            [
-                "vgg16",
-                "vgg19",
-                "inception_v1",
-                "inception_v3",
-                "resnet_v1_50",
-                # "resnet_v1_152",
-                "resnet_v2_50",
-                "resnet_v2_101",
-                # "resnet_v2_152",
-                # "resnet_v2_200",
-                "mobilenet_v1_1.0",
-                "mobilenet_v2_1.0_224",
-                "inception_resnet_v2",
-                "nasnet-a_large",
-                "facenet",
-                "rnn_lstm_gru_stacked",
-            ],
+        list(
+            executor.map(
+                partial(download_tf_model, model_dir="model"),
+                # for a complete list of architecture name supported, see
+                # mmdnn/conversion/examples/tensorflow/extractor.py
+                [
+                    "vgg16",
+                    "vgg19",
+                    "inception_v1",
+                    "inception_v3",
+                    "resnet_v1_50",
+                    # "resnet_v1_152",
+                    "resnet_v2_50",
+                    "resnet_v2_101",
+                    # "resnet_v2_152",
+                    # "resnet_v2_200",
+                    "mobilenet_v1_1.0",
+                    "mobilenet_v2_1.0_224",
+                    "inception_resnet_v2",
+                    "nasnet-a_large",
+                    "facenet",
+                    "rnn_lstm_gru_stacked",
+                ],
+            )
         )
