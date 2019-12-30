@@ -1,5 +1,5 @@
 import os
-from concurrent.futures.thread import ThreadPoolExecutor
+from concurrent.futures.process import ProcessPoolExecutor
 from functools import partial
 from pathlib import Path
 
@@ -20,7 +20,7 @@ def download_tf_model(arch_name, model_dir):
 
 
 def download_all_tf_models():
-    with ThreadPoolExecutor() as executor:
+    with ProcessPoolExecutor() as executor:
         list(
             executor.map(
                 partial(download_tf_model, model_dir="model"),
