@@ -16,21 +16,21 @@ from mmx.tests.utils import root_dir
 @pytest.fixture(
     params=[
         "vgg16",
-        "vgg19",
+        # "vgg19",
         "inception_v1",
-        "inception_v3",
-        "resnet_v1_50",
+        # "inception_v3",
+        # "resnet_v1_50",
         # # "resnet_v1_152",
         "resnet_v2_50",
-        "resnet_v2_101",
+        # "resnet_v2_101",
         # # "resnet_v2_152",
         # # "resnet_v2_200",
-        "mobilenet_v1_1.0",
+        # "mobilenet_v1_1.0",
         "mobilenet_v2_1.0_224",
-        "inception_resnet_v2",
-        "nasnet-a_large",
+        # "inception_resnet_v2",
+        # "nasnet-a_large",
         "facenet",
-        "rnn_lstm_gru_stacked",
+        # "rnn_lstm_gru_stacked",
     ]
 )
 def arch_name(request):
