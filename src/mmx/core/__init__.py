@@ -1,1 +1,1 @@
-from .graph import Graph, Op, OutputPort  # noqa: F401
+from .graph import Graph, Op, Tensor  # noqa: F401

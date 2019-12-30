@@ -40,12 +40,12 @@ def arch_name(request):
 def modify_graph(graph: Graph):
     original_graph = graph.clone()
     for op in original_graph.post_order_ops:
-        for output_port in op.output_ports(original_graph):
-            output_edges = output_port.output_edges(original_graph)
-            debug_output = convert_from_tf_func(tf.identity, graph)(output_port)
+        for tensor in op.output_tensors(original_graph):
+            output_edges = tensor.output_edges(original_graph)
+            debug_output = convert_from_tf_func(tf.identity, graph)(tensor)
             for edge in output_edges:
-                if edge.dst.type != "Assign":
-                    edge.dst.inputs[edge.dst_input_index] = debug_output
+                if edge.dst_op.type != "Assign":
+                    edge.dst_op.input_tensors[edge.dst_input_index] = debug_output
 
 
 def modify_model(arch_name):

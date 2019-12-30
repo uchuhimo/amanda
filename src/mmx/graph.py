@@ -7,11 +7,11 @@ from mmx import core
 
 
 class Op(core.Op["Op"]):
-    def output(self, index=0) -> "OutputPort":
-        return OutputPort(self, index)
+    def output_tensor(self, index=0) -> "Tensor":
+        return Tensor(self, index)
 
-    def input(self, index=0) -> "InputPort":
-        if not (0 <= index < len(self.inputs)):
+    def input_port(self, index=0) -> "InputPort":
+        if not (0 <= index < len(self.input_tensors)):
             raise IndexError
         return InputPort(self, index)
 
@@ -21,13 +21,13 @@ class Op(core.Op["Op"]):
         return self.input_ops[index]
 
     def input_index(self, input_op: "Op") -> int:
-        for input in self.inputs:
+        for input in self.input_tensors:
             if input.op == input_op:
                 return input.output_index
         raise RuntimeError()
 
-    def output_ports(self, graph: "Graph") -> List["OutputPort"]:
-        return graph.output_ports_from_op(self)
+    def output_tensors(self, graph: "Graph") -> List["Tensor"]:
+        return graph.tensors_from_op(self)
 
     def has_name(self) -> bool:
         return "name" in self.attrs
@@ -57,7 +57,9 @@ class CompositeOp(Op):
         attrs = attrs or {}
         attrs["graph"] = graph
         super().__init__(
-            inputs=graph.inputs, control_inputs=graph.control_inputs, attrs=attrs,
+            input_tensors=graph.input_tensors,
+            control_dependencies=graph.control_dependencies,
+            attrs=attrs,
         )
 
     @property
@@ -65,7 +67,7 @@ class CompositeOp(Op):
         return self.attrs["graph"]
 
 
-class OutputPort(core.OutputPort["Op"]):
+class Tensor(core.Tensor["Op"]):
     def output_edges(self, graph: "Graph") -> List["Edge"]:
         return graph.edges_from_port(self)
 
@@ -83,11 +85,11 @@ class InputPort:
 
 
 class Edge(ABC):
-    def __init__(self, src_port: OutputPort, dst_port: InputPort):
-        self.src: Op = src_port.op
-        self.src_output_index = src_port.output_index
-        self.src_port: OutputPort = src_port
-        self.dst = dst_port.op
+    def __init__(self, src_tensor: Tensor, dst_port: InputPort):
+        self.src_op: Op = src_tensor.op
+        self.src_output_index = src_tensor.output_index
+        self.src_tensor: Tensor = src_tensor
+        self.dst_op = dst_port.op
         self.dst_input_index = dst_port.input_index
         self.dst_port: InputPort = dst_port
 
@@ -103,18 +105,18 @@ class DataEdge(Edge):
     def __eq__(self, other: object) -> bool:
         return (
             isinstance(other, DataEdge)
-            and self.src_port == other.src_port
+            and self.src_tensor == other.src_tensor
             and self.dst_port == other.dst_port
         )
 
     def __hash__(self):
-        return hash((self.src_port, self.dst_port))
+        return hash((self.src_tensor, self.dst_port))
 
 
 class ControlEdge(Edge):
     def __init__(self, src: Op, dst: Op):
         super().__init__(
-            src_port=OutputPort(src, self.CONTROL_EDGE_INDEX),
+            src_tensor=Tensor(src, self.CONTROL_EDGE_INDEX),
             dst_port=InputPort(dst, self.CONTROL_EDGE_INDEX),
         )
 
@@ -126,17 +128,17 @@ class ControlEdge(Edge):
     def __eq__(self, other: object) -> bool:
         return (
             isinstance(other, ControlEdge)
-            and self.src == other.src
-            and self.dst == other.dst
+            and self.src_op == other.src_op
+            and self.dst_op == other.dst_op
         )
 
     def __hash__(self):
-        return hash((self.src, self.dst))
+        return hash((self.src_op, self.dst_op))
 
 
 @dataclass
 class OutputEdges:
-    output_port: OutputPort
+    tensor: Tensor
     edges: List[Edge]
 
 
@@ -148,7 +150,7 @@ class Graph(core.Graph[Op]):
         self.cached_edges: List[Edge] = None
         self.cached_data_edges: List[Edge] = None
         self.cached_control_edges: List[Edge] = None
-        self.cached_op_to_port_to_edges: Dict[Op, Dict[OutputPort, List[Edge]]] = None
+        self.cached_op_to_tensor_to_edges: Dict[Op, Dict[Tensor, List[Edge]]] = None
         super().__init__(ops, attrs)
 
     @property
@@ -169,8 +171,8 @@ class Graph(core.Graph[Op]):
             graph.cached_data_edges = self.cached_data_edges
         if self.cached_control_edges is not None:
             graph.cached_control_edges = self.cached_control_edges
-        if self.cached_op_to_port_to_edges is not None:
-            graph.cached_op_to_port_to_edges = self.cached_op_to_port_to_edges
+        if self.cached_op_to_tensor_to_edges is not None:
+            graph.cached_op_to_tensor_to_edges = self.cached_op_to_tensor_to_edges
         return graph
 
     def invalidate_cache(self):
@@ -178,10 +180,10 @@ class Graph(core.Graph[Op]):
         self.cached_edges = None
         self.cached_data_edges = None
         self.cached_control_edges = None
-        self.cached_op_to_port_to_edges = None
+        self.cached_op_to_tensor_to_edges = None
 
-    def add(self, op: Op) -> None:
-        super().add(op)
+    def add_op(self, op: Op) -> None:
+        super().add_op(op)
         if op.has_name():
             assert op.name not in self.name_to_op
             self.name_to_op[op.name] = op
@@ -189,8 +191,8 @@ class Graph(core.Graph[Op]):
             self.composite_ops.add(op)
         self.invalidate_cache()
 
-    def remove(self, op: Op) -> None:
-        super().remove(op)
+    def remove_op(self, op: Op) -> None:
+        super().remove_op(op)
         if op.has_name():
             del self.name_to_op[op.name]
         if isinstance(op, CompositeOp):
@@ -200,10 +202,10 @@ class Graph(core.Graph[Op]):
     def get_op_by_name(self, name: str) -> Optional[Op]:
         return self.name_to_op.get(name)
 
-    def replace_tensor(self, old_tensor: OutputPort, new_tensor: OutputPort):
+    def replace_tensor(self, old_tensor: Tensor, new_tensor: Tensor):
         for op in self.ops:
-            if old_tensor in op.inputs:
-                op.inputs[op.input_index(old_tensor.op)] = new_tensor
+            if old_tensor in op.input_tensors:
+                op.input_tensors[op.input_index(old_tensor.op)] = new_tensor
 
     @property
     def post_order_ops(self) -> List[Op]:
@@ -212,7 +214,9 @@ class Graph(core.Graph[Op]):
         upstream_ops = set(
             itertools.chain.from_iterable(
                 map(
-                    lambda op: self.lift_ops(op.input_ops + list(op.control_inputs)),
+                    lambda op: self.lift_ops(
+                        op.input_ops + list(op.control_dependencies)
+                    ),
                     self.ops,
                 )
             )
@@ -233,7 +237,7 @@ class Graph(core.Graph[Op]):
                 dfs_stack.append(current_op)
                 walked_ops.add(current_op)
                 for input_op in self.lift_ops(
-                    current_op.input_ops + list(current_op.control_inputs)
+                    current_op.input_ops + list(current_op.control_dependencies)
                 ):
                     dfs_stack.append(input_op)
         self.cached_post_order_ops = post_order_ops
@@ -245,12 +249,11 @@ class Graph(core.Graph[Op]):
             return self.cached_data_edges
         self.cached_data_edges = [
             DataEdge(
-                src_port=cast(OutputPort, src_port),
-                dst_port=InputPort(op, input_index),
+                src_tensor=cast(Tensor, tensor), dst_port=InputPort(op, input_index),
             )
             for op in self.ops
-            for input_index, src_port in enumerate(op.inputs)
-            if src_port.op in self.ops
+            for input_index, tensor in enumerate(op.input_tensors)
+            if tensor.op in self.ops
         ]
         return self.cached_data_edges
 
@@ -261,7 +264,7 @@ class Graph(core.Graph[Op]):
         self.cached_control_edges = [
             ControlEdge(src=src, dst=op)
             for op in self.ops
-            for src in op.control_inputs
+            for src in op.control_dependencies
             if src in self.ops
         ]
         return self.cached_control_edges
@@ -274,33 +277,33 @@ class Graph(core.Graph[Op]):
         return self.cached_edges
 
     @property
-    def op_to_port_to_edges(self) -> Dict[Op, Dict[OutputPort, List[Edge]]]:
-        if self.cached_op_to_port_to_edges is not None:
-            return self.cached_op_to_port_to_edges
-        op_to_port_to_edges: Dict[Op, Dict[OutputPort, List[Edge]]] = {
+    def op_to_tensor_to_edges(self) -> Dict[Op, Dict[Tensor, List[Edge]]]:
+        if self.cached_op_to_tensor_to_edges is not None:
+            return self.cached_op_to_tensor_to_edges
+        op_to_tensor_to_edges: Dict[Op, Dict[Tensor, List[Edge]]] = {
             op: {} for op in self.ops
         }
         for edge in self.data_edges:
-            port_to_edges = op_to_port_to_edges[edge.src]
-            if edge.src_output_index not in port_to_edges:
-                port_to_edges[edge.src_port] = []
-            port_to_edges[edge.src_port].append(edge)
-        self.cached_op_to_port_to_edges = op_to_port_to_edges
-        return op_to_port_to_edges
+            tensor_to_edges = op_to_tensor_to_edges[edge.src_op]
+            if edge.src_output_index not in tensor_to_edges:
+                tensor_to_edges[edge.src_tensor] = []
+            tensor_to_edges[edge.src_tensor].append(edge)
+        self.cached_op_to_tensor_to_edges = op_to_tensor_to_edges
+        return op_to_tensor_to_edges
 
-    def output_ports_from_op(self, op: Op) -> List[OutputPort]:
-        if op not in self.op_to_port_to_edges:
+    def tensors_from_op(self, op: Op) -> List[Tensor]:
+        if op not in self.op_to_tensor_to_edges:
             return []
         else:
-            return list(self.op_to_port_to_edges[op].keys())
+            return list(self.op_to_tensor_to_edges[op].keys())
 
-    def edges_from_port(self, port: OutputPort) -> List[Edge]:
-        if port.op not in self.op_to_port_to_edges:
+    def edges_from_port(self, port: Tensor) -> List[Edge]:
+        if port.op not in self.op_to_tensor_to_edges:
             return []
-        elif port not in self.op_to_port_to_edges[port.op]:
+        elif port not in self.op_to_tensor_to_edges[port.op]:
             return []
         else:
-            return self.op_to_port_to_edges[port.op][port]
+            return self.op_to_tensor_to_edges[port.op][port]
 
     def set_attr(self, attr: str, value: Any) -> None:
         for op in self.ops:
@@ -320,24 +323,24 @@ class Graph(core.Graph[Op]):
             return ops
 
     @property
-    def inputs(self) -> List[OutputPort]:
-        def inputs_iter():
+    def input_tensors(self) -> List[Tensor]:
+        def input_tensors_iter():
             for op in self.ops:
-                for input in op.inputs:
+                for input in op.input_tensors:
                     if input.op not in self:
                         yield input
 
-        return list(inputs_iter())
+        return list(input_tensors_iter())
 
     @property
-    def control_inputs(self) -> Set[Op]:
-        def control_inputs_iter():
+    def control_dependencies(self) -> Set[Op]:
+        def control_dependencies_iter():
             for op in self.ops:
-                for control_input in op.control_inputs:
-                    if control_input not in self:
-                        yield control_input
+                for control_dependency in op.control_dependencies:
+                    if control_dependency not in self:
+                        yield control_dependency
 
-        return set(control_inputs_iter())
+        return set(control_dependencies_iter())
 
     def __contains__(self, op: Op) -> bool:
         if op in self.ops:

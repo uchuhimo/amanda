@@ -6,14 +6,14 @@ from typing import DefaultDict, List
 import numpy as np
 from mmdnn.conversion.common.IR import graph_pb2
 
-from mmx import Graph, Op, OutputPort
+from mmx import Graph, Op, Tensor
 
 
 def export_to_protobuf(graph: Graph):
     IR_graph = graph_pb2.GraphDef()
     for op in graph.ops:
         IR_graph_node = IR_graph.node.add()
-        for port in op.inputs:
+        for port in op.input_tensors:
             if port.output_index == 0:
                 port_string = port.op.name
             else:
@@ -119,7 +119,7 @@ def import_from_protobuf(model) -> Graph:
                 print("unknown field met")
                 assert False
 
-        graph.add(op)
+        graph.add_op(op)
 
     # second pass: set the inputs of ops
     for op in graph.ops:
@@ -130,8 +130,8 @@ def import_from_protobuf(model) -> Graph:
                 input_op_output_index = 0
             else:
                 input_op_output_index = int(input_port_tmp[1])
-            input_port = OutputPort(input_op, input_op_output_index)
-            op.inputs.append(input_port)
+            input_port = Tensor(input_op, input_op_output_index)
+            op.input_tensors.append(input_port)
 
     return graph
 

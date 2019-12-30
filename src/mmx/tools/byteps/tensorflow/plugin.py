@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Dict, List
 
-from mmx import Graph, InputPort, Op, OutputPort
+from mmx import Graph, InputPort, Op, Tensor
 
 
 @dataclass
@@ -36,7 +36,7 @@ def rewrite_graph(graph: Graph):
 class WorkerRewriteTask:
     send_op: Op
     grad_op: Op
-    grad_output_port: OutputPort = None
+    grad_tensor: Tensor = None
     recv_ports: List[InputPort] = field(default_factory=list)
 
 
@@ -57,17 +57,17 @@ def rewrite_worker(partition_graphs: Dict[str, Graph]):
             # find downstream ops of send ops
             for edge in graph.edges:
                 for task in tasks:
-                    if edge.src == task.send_op:
+                    if edge.src_op == task.send_op:
                         task.recv_ports.append(edge.dst_port)
-                    elif edge.src == task.grad_op and edge.dst == task.send_op:
-                        task.grad_output_port = edge.src_port
+                    elif edge.src_op == task.grad_op and edge.dst_op == task.send_op:
+                        task.grad_tensor = edge.src_tensor
 
             # replace send ops
             for task in tasks:
                 send_op = task.send_op
                 op_attrs = send_op.attrs
                 op = Op(
-                    inputs=[task.grad_output_port],
+                    input_tensors=[task.grad_tensor],
                     attrs=dict(
                         name=send_op.name,
                         type="SendGradient",
@@ -79,15 +79,17 @@ def rewrite_worker(partition_graphs: Dict[str, Graph]):
                         send_device_incarnation=op_attrs["send_device_incarnation"],
                     ),
                 )
-                graph.add(op)
+                graph.add_op(op)
                 for recv_port in task.recv_ports:
                     recv_op = recv_port.op
                     if recv_port.is_control():
-                        recv_op.remove_control(send_op)
-                        recv_op.add_control(op)
+                        recv_op.remove_control_dependency(send_op)
+                        recv_op.add_control_dependency(op)
                     else:
-                        recv_op.inputs[recv_port.input_index] = op.output()
-                graph.remove(send_op)
+                        recv_op.input_tensors[
+                            recv_port.input_index
+                        ] = op.output_tensor()
+                graph.remove_op(send_op)
 
             # find recv ops
             recv_ops: Dict[Op, List[InputPort]] = {}
@@ -97,8 +99,8 @@ def rewrite_worker(partition_graphs: Dict[str, Graph]):
 
             # find downstream ops of recv ops
             for edge in graph.edges:
-                if edge.src.type in ["_Recv", "_HostRecv"]:
-                    recv = edge.src
+                if edge.src_op.type in ["_Recv", "_HostRecv"]:
+                    recv = edge.src_op
                     if recv in recv_ops:
                         recv_ops[recv].append(edge.dst_port)
 
@@ -116,14 +118,16 @@ def rewrite_worker(partition_graphs: Dict[str, Graph]):
                         send_device_incarnation=op_attrs["send_device_incarnation"],
                     )
                 )
-                graph.add(op)
+                graph.add_op(op)
                 for dst_port in dst_ports:
                     if dst_port.is_control():
-                        dst_port.op.remove_control(recv_op)
-                        dst_port.op.add_control(op)
+                        dst_port.op.remove_control_dependency(recv_op)
+                        dst_port.op.add_control_dependency(op)
                     else:
-                        dst_port.op.inputs[dst_port.input_index] = op.output()
-                graph.remove(recv_op)
+                        dst_port.op.input_tensors[
+                            dst_port.input_index
+                        ] = op.output_tensor()
+                graph.remove_op(recv_op)
 
 
 @dataclass
@@ -157,9 +161,9 @@ def rewrite_ps(partition_graphs: Dict[str, Graph]):
             # find downstream ops of update/recv ops
             for edge in graph.edges:
                 for task in task_map.values():
-                    if edge.src == task.update_op:
+                    if edge.src_op == task.update_op:
                         task.update_dst_ports.append(edge.dst_port)
-                    elif edge.src == task.send_op:
+                    elif edge.src_op == task.send_op:
                         task.recv_ports.append(edge.dst_port)
 
             # find send ops
@@ -175,11 +179,11 @@ def rewrite_ps(partition_graphs: Dict[str, Graph]):
             for task in task_map.values():
                 # replace recv/update ops with fused recv+update ops
                 update_op = task.update_op
-                var = update_op.inputs[0]
-                lr = update_op.inputs[1]
+                var = update_op.input_tensors[0]
+                lr = update_op.input_tensors[1]
                 op_attrs = update_op.attrs
                 fused_op = Op(
-                    inputs=[var, lr],
+                    input_tensors=[var, lr],
                     attrs=dict(
                         name=update_op.name,
                         type="RecvApplyGradientDescent",
@@ -191,22 +195,22 @@ def rewrite_ps(partition_graphs: Dict[str, Graph]):
                         send_device_incarnation=op_attrs["send_device_incarnation"],
                     ),
                 )
-                graph.add(fused_op)
+                graph.add_op(fused_op)
                 for update_dst_port in task.update_dst_ports:
                     if update_dst_port.is_control():
-                        update_dst_port.op.remove_control(update_op)
-                        update_dst_port.op.add_control(fused_op)
+                        update_dst_port.op.remove_control_dependency(update_op)
+                        update_dst_port.op.add_control_dependency(fused_op)
                     else:
-                        update_dst_port.op.inputs[
+                        update_dst_port.op.input_tensors[
                             update_dst_port.input_index
-                        ] = fused_op.output()
-                graph.remove(update_op)
-                graph.remove(task.recv_op)
+                        ] = fused_op.output_tensor()
+                graph.remove_op(update_op)
+                graph.remove_op(task.recv_op)
 
                 # replace send ops
                 attrs = task.send_op.attrs
                 op = Op(
-                    inputs=[task.var_op.output()],
+                    input_tensors=[task.var_op.output_tensor()],
                     attrs=dict(
                         name=task.send_op.name,
                         type="SendParameter",
@@ -218,11 +222,13 @@ def rewrite_ps(partition_graphs: Dict[str, Graph]):
                         send_device_incarnation=attrs["send_device_incarnation"],
                     ),
                 )
-                graph.add(op)
+                graph.add_op(op)
                 for recv_port in task.recv_ports:
                     if recv_port.is_control():
-                        recv_port.op.remove_control(task.send_op)
-                        recv_port.op.add_control(op)
+                        recv_port.op.remove_control_dependency(task.send_op)
+                        recv_port.op.add_control_dependency(op)
                     else:
-                        recv_port.op.inputs[recv_port.input_index] = op.output()
-                graph.remove(task.send_op)
+                        recv_port.op.input_tensors[
+                            recv_port.input_index
+                        ] = op.output_tensor()
+                graph.remove_op(task.send_op)

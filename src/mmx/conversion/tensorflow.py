@@ -20,7 +20,7 @@ from tensorflow.python.framework.op_def_library import (
 )
 from tensorflow.python.util import compat
 
-from mmx import Graph, Op, OutputPort
+from mmx import Graph, Op, Tensor
 
 
 class GraphKey:
@@ -54,15 +54,15 @@ def import_from_tf_graph(
                 __dtypes=[output_tensor.dtype for output_tensor in tf_op.outputs],
                 **attrs,
             ),
-            inputs=[
+            input_tensors=[
                 from_tf_tensor(input_tensor, graph) for input_tensor in tf_op.inputs
             ],
-            control_inputs=[
+            control_dependencies=[
                 graph.get_op_by_name(control_input_op.name)
                 for control_input_op in tf_op.control_inputs
             ],
         )
-        graph.add(op)
+        graph.add_op(op)
 
     for tf_op in tf_graph.get_operations():
         add_op(tf_op)
@@ -101,12 +101,12 @@ def update_initialized_variables(graph: Graph, tf_graph: tf.Graph, session: tf.S
         graph.attrs[GraphKey.initialized_variables].update(initialized_variables)
 
 
-def from_tf_tensor(tensor: Union[tf.Tensor, RefVariable], graph: Graph) -> OutputPort:
+def from_tf_tensor(tensor: Union[tf.Tensor, RefVariable], graph: Graph) -> Tensor:
     op = graph.get_op_by_name(tensor.op.name)
     if op.type == "VariableV2":
-        return op.output(0)
+        return op.output_tensor(0)
     else:
-        return op.output(tensor.value_index)
+        return op.output_tensor(tensor.value_index)
 
 
 def import_from_graph_def(
@@ -156,7 +156,7 @@ def export_to_tf_graph(graph: Graph,) -> Tuple[tf.Graph, tf.train.Saver, tf.Sess
             with tf.control_dependencies(
                 [
                     tf_graph.get_operation_by_name(control_input.name)
-                    for control_input in op.control_inputs
+                    for control_input in op.control_dependencies
                 ]
             ):
                 tf_op = tf_graph.create_op(
@@ -165,7 +165,7 @@ def export_to_tf_graph(graph: Graph,) -> Tuple[tf.Graph, tf.train.Saver, tf.Sess
                         tf_graph.get_tensor_by_name(
                             f"{tensor.op.name}:{tensor.output_index}"
                         )
-                        for tensor in op.inputs
+                        for tensor in op.input_tensors
                     ],
                     dtypes=get_dtypes(op),
                     input_types=None,
@@ -308,7 +308,7 @@ def get_dtypes(op: Op):
     return op.attrs["__dtypes"]
 
 
-def get_dtype(tensor: OutputPort):
+def get_dtype(tensor: Tensor):
     return get_dtypes(tensor.op)[tensor.output_index]
 
 
@@ -317,12 +317,12 @@ def convert_from_tf_func(tf_func, graph: Graph):
         args_dict = dict(enumerate(args))
         tf_args = list(args)
         tf_kwargs = dict(kwargs)
-        inputs: List[OutputPort] = []
+        input_tensors: List[Tensor] = []
         placeholders: List[tf.Tensor] = []
 
-        def to_tf_tensor(tensor: OutputPort) -> tf.Tensor:
+        def to_tf_tensor(tensor: Tensor) -> tf.Tensor:
             placeholder = tf.placeholder(get_dtype(tensor))
-            inputs.append(tensor)
+            input_tensors.append(tensor)
             placeholders.append(placeholder)
             return placeholder
 
@@ -341,21 +341,21 @@ def convert_from_tf_func(tf_func, graph: Graph):
             all_args = {**args_dict, **kwargs}
             for name in all_args:
                 arg = get_args(name)[name]
-                if isinstance(arg, OutputPort):
+                if isinstance(arg, Tensor):
                     get_tf_args(name)[name] = to_tf_tensor(arg)
                 if isinstance(arg, list):
                     arg_list = arg
                     for i, arg in enumerate(arg_list):
-                        if isinstance(arg, OutputPort):
+                        if isinstance(arg, Tensor):
                             get_tf_args(name)[name][i] = to_tf_tensor(arg)
             output_tensor: tf.Tensor = tf_func(*tf_args, **tf_kwargs)
             new_graph = import_from_tf_graph(tf_graph)
-            for input, placeholder in zip(inputs, placeholders):
+            for input, placeholder in zip(input_tensors, placeholders):
                 placeholder_op = new_graph.get_op_by_name(placeholder.op.name)
-                new_graph.replace_tensor(placeholder_op.output(0), input)
-                new_graph.remove(placeholder_op)
+                new_graph.replace_tensor(placeholder_op.output_tensor(0), input)
+                new_graph.remove_op(placeholder_op)
             for op in new_graph.ops:
-                graph.add(op)
+                graph.add_op(op)
 
             current_meta_graph = new_graph.attrs[GraphKey.meta_graph]
             if len(current_meta_graph.collection_def) != 0:
@@ -364,6 +364,6 @@ def convert_from_tf_func(tf_func, graph: Graph):
                 graph.attrs[GraphKey.meta_graph] = meta_graph
 
             output_op = graph.get_op_by_name(output_tensor.op.name)
-            return output_op.output(output_tensor.value_index)
+            return output_op.output_tensor(output_tensor.value_index)
 
     return new_func

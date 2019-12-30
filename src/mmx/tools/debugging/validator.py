@@ -3,7 +3,7 @@ from functools import partial
 import numpy as np
 import tensorflow as tf
 
-from mmx import Graph, OutputPort
+from mmx import Graph, Tensor
 from mmx.conversion.tensorflow import (
     convert_from_tf_func,
     export_to_checkpoint,
@@ -25,21 +25,21 @@ def modify_graph(graph: Graph):
     store_dir = root_dir() / "tmp" / "debug_info" / arch_name
     original_graph = graph.clone()
     for op in original_graph.post_order_ops:
-        for output_port in op.output_ports(original_graph):
-            output_edges = output_port.output_edges(original_graph)
-            debug_output: OutputPort = convert_from_tf_func(tf.py_func, graph)(
+        for tensor in op.output_tensors(original_graph):
+            output_edges = tensor.output_edges(original_graph)
+            debug_output: Tensor = convert_from_tf_func(tf.py_func, graph)(
                 partial(
                     store_as_numpy,
                     store_dir=store_dir,
-                    file_name=f"{op.name}:{output_port.output_index}",
+                    file_name=f"{op.name}:{tensor.output_index}",
                 ),
-                [output_port],
-                get_dtype(output_port),
+                [tensor],
+                get_dtype(tensor),
             )
-            # debug_output = convert_from_tf_func(tf.identity, graph)(output_port)
+            # debug_output = convert_from_tf_func(tf.identity, graph)(tensor)
             for edge in output_edges:
-                if edge.dst.type != "Assign":
-                    edge.dst.inputs[edge.dst_input_index] = debug_output
+                if edge.dst_op.type != "Assign":
+                    edge.dst_op.input_tensors[edge.dst_input_index] = debug_output
 
 
 def modify_model(arch_name):
