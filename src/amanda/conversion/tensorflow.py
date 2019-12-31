@@ -22,6 +22,36 @@ from tensorflow.python.framework.op_def_library import (
 from tensorflow.python.util import compat
 
 from amanda.graph import Graph, Op, Tensor
+from amanda.namespace import Namespace, default_namespace, get_global_registry
+from amanda.rule import NoopRule, RuleMapper
+
+_namespace = Namespace(name="tensorflow")
+
+
+def tf_namespace() -> Namespace:
+    return _namespace
+
+
+_tf_to_default_mapper = RuleMapper(rules=[NoopRule()])
+
+
+def tf_to_default_mapper() -> RuleMapper:
+    return _tf_to_default_mapper
+
+
+_default_to_tf_mapper = RuleMapper(rules=[NoopRule()])
+
+
+def default_to_tf_mapper() -> RuleMapper:
+    return _default_to_tf_mapper
+
+
+get_global_registry().add_mapper(
+    tf_namespace(), default_namespace(), tf_to_default_mapper()
+)
+get_global_registry().add_mapper(
+    default_namespace(), tf_namespace(), default_to_tf_mapper()
+)
 
 
 class GraphKey:
@@ -80,7 +110,8 @@ def import_from_tf_graph(
     graph.attrs[GraphKey.lower_name_func] = lru_cache(maxsize=None)(
         lambda name: name.lower()
     )
-    return graph
+    graph.namespace = tf_namespace()
+    return graph.to_namespace(default_namespace())
 
 
 def update_initialized_variables(graph: Graph, tf_graph: tf.Graph, session: tf.Session):
@@ -154,6 +185,8 @@ def import_from_checkpoint(path: Union[str, Path]) -> Graph:
 
 
 def export_to_tf_graph(graph: Graph,) -> Tuple[tf.Graph, tf.train.Saver, tf.Session]:
+    if graph.namespace != tf_namespace():
+        graph.to_namespace(default_namespace()).to_namespace(tf_namespace())
     tf_graph: tf.Graph
     with tf.Graph().as_default() as tf_graph:
         for op in graph.post_order_ops:

@@ -9,7 +9,7 @@ class Namespace:
 
 class Mapper(ABC):
     @abstractmethod
-    def mapping(self, graph):
+    def map(self, graph, namespace: Namespace):
         ...
 
 
@@ -41,3 +41,17 @@ _global_registry = Registry()
 
 def get_global_registry() -> Registry:
     return _global_registry
+
+
+_default_namespace = Namespace(name="amanda")
+
+
+def default_namespace() -> Namespace:
+    return _default_namespace
+
+
+_internal_namespace = Namespace(name="amanda/internal")
+
+
+def internal_namespace() -> Namespace:
+    return _internal_namespace

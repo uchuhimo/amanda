@@ -376,6 +376,13 @@ class Graph(core.Graph[Op]):
     def namespace(self) -> Namespace:
         return self.attrs["namespace"]
 
+    @namespace.setter
+    def namespace(self, namespace: Namespace):
+        self.attrs["namespace"] = namespace
+
     def to_namespace(self, namespace: Namespace, registry: Registry = None) -> "Graph":
-        registry = registry or get_global_registry()
-        return registry.get_mapper(self.namespace, namespace).mapping(self)
+        if namespace == self.namespace:
+            return self
+        else:
+            registry = registry or get_global_registry()
+            return registry.get_mapper(self.namespace, namespace).map(self, namespace)
