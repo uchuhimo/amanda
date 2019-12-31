@@ -8,7 +8,7 @@ Create a virtual environment
 .. code-block:: bash
 
    conda env create -f environment.yml
-   source activate mmx
+   source activate amanda
 
 Install dependencies
 ^^^^^^^^^^^^^^^^^^^^

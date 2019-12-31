@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Dict, List
 
-from mmx import Graph, InputPort, Op, Tensor
+from amanda import Graph, InputPort, Op, Tensor
 
 
 @dataclass

@@ -1,9 +1,9 @@
 from abc import ABC, abstractmethod
 from typing import List, Set, Tuple
 
-from mmx.exception import OpMappingError
-from mmx.graph import Graph, Op
-from mmx.namespace import Mapper
+from amanda.exception import OpMappingError
+from amanda.graph import Graph, Op
+from amanda.namespace import Mapper
 
 
 class Rule(ABC):

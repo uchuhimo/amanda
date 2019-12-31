@@ -1,7 +1,7 @@
 import pytest
 
-from mmx import ControlEdge, DataEdge, Graph, InputPort, Op, Tensor
-from mmx.exception import IrremovableOpError
+from amanda import ControlEdge, DataEdge, Graph, InputPort, Op, Tensor
+from amanda.exception import IrremovableOpError
 
 
 def test_new_graph():

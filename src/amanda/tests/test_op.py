@@ -1,6 +1,6 @@
 import pytest
 
-from mmx import Op
+from amanda import Op
 
 
 def test_new_op():

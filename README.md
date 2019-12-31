@@ -4,7 +4,7 @@
 
 ```bash
 conda env create -f environment.yml
-source activate mmx
+source activate amanda
 ```
 
 ### Install dependencies

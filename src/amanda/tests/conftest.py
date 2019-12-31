@@ -1,7 +1,7 @@
 import pytest
 from filelock import FileLock
 
-from mmx.tests.utils import download_all_tf_models
+from amanda.tests.utils import download_all_tf_models
 
 
 @pytest.fixture(scope="session")

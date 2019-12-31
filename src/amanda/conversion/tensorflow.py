@@ -21,7 +21,7 @@ from tensorflow.python.framework.op_def_library import (
 )
 from tensorflow.python.util import compat
 
-from mmx.graph import Graph, Op, Tensor
+from amanda.graph import Graph, Op, Tensor
 
 
 class GraphKey:

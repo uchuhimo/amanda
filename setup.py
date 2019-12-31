@@ -20,7 +20,7 @@ if os.path.exists(readme_path):
 
 setup(
     long_description=readme,
-    name='mmx',
+    name='amanda',
     version='0.1.0',
     description='graph instrumentation',
     python_requires='<4,>=3.6',
@@ -40,10 +40,11 @@ setup(
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8'
     ],
-    entry_points={"console_scripts": ["mmx = mmx.cli:mmx"]},
+    entry_points={"console_scripts": ["amanda = amanda.cli:cli"]},
     packages=[
-        'mmx', 'mmx.conversion', 'mmx.core', 'mmx.tests', 'mmx.tools',
-        'mmx.tools.byteps', 'mmx.tools.byteps.tensorflow', 'mmx.tools.debugging'
+        'amanda', 'amanda.conversion', 'amanda.core', 'amanda.tests',
+        'amanda.tools', 'amanda.tools.byteps', 'amanda.tools.byteps.tensorflow',
+        'amanda.tools.debugging'
     ],
     package_dir={"": "src"},
     package_data={},

@@ -6,8 +6,8 @@ import tensorflow as tf
 from jsondiff import diff
 from mmdnn.conversion.tensorflow.tensorflow_parser import TensorflowParser
 
-from mmx.conversion.mmdnn import export_to_protobuf, import_from_protobuf
-from mmx.tests.utils import root_dir
+from amanda.conversion.mmdnn import export_to_protobuf, import_from_protobuf
+from amanda.tests.utils import root_dir
 
 
 @pytest.fixture(
@@ -34,7 +34,7 @@ def arch_name(request):
     return request.param
 
 
-# this function tests transformation between IR of MMdnn and IR of mmx
+# this function tests transformation between IR of MMdnn and IR of amanda
 def test_mmdnn_import_export(arch_name):
     checkpoint_dir = root_dir() / "tmp" / "model" / arch_name
     # convert downloaded model to MMdnn IR
@@ -45,7 +45,7 @@ def test_mmdnn_import_export(arch_name):
     )
     parser.gen_IR()
     model = parser.IR_graph
-    # check transformation between MMdnn IR and mmx IR
+    # check transformation between MMdnn IR and amanda IR
     graph = import_from_protobuf(model)
     new_model = export_to_protobuf(graph)
     op_dict = {}

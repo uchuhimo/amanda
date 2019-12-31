@@ -3,15 +3,15 @@ from functools import partial
 import numpy as np
 import tensorflow as tf
 
-from mmx import Graph, Tensor
-from mmx.conversion.tensorflow import (
+from amanda import Graph, Tensor
+from amanda.conversion.tensorflow import (
     convert_from_tf_func,
     export_to_checkpoint,
     get_dtype,
     import_from_checkpoint,
 )
-from mmx.tests.test_tf_import_export import run_model
-from mmx.tests.utils import root_dir
+from amanda.tests.test_tf_import_export import run_model
+from amanda.tests.utils import root_dir
 
 arch_name = "vgg16"
 

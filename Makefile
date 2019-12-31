@@ -50,7 +50,7 @@ clean-test: ## remove test and coverage artifacts
 	rm -fr .dephell_report
 
 lint: ## check style with flake8
-	flake8 src/mmx
+	flake8 src/amanda
 
 test: ## run tests quickly with the default Python
 	pytest -n auto
@@ -59,14 +59,14 @@ test-all: ## run tests on every Python version with tox
 	tox
 
 coverage: ## check code coverage quickly with the default Python
-	coverage run --source src/mmx -m pytest
+	coverage run --source src/amanda -m pytest
 	coverage report -m
 	coverage html
 
 docs: ## generate Sphinx HTML documentation, including API docs
-	rm -f docs/mmx.rst
+	rm -f docs/amanda.rst
 	rm -f docs/modules.rst
-	sphinx-apidoc -o docs/ src/mmx
+	sphinx-apidoc -o docs/ src/amanda
 	$(MAKE) -C docs clean
 	$(MAKE) -C docs html
 

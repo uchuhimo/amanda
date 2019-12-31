@@ -3,9 +3,9 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, cast
 
-from mmx import core
-from mmx.exception import IrremovableOpError
-from mmx.namespace import Namespace, Registry, get_global_registry
+from amanda import core
+from amanda.exception import IrremovableOpError
+from amanda.namespace import Namespace, Registry, get_global_registry
 
 
 class Op(core.Op["Op"]):

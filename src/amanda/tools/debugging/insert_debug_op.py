@@ -1,8 +1,8 @@
 import tensorflow as tf
 
-from mmx import Op
-from mmx.conversion.tensorflow import export_to_checkpoint, import_from_checkpoint
-from mmx.tests.utils import root_dir
+from amanda import Op
+from amanda.conversion.tensorflow import export_to_checkpoint, import_from_checkpoint
+from amanda.tests.utils import root_dir
 
 arch_name = "vgg16"
 prefix_dir = root_dir() / "tmp"

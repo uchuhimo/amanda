@@ -4,15 +4,15 @@ import numpy as np
 import pytest
 import tensorflow as tf
 
-from mmx import Graph
-from mmx.conversion.tensorflow import (
+from amanda import Graph
+from amanda.conversion.tensorflow import (
     convert_from_tf_func,
     export_to_checkpoint,
     export_to_tf_graph,
     import_from_checkpoint,
     import_from_graph_def,
 )
-from mmx.tests.utils import root_dir
+from amanda.tests.utils import root_dir
 
 
 @pytest.fixture(

@@ -1,4 +1,4 @@
-name: mmx
+name: amanda
 dependencies:
     - python=3.7
     - pip

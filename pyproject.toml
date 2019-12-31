@@ -13,7 +13,7 @@ include_trailing_comma = true
 force_grid_wrap = 0
 use_parentheses = true
 line_length = 88
-known_first_party = "mmx"
+known_first_party = "amanda"
 default_section = "THIRDPARTY"
 not_skip = "__init__.py"
 # sections = "FUTURE,STDLIB,FIRSTPARTY,THIRDPARTY,LOCALFOLDER"
@@ -32,10 +32,10 @@ exclude_lines = [
     "if 0:",
     "if __name__ == .__main__.:",
 ]
-omit = ["src/mmx/tests/*", "src/mmx/tools/*"]
+omit = ["src/amanda/tests/*", "src/amanda/tools/*"]
 
 [tool.poetry]
-name = "mmx"
+name = "amanda"
 version = "0.1.0"
 description = "graph instrumentation"
 
@@ -105,4 +105,4 @@ pytorch = ["torch", "torchvision"]
 all = ["tensorflow", "torch", "torchvision"]
 
 [tool.poetry.scripts]
-mmx = "mmx.cli:mmx"
+amanda = "amanda.cli:cli"
