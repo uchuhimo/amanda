@@ -4,6 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Union
 
+import google.protobuf.text_format
 import tensorflow as tf
 from tensorflow.core.framework.op_def_pb2 import OpDef
 from tensorflow.core.protobuf.saver_pb2 import SaverDef
@@ -20,7 +21,7 @@ from tensorflow.python.framework.op_def_library import (
 )
 from tensorflow.python.util import compat
 
-from mmx import Graph, Op, Tensor
+from mmx.graph import Graph, Op, Tensor
 
 
 class GraphKey:
@@ -121,6 +122,13 @@ def import_from_graph_def(
         with tf.Session() as session:
             tf.import_graph_def(graph_def, name="")
             return import_from_tf_graph(graph, saver_def, session)
+
+
+def import_from_pbtxt(graph_pbtxt: Union[str, Path]) -> Graph:
+    graph_pbtxt = Path(graph_pbtxt)
+    graph_def = tf.GraphDef()
+    google.protobuf.text_format.Parse(graph_pbtxt.read_text(), graph_def)
+    return import_from_graph_def(graph_def)
 
 
 def import_from_meta_graph(

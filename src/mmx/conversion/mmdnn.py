@@ -6,7 +6,7 @@ from typing import DefaultDict, List
 import numpy as np
 from mmdnn.conversion.common.IR import graph_pb2
 
-from mmx import Graph, Op, Tensor
+from mmx.graph import Graph, Op, Tensor
 
 
 def export_to_protobuf(graph: Graph):

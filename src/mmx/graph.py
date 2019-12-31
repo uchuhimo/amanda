@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Set, cast
 
 from mmx import core
 from mmx.exception import IrremovableOpError
+from mmx.namespace import Namespace, Registry, get_global_registry
 
 
 class Op(core.Op["Op"]):
@@ -370,3 +371,11 @@ class Graph(core.Graph[Op]):
     def duplicate(self, split_fn, merge_fn):
         # TODO
         ...
+
+    @property
+    def namespace(self) -> Namespace:
+        return self.attrs["namespace"]
+
+    def to_namespace(self, namespace: Namespace, registry: Registry = None) -> "Graph":
+        registry = registry or get_global_registry()
+        return registry.get_mapper(self.namespace, namespace).mapping(self)

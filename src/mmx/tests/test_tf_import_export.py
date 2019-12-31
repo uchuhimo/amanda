@@ -41,7 +41,7 @@ def arch_name(request):
 
 def modify_graph(graph: Graph):
     original_graph = graph.clone()
-    for op in original_graph.post_order_ops:
+    for op in original_graph.ops:
         for tensor in op.output_tensors:
             output_edges = original_graph.edges_from_tensor(tensor)
             debug_output = convert_from_tf_func(tf.identity, graph)(tensor)

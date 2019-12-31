@@ -17,6 +17,12 @@ class Op(Generic[T]):
         self.control_dependencies: Set[T] = set(control_dependencies or set())
         self.output_num: int = output_num
 
+    def update_attr(self, name: str, value: Any):
+        self.attrs[name] = value
+
+    def update_input_tensor(self, index: int, tensor: "Tensor[T]"):
+        self.input_tensors[index] = tensor
+
     def add_control_dependency(self, op: T):
         assert op not in self.control_dependencies
         self.control_dependencies.add(op)
@@ -39,6 +45,9 @@ class Graph(Generic[T]):
         if ops is not None:
             for op in ops:
                 self.add_op(op)
+
+    def update_attr(self, name: str, value: Any):
+        self.attrs[name] = value
 
     def add_op(self, op: T) -> None:
         assert op not in self.ops
