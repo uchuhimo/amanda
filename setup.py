@@ -47,7 +47,7 @@ setup(
         'amanda.tools.debugging'
     ],
     package_dir={"": "src"},
-    package_data={},
+    package_data={"amanda.tests": ["*.pbtxt"]},
     install_requires=[
         'click', 'contextvars; python_version < "3.7"',
         'dataclasses; python_version < "3.7"', 'mmdnn', 'more-itertools',

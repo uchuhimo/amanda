@@ -6,9 +6,10 @@ from typing import Any, Dict, List, Tuple, Union
 
 import google.protobuf.text_format
 import tensorflow as tf
+from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework.op_def_pb2 import OpDef
 from tensorflow.core.protobuf.saver_pb2 import SaverDef
-from tensorflow.python import RefVariable
+from tensorflow.python import RefVariable, tensor_shape, types_pb2
 from tensorflow.python.framework.op_def_library import (
     _IsListValue,
     _MakeBool,
@@ -99,19 +100,24 @@ def import_from_tf_graph(
 
     for tf_op in tf_graph.get_operations():
         add_op(tf_op)
+    init_graph_attrs(graph)
     meta_graph: tf.MetaGraphDef = tf.train.export_meta_graph(
         graph=tf_graph, saver_def=saver_def
     )
     meta_graph.graph_def.Clear()
     graph.attrs[GraphKey.meta_graph] = meta_graph
-    graph.attrs[GraphKey.initialized_variables] = {}
     if session is not None:
         update_initialized_variables(graph, tf_graph, session)
+    return graph
+
+
+def init_graph_attrs(graph: Graph):
+    graph.attrs[GraphKey.meta_graph] = tf.MetaGraphDef()
+    graph.attrs[GraphKey.initialized_variables] = {}
     graph.attrs[GraphKey.lower_name_func] = lru_cache(maxsize=None)(
         lambda name: name.lower()
     )
     graph.namespace = tf_namespace()
-    return graph
 
 
 def update_initialized_variables(graph: Graph, tf_graph: tf.Graph, session: tf.Session):
@@ -149,16 +155,146 @@ def import_from_graph_def(
     if not isinstance(graph_def, tf.GraphDef):
         graph_def = tf.GraphDef()
         graph_def.ParseFromString(Path(graph_def).read_bytes())
-    with tf.Graph().as_default() as graph:
-        with tf.Session() as session:
-            tf.import_graph_def(graph_def, name="")
-            return import_from_tf_graph(graph, saver_def, session)
+    if saver_def is not None:
+        with tf.Graph().as_default() as tf_graph:
+            with tf.Session() as session:
+                tf.import_graph_def(graph_def, name="")
+                return import_from_tf_graph(tf_graph, saver_def, session)
+    else:
+        graph = Graph()
+        tf_graph = tf.Graph()
+        name_to_node = {node.name: node for node in graph_def.node}
+
+        def add_op(node: tf.NodeDef):
+            if graph.get_op_by_name(node.name) is not None:
+                return
+            input_tensors: List[Tuple[str, int]] = []
+            control_input_nodes: List[str] = []
+            input: str
+            for input in node.input:
+                if input.startswith("^"):
+                    control_input_nodes.append(input[1:])
+                else:
+                    names = input.split(":")
+                    assert len(names) == 1 or len(names) == 2
+                    if len(names) == 1:
+                        input_tensors.append((names[0], 0))
+                    else:
+                        input_tensors.append((names[0], int(names[1])))
+            for input_tensor in input_tensors:
+                add_op(name_to_node[input_tensor[0]])
+            for control_input_node in control_input_nodes:
+                add_op(name_to_node[control_input_node])
+
+            attrs = {
+                attr_name: from_attr_proto(node.attr[attr_name])
+                for attr_name in node.attr
+            }
+
+            op_def = tf_graph._get_op_def(node.op)
+
+            def get_dtype_proto(output_arg):
+                if len(output_arg.type_attr) != 0:
+                    for attr in op_def.attr:
+                        if attr.name == output_arg.type_attr:
+                            return node.attr[attr.name].type
+                    raise AssertionError(
+                        f"cannot find attribute {output_arg.type_attr} "
+                        f"in op {node.op} {node.name}"
+                    )
+                elif len(output_arg.type_list_attr) != 0:
+                    for attr in op_def.attr:
+                        if attr.name == output_arg.type_list_attr:
+                            return list(node.attr[attr.name].list.type)
+                    raise AssertionError(
+                        f"cannot find attribute {output_arg.type_list_attr} "
+                        f"in op {node.op} {node.name}"
+                    )
+                else:
+                    if output_arg.type == types_pb2.DT_INVALID:
+                        raise AssertionError(
+                            f"No type fields in op {node.op} {node.name}, "
+                            f"op_def: {op_def}"
+                        )
+                    return output_arg.type
+
+            dtypes = [get_dtype_proto(output_arg) for output_arg in op_def.output_arg]
+            if len(dtypes) == 1 and isinstance(dtypes[0], list):
+                dtypes = dtypes[0]
+            dtypes = [tf.as_dtype(dtype) for dtype in dtypes]
+            op = Op(
+                attrs=dict(
+                    name=node.name,
+                    type=node.op,
+                    device=node.device,
+                    experimental_debug_info=node.experimental_debug_info,
+                    __dtypes=dtypes,
+                    **attrs,
+                ),
+                input_tensors=[
+                    graph.get_op_by_name(input_tensor[0]).output_tensor(input_tensor[1])
+                    for input_tensor in input_tensors
+                ],
+                control_dependencies=[
+                    graph.get_op_by_name(control_input_name)
+                    for control_input_name in control_input_nodes
+                ],
+                output_num=len(dtypes),
+            )
+            graph.add_op(op)
+
+        for node in graph_def.node:
+            add_op(node)
+        init_graph_attrs(graph)
+        return graph
 
 
-def import_from_pbtxt(graph_pbtxt: Union[str, Path]) -> Graph:
-    graph_pbtxt = Path(graph_pbtxt)
+def from_attr_proto(attr_value: tf.AttrValue) -> Any:
+    field_name = attr_value.WhichOneof("value")
+    if field_name == "s":
+        return attr_value.s
+    elif field_name == "i":
+        return attr_value.i
+    elif field_name == "f":
+        return attr_value.f
+    elif field_name == "b":
+        return attr_value.b
+    elif field_name == "type":
+        return tf.as_dtype(attr_value.type)
+    elif field_name == "shape":
+        return tensor_shape.as_shape(attr_value.shape)
+    elif field_name == "tensor":
+        return attr_value.tensor
+    elif field_name == "func":
+        return attr_value.func
+    elif field_name == "placeholder":
+        return attr_value.placeholder
+    elif field_name == "list":
+        list_value = attr_value.list
+        if len(list_value.s) != 0:
+            return [value for value in list_value.s]
+        elif len(list_value.i) != 0:
+            return [value for value in list_value.i]
+        elif len(list_value.f) != 0:
+            return [value for value in list_value.f]
+        elif len(list_value.b) != 0:
+            return [value for value in list_value.b]
+        elif len(list_value.type) != 0:
+            return [tf.as_dtype(value) for value in list_value.type]
+        elif len(list_value.shape) != 0:
+            return [tensor_shape.as_shape(value) for value in list_value.shape]
+        elif len(list_value.tensor) != 0:
+            return [value for value in list_value.tensor]
+        elif len(list_value.func) != 0:
+            return [value for value in list_value.func]
+        else:
+            return []
+
+
+def import_from_pbtxt(file: Union[str, Path]) -> Graph:
+    file = Path(file)
     graph_def = tf.GraphDef()
-    google.protobuf.text_format.Parse(graph_pbtxt.read_text(), graph_def)
+    google.protobuf.text_format.Parse(file.read_text(), graph_def)
     return import_from_graph_def(graph_def)
 
 
@@ -184,17 +320,14 @@ def import_from_checkpoint(path: Union[str, Path]) -> Graph:
     return import_from_meta_graph(path + ".meta", path)
 
 
-def export_to_tf_graph(graph: Graph,) -> Tuple[tf.Graph, tf.train.Saver, tf.Session]:
+def export_to_tf_graph(graph: Graph) -> Tuple[tf.Graph, tf.train.Saver, tf.Session]:
     if graph.namespace != tf_namespace():
         graph.to_default_namespace().to_namespace(tf_namespace())
     tf_graph: tf.Graph
     with tf.Graph().as_default() as tf_graph:
         for op in graph.post_order_ops:
             attrs = dict(op.attrs)
-            del attrs["name"]
-            del attrs["type"]
-            del attrs["device"]
-            del attrs["__dtypes"]
+            remove_internal_attrs(attrs)
             with tf.control_dependencies(
                 [
                     tf_graph.get_operation_by_name(control_input.name)
@@ -234,6 +367,49 @@ def export_to_tf_graph(graph: Graph,) -> Tuple[tf.Graph, tf.train.Saver, tf.Sess
         return tf_graph, saver, session
 
 
+def remove_internal_attrs(attrs):
+    del attrs["name"]
+    del attrs["type"]
+    del attrs["device"]
+    del attrs["experimental_debug_info"]
+    del attrs["__dtypes"]
+
+
+def export_to_graph_def(graph: Graph) -> tf.GraphDef:
+    tf_graph = tf.Graph()
+    graph_def = tf_graph.as_graph_def()
+    for op in graph.post_order_ops:
+        attrs = dict(op.attrs)
+        remove_internal_attrs(attrs)
+        node = graph_def.node.add()
+        node.name = op.name
+        node.op = op.type
+        node.device = op.attrs["device"]
+        node.experimental_debug_info.CopyFrom(op.attrs["experimental_debug_info"])
+        for name, attr_value in to_attrs_proto(
+            tf_graph._get_op_def(op.type), op.type, attrs
+        ).items():
+            node.attr[name].CopyFrom(attr_value)
+        for tensor in op.input_tensors:
+            input_op = tensor.op
+            if input_op.output_num == 1:
+                node.input.append(input_op.name)
+            else:
+                node.input.append(f"{input_op.name}:{tensor.output_index}")
+        for control_input in op.control_dependencies:
+            node.input.append(f"^{control_input.name}")
+    return graph_def
+
+
+def export_to_pbtxt(graph: Graph, file: Union[str, Path] = None) -> str:
+    graph_def = export_to_graph_def(graph)
+    graph_pbtxt = google.protobuf.text_format.MessageToString(graph_def)
+    if file is not None:
+        file = Path(file)
+        file.write_text(graph_pbtxt)
+    return graph_pbtxt
+
+
 def export_to_checkpoint(graph: Graph, path: Union[str, Path]) -> None:
     path = Path(path)
     if not path.parent.exists():
@@ -251,10 +427,54 @@ def to_attrs_proto(
 ) -> Dict[str, Any]:
     # Convert attr values to AttrValue protos.
     attr_protos = {}
-    for attr_def in op_def.attr:
-        key = attr_def.name
-        value = attrs[key]
+    attr_defs = {attr_def.name: attr_def for attr_def in op_def.attr}
+    for key, value in attrs.items():
         attr_value = tf.AttrValue()
+        if key in attr_defs:
+            attr_def = attr_defs[key]
+        elif value is None:
+            attr_protos[key] = attr_value
+            continue
+        else:
+            attr_def = OpDef.AttrDef()
+            if isinstance(value, (str, bytes)):
+                attr_def.type = "string"
+            elif isinstance(value, int):
+                attr_def.type = "int"
+            elif isinstance(value, float):
+                attr_def.type = "float"
+            elif isinstance(value, bool):
+                attr_def.type = "bool"
+            elif isinstance(value, tf.DType):
+                attr_def.type = "type"
+            elif isinstance(value, tf.TensorShape):
+                attr_def.type = "shape"
+            elif isinstance(value, tensor_pb2.TensorProto):
+                attr_def.type = "tensor"
+            elif isinstance(value, tf.NameAttrList):
+                attr_def.type = "func"
+            elif isinstance(value, list) and len(value) == 0:
+                attr_value.list.SetInParent()
+                attr_protos[key] = attr_value
+                continue
+            elif isinstance(value, list) and isinstance(value[0], (str, bytes)):
+                attr_def.type = "list(string)"
+            elif isinstance(value, list) and isinstance(value[0], int):
+                attr_def.type = "list(int)"
+            elif isinstance(value, list) and isinstance(value[0], float):
+                attr_def.type = "list(float)"
+            elif isinstance(value, list) and isinstance(value[0], bool):
+                attr_def.type = "list(bool)"
+            elif isinstance(value, list) and isinstance(value[0], tf.DType):
+                attr_def.type = "list(type)"
+            elif isinstance(value, list) and isinstance(value[0], tf.TensorShape):
+                attr_def.type = "list(shape)"
+            elif isinstance(value, list) and isinstance(
+                value[0], tensor_pb2.TensorProto
+            ):
+                attr_def.type = "list(tensor)"
+            else:
+                raise AssertionError(f"{value} has unsupported type")
         if attr_def.HasField("default_value") and value is None:
             attr_value.CopyFrom(attr_def.default_value)
             attr_protos[key] = attr_value

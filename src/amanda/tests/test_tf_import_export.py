@@ -1,16 +1,23 @@
+import json
 import os
+from pathlib import Path
 
+import google.protobuf.text_format
 import numpy as np
 import pytest
 import tensorflow as tf
+from google.protobuf import json_format
+from jsondiff import diff
 
 from amanda import Graph
 from amanda.conversion.tensorflow import (
     convert_from_tf_func,
     export_to_checkpoint,
+    export_to_pbtxt,
     export_to_tf_graph,
     import_from_checkpoint,
     import_from_graph_def,
+    import_from_pbtxt,
 )
 from amanda.tests.utils import root_dir
 
@@ -122,3 +129,34 @@ def test_tf_import_export_graph_def(arch_name):
             saver.restore(session, checkpoint_file)
             new_output = session.run("MMdnn_Output:0", {"input:0": input})
     assert np.allclose(output, new_output)
+
+
+def test_tf_import_export_partitioned_graph():
+    pbtxt_file = root_dir() / "src" / "amanda" / "tests" / "partition-graphs-0.pbtxt"
+    graph = import_from_pbtxt(pbtxt_file)
+    new_graph_pbtxt = export_to_pbtxt(graph)
+
+    graph_def = tf.GraphDef()
+    google.protobuf.text_format.Parse(Path(pbtxt_file).read_text(), graph_def)
+    new_graph_def = tf.GraphDef()
+    google.protobuf.text_format.Parse(new_graph_pbtxt, new_graph_def)
+
+    ops = {node.name: node for node in graph_def.node}
+    new_ops = {node.name: node for node in new_graph_def.node}
+    assert len(ops) == len(new_ops)
+    ops_diff = {}
+    for name in ops:
+        assert name in new_ops
+        op = ops[name]
+        json_str = json_format.MessageToJson(op, preserving_proto_field_name=True)
+        op_json = json.loads(json_str)
+        new_op = new_ops[name]
+        new_json_str = json_format.MessageToJson(
+            new_op, preserving_proto_field_name=True
+        )
+        new_op_json = json.loads(new_json_str)
+        op_diff = diff(op_json, new_op_json)
+        if len(op_diff) != 0:
+            ops_diff[name] = op_diff
+    print(new_graph_pbtxt)
+    assert ops_diff == {}
