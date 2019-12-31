@@ -115,6 +115,7 @@ def test_tf_import_export_graph_def(arch_name):
             saver.restore(session, checkpoint_file)
             output = session.run("MMdnn_Output:0", {"input:0": input})
             graph = import_from_graph_def(tf_graph.as_graph_def(), saver.saver_def)
+            graph = graph.to_default_namespace()
     tf_graph, saver, session = export_to_tf_graph(graph)
     with tf_graph.as_default():
         with session:

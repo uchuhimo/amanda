@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Set, cast
 
 from amanda import core
 from amanda.exception import IrremovableOpError
-from amanda.namespace import Namespace, Registry, get_global_registry
+from amanda.namespace import Namespace, Registry, default_namespace, get_global_registry
 
 
 class Op(core.Op["Op"]):
@@ -386,3 +386,6 @@ class Graph(core.Graph[Op]):
         else:
             registry = registry or get_global_registry()
             return registry.get_mapper(self.namespace, namespace).map(self, namespace)
+
+    def to_default_namespace(self) -> "Graph":
+        return self.to_namespace(default_namespace())

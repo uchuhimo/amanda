@@ -111,7 +111,7 @@ def import_from_tf_graph(
         lambda name: name.lower()
     )
     graph.namespace = tf_namespace()
-    return graph.to_namespace(default_namespace())
+    return graph
 
 
 def update_initialized_variables(graph: Graph, tf_graph: tf.Graph, session: tf.Session):
@@ -186,7 +186,7 @@ def import_from_checkpoint(path: Union[str, Path]) -> Graph:
 
 def export_to_tf_graph(graph: Graph,) -> Tuple[tf.Graph, tf.train.Saver, tf.Session]:
     if graph.namespace != tf_namespace():
-        graph.to_namespace(default_namespace()).to_namespace(tf_namespace())
+        graph.to_default_namespace().to_namespace(tf_namespace())
     tf_graph: tf.Graph
     with tf.Graph().as_default() as tf_graph:
         for op in graph.post_order_ops:
