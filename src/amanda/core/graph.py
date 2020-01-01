@@ -14,7 +14,7 @@ class Op(Generic[T]):
     ):
         self.attrs: Dict[str, Any] = attrs or {}
         self.input_tensors: List["Tensor[T]"] = list(input_tensors or [])
-        self.control_dependencies: Set[T] = set(control_dependencies or set())
+        self.control_dependencies: List[T] = list(control_dependencies or [])
         self.output_num: int = output_num
 
     def update_attr(self, name: str, value: Any):
@@ -25,7 +25,7 @@ class Op(Generic[T]):
 
     def add_control_dependency(self, op: T):
         assert op not in self.control_dependencies
-        self.control_dependencies.add(op)
+        self.control_dependencies.append(op)
 
     def remove_control_dependency(self, op: T):
         assert op in self.control_dependencies

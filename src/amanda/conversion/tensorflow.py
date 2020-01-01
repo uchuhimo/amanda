@@ -1,11 +1,15 @@
 import copy
-from contextlib import ExitStack
+import sys
+from contextlib import ExitStack, contextmanager
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Union
 
 import google.protobuf.text_format
+import jsondiff
 import tensorflow as tf
+from google.protobuf import json_format
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework.op_def_pb2 import OpDef
 from tensorflow.core.protobuf.saver_pb2 import SaverDef
@@ -65,6 +69,11 @@ def import_from_tf_graph(
     tf_graph: tf.Graph, saver_def: SaverDef = None, session: tf.Session = None,
 ) -> Graph:
     graph = Graph()
+    meta_graph: tf.MetaGraphDef = tf.train.export_meta_graph(
+        graph=tf_graph, saver_def=saver_def
+    )
+    graph_def = meta_graph.graph_def
+    node_defs = {op_def.name: op_def for op_def in graph_def.node}
 
     def add_op(tf_op: tf.Operation):
         if graph.get_op_by_name(tf_op.name) is not None:
@@ -79,12 +88,18 @@ def import_from_tf_graph(
             attr_name: tf_op.get_attr(attr_name) for attr_name in tf_op.node_def.attr
         }
         dtypes = [output_tensor.dtype for output_tensor in tf_op.outputs]
+        node = node_defs[tf_op.name]
         op = Op(
             attrs=dict(
                 name=tf_op.name,
                 type=tf_op.type,
                 device=tf_op.device,
                 __dtypes=dtypes,
+                __contains_index_in_input_name=[
+                    len(input_name.split(":")) != 1
+                    for input_name in node.input
+                    if not input_name.startswith("^")
+                ],
                 **attrs,
             ),
             input_tensors=[
@@ -96,14 +111,13 @@ def import_from_tf_graph(
             ],
             output_num=len(dtypes),
         )
+        if node.HasField("experimental_debug_info"):
+            op.attrs["experimental_debug_info"] = node.experimental_debug_info
         graph.add_op(op)
 
     for tf_op in tf_graph.get_operations():
         add_op(tf_op)
     init_graph_attrs(graph)
-    meta_graph: tf.MetaGraphDef = tf.train.export_meta_graph(
-        graph=tf_graph, saver_def=saver_def
-    )
     meta_graph.graph_def.Clear()
     graph.attrs[GraphKey.meta_graph] = meta_graph
     if session is not None:
@@ -112,12 +126,12 @@ def import_from_tf_graph(
 
 
 def init_graph_attrs(graph: Graph):
+    graph.namespace = tf_namespace()
     graph.attrs[GraphKey.meta_graph] = tf.MetaGraphDef()
     graph.attrs[GraphKey.initialized_variables] = {}
     graph.attrs[GraphKey.lower_name_func] = lru_cache(maxsize=None)(
         lambda name: name.lower()
     )
-    graph.namespace = tf_namespace()
 
 
 def update_initialized_variables(graph: Graph, tf_graph: tf.Graph, session: tf.Session):
@@ -149,6 +163,13 @@ def from_tf_tensor(tensor: Union[tf.Tensor, RefVariable], graph: Graph) -> Tenso
         return op.output_tensor(tensor.value_index)
 
 
+@dataclass
+class TFTensor:
+    op: str
+    output_index: int
+    contains_index_in_input_name: bool = True
+
+
 def import_from_graph_def(
     graph_def: Union[tf.GraphDef, str, Path], saver_def: SaverDef = None,
 ) -> Graph:
@@ -168,7 +189,7 @@ def import_from_graph_def(
         def add_op(node: tf.NodeDef):
             if graph.get_op_by_name(node.name) is not None:
                 return
-            input_tensors: List[Tuple[str, int]] = []
+            input_tensors: List[TFTensor] = []
             control_input_nodes: List[str] = []
             input: str
             for input in node.input:
@@ -178,11 +199,11 @@ def import_from_graph_def(
                     names = input.split(":")
                     assert len(names) == 1 or len(names) == 2
                     if len(names) == 1:
-                        input_tensors.append((names[0], 0))
+                        input_tensors.append(TFTensor(names[0], 0, False))
                     else:
-                        input_tensors.append((names[0], int(names[1])))
+                        input_tensors.append(TFTensor(names[0], int(names[1])))
             for input_tensor in input_tensors:
-                add_op(name_to_node[input_tensor[0]])
+                add_op(name_to_node[input_tensor.op])
             for control_input_node in control_input_nodes:
                 add_op(name_to_node[control_input_node])
 
@@ -227,12 +248,17 @@ def import_from_graph_def(
                     name=node.name,
                     type=node.op,
                     device=node.device,
-                    experimental_debug_info=node.experimental_debug_info,
                     __dtypes=dtypes,
+                    __contains_index_in_input_name=[
+                        input_tensor.contains_index_in_input_name
+                        for input_tensor in input_tensors
+                    ],
                     **attrs,
                 ),
                 input_tensors=[
-                    graph.get_op_by_name(input_tensor[0]).output_tensor(input_tensor[1])
+                    graph.get_op_by_name(input_tensor.op).output_tensor(
+                        input_tensor.output_index
+                    )
                     for input_tensor in input_tensors
                 ],
                 control_dependencies=[
@@ -241,6 +267,8 @@ def import_from_graph_def(
                 ],
                 output_num=len(dtypes),
             )
+            if node.HasField("experimental_debug_info"):
+                op.attrs["experimental_debug_info"] = node.experimental_debug_info
             graph.add_op(op)
 
         for node in graph_def.node:
@@ -368,11 +396,12 @@ def export_to_tf_graph(graph: Graph) -> Tuple[tf.Graph, tf.train.Saver, tf.Sessi
 
 
 def remove_internal_attrs(attrs):
-    del attrs["name"]
-    del attrs["type"]
-    del attrs["device"]
-    del attrs["experimental_debug_info"]
-    del attrs["__dtypes"]
+    attrs.pop("name", None)
+    attrs.pop("type", None)
+    attrs.pop("device", None)
+    attrs.pop("experimental_debug_info", None)
+    attrs.pop("__dtypes", None)
+    attrs.pop("__contains_index_in_input_name", None)
 
 
 def export_to_graph_def(graph: Graph) -> tf.GraphDef:
@@ -385,17 +414,19 @@ def export_to_graph_def(graph: Graph) -> tf.GraphDef:
         node.name = op.name
         node.op = op.type
         node.device = op.attrs["device"]
-        node.experimental_debug_info.CopyFrom(op.attrs["experimental_debug_info"])
+        if "experimental_debug_info" in op.attrs:
+            node.experimental_debug_info.CopyFrom(op.attrs["experimental_debug_info"])
         for name, attr_value in to_attrs_proto(
             tf_graph._get_op_def(op.type), op.type, attrs
         ).items():
             node.attr[name].CopyFrom(attr_value)
-        for tensor in op.input_tensors:
+        for index, tensor in enumerate(op.input_tensors):
             input_op = tensor.op
-            if input_op.output_num == 1:
-                node.input.append(input_op.name)
-            else:
+            contains_index_in_name = op.attrs["__contains_index_in_input_name"][index]
+            if contains_index_in_name:
                 node.input.append(f"{input_op.name}:{tensor.output_index}")
+            else:
+                node.input.append(input_op.name)
         for control_input in op.control_dependencies:
             node.input.append(f"^{control_input.name}")
     return graph_def
@@ -422,6 +453,38 @@ def export_to_checkpoint(graph: Graph, path: Union[str, Path]) -> None:
             saver.save(session, str(path))
 
 
+def get_diff_after_conversion(graph_def: tf.GraphDef) -> Dict[str, Any]:
+    graph = import_from_graph_def(graph_def)
+    new_graph_def = export_to_graph_def(graph)
+    return diff_graph_def(graph_def, new_graph_def)
+
+
+def graph_def_to_dict(graph_def: tf.GraphDef) -> Dict[str, Any]:
+    return {
+        node.name: json_format.MessageToDict(node, preserving_proto_field_name=True)
+        for node in graph_def.node
+    }
+
+
+@contextmanager
+def recursionlimit(limit: int):
+    old_limit = sys.getrecursionlimit()
+    try:
+        sys.setrecursionlimit(limit)
+        yield None
+    finally:
+        sys.setrecursionlimit(old_limit)
+
+
+def diff_graph_def(graph_def1: tf.GraphDef, graph_def2: tf.GraphDef) -> Dict[str, Any]:
+    with recursionlimit(10000):
+        return jsondiff.diff(
+            graph_def_to_dict(graph_def1),
+            graph_def_to_dict(graph_def2),
+            syntax="explicit",
+        )
+
+
 def to_attrs_proto(
     op_def: OpDef, op_type_name: str, attrs: Dict[str, Any],
 ) -> Dict[str, Any]:
@@ -439,12 +502,13 @@ def to_attrs_proto(
             attr_def = OpDef.AttrDef()
             if isinstance(value, (str, bytes)):
                 attr_def.type = "string"
-            elif isinstance(value, int):
-                attr_def.type = "int"
             elif isinstance(value, float):
                 attr_def.type = "float"
             elif isinstance(value, bool):
                 attr_def.type = "bool"
+            # bool is a subclass of int, so we should check bool before checking int
+            elif isinstance(value, int):
+                attr_def.type = "int"
             elif isinstance(value, tf.DType):
                 attr_def.type = "type"
             elif isinstance(value, tf.TensorShape):
@@ -459,12 +523,13 @@ def to_attrs_proto(
                 continue
             elif isinstance(value, list) and isinstance(value[0], (str, bytes)):
                 attr_def.type = "list(string)"
+            elif isinstance(value, list) and isinstance(value[0], bool):
+                attr_def.type = "list(bool)"
+            # bool is a subclass of int, so we should check bool before checking int
             elif isinstance(value, list) and isinstance(value[0], int):
                 attr_def.type = "list(int)"
             elif isinstance(value, list) and isinstance(value[0], float):
                 attr_def.type = "list(float)"
-            elif isinstance(value, list) and isinstance(value[0], bool):
-                attr_def.type = "list(bool)"
             elif isinstance(value, list) and isinstance(value[0], tf.DType):
                 attr_def.type = "list(type)"
             elif isinstance(value, list) and isinstance(value[0], tf.TensorShape):

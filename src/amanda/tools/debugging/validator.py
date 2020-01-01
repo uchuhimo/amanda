@@ -53,9 +53,9 @@ def modify_model(arch_name):
 
 def main(arch_name):
     input = np.random.rand(1, 224, 224, 3)
-    output = run_model(arch_name, model_dir="model", input=input)
+    output, _ = run_model(arch_name, model_dir="model", input=input)
     modify_model(arch_name)
-    new_output = run_model(arch_name, model_dir="modified_model", input=input)
+    new_output, _ = run_model(arch_name, model_dir="modified_model", input=input)
     assert np.allclose(output, new_output)
 
 

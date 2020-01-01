@@ -265,7 +265,7 @@ class Graph(core.Graph[Op]):
                 dfs_stack.append(current_op)
                 walked_ops.add(current_op)
                 for input_op in self.lift_ops(
-                    current_op.input_ops + list(current_op.control_dependencies)
+                    current_op.input_ops + current_op.control_dependencies
                 ):
                     dfs_stack.append(input_op)
         self.cached_post_order_ops = post_order_ops
