@@ -639,58 +639,64 @@ def get_dtype(tensor: Tensor):
     return get_dtypes(tensor.op)[tensor.output_index]
 
 
-def convert_from_tf_func(tf_func, graph: Graph):
-    def new_func(*args, **kwargs):
-        args_dict = dict(enumerate(args))
-        tf_args = list(args)
-        tf_kwargs = dict(kwargs)
-        input_tensors: List[Tensor] = []
-        placeholders: List[tf.Tensor] = []
+def import_from_tf_func(tf_func):
+    def amanda_func(graph: Graph):
+        def func(*args, **kwargs):
+            args_dict = dict(enumerate(args))
+            tf_args = list(args)
+            tf_kwargs = dict(kwargs)
+            input_tensors: List[Tensor] = []
+            placeholders: List[tf.Tensor] = []
 
-        def to_tf_tensor(tensor: Tensor) -> tf.Tensor:
-            placeholder = tf.placeholder(get_dtype(tensor))
-            input_tensors.append(tensor)
-            placeholders.append(placeholder)
-            return placeholder
+            def to_tf_tensor(tensor: Tensor) -> tf.Tensor:
+                placeholder = tf.placeholder(get_dtype(tensor))
+                input_tensors.append(tensor)
+                placeholders.append(placeholder)
+                return placeholder
 
-        def get_args(name: Union[int, str]) -> Dict[Any, Any]:
-            return args_dict if isinstance(name, int) else kwargs
+            def get_args(name: Union[int, str]) -> Dict[Any, Any]:
+                return args_dict if isinstance(name, int) else kwargs
 
-        def get_tf_args(name: Union[int, str]) -> Dict[Any, Any]:
-            return tf_args if isinstance(name, int) else tf_kwargs
+            def get_tf_args(name: Union[int, str]) -> Dict[Any, Any]:
+                return tf_args if isinstance(name, int) else tf_kwargs
 
-        with tf.Graph().as_default() as tf_graph:
-            # mimic tensorflow.python.framework.ops.Graph.unique_name
-            tf_graph._names_in_use = {
-                graph.attrs[GraphKey.lower_name_func](name): 1 for name in graph.names
-            }
+            with tf.Graph().as_default() as tf_graph:
+                # mimic tensorflow.python.framework.ops.Graph.unique_name
+                tf_graph._names_in_use = {
+                    graph.attrs[GraphKey.lower_name_func](name): 1
+                    for name in graph.names
+                }
 
-            all_args = {**args_dict, **kwargs}
-            for name in all_args:
-                arg = get_args(name)[name]
-                if isinstance(arg, Tensor):
-                    get_tf_args(name)[name] = to_tf_tensor(arg)
-                if isinstance(arg, list):
-                    arg_list = arg
-                    for i, arg in enumerate(arg_list):
-                        if isinstance(arg, Tensor):
-                            get_tf_args(name)[name][i] = to_tf_tensor(arg)
-            output_tensor: tf.Tensor = tf_func(*tf_args, **tf_kwargs)
-            new_graph = import_from_tf_graph(tf_graph)
-            for input, placeholder in zip(input_tensors, placeholders):
-                placeholder_op = new_graph.get_op_by_name(placeholder.op.name)
-                new_graph.replace_tensor(placeholder_op.output_tensor(0), input)
-                new_graph.remove_op(placeholder_op)
-            for op in new_graph.ops:
-                graph.add_op(op)
+                all_args = {**args_dict, **kwargs}
+                for name in all_args:
+                    arg = get_args(name)[name]
+                    if isinstance(arg, Tensor):
+                        get_tf_args(name)[name] = to_tf_tensor(arg)
+                    if isinstance(arg, list):
+                        arg_list = arg
+                        for i, arg in enumerate(arg_list):
+                            if isinstance(arg, Tensor):
+                                get_tf_args(name)[name][i] = to_tf_tensor(arg)
+                output_tensor: tf.Tensor = tf_func(*tf_args, **tf_kwargs)
+                new_graph = import_from_tf_graph(tf_graph)
+                for input, placeholder in zip(input_tensors, placeholders):
+                    placeholder_op = new_graph.get_op_by_name(placeholder.op.name)
+                    new_graph.replace_tensor(placeholder_op.output_tensor(0), input)
+                    new_graph.remove_op(placeholder_op)
+                for op in new_graph.ops:
+                    graph.add_op(op)
 
-            current_meta_graph = new_graph.attrs[GraphKey.meta_graph]
-            if len(current_meta_graph.collection_def) != 0:
-                meta_graph = copy.deepcopy(graph.attrs[GraphKey.meta_graph])
-                meta_graph.collection_def.MergeFrom(current_meta_graph.collection_def)
-                graph.attrs[GraphKey.meta_graph] = meta_graph
+                current_meta_graph = new_graph.attrs[GraphKey.meta_graph]
+                if len(current_meta_graph.collection_def) != 0:
+                    meta_graph = copy.deepcopy(graph.attrs[GraphKey.meta_graph])
+                    meta_graph.collection_def.MergeFrom(
+                        current_meta_graph.collection_def
+                    )
+                    graph.attrs[GraphKey.meta_graph] = meta_graph
 
-            output_op = graph.get_op_by_name(output_tensor.op.name)
-            return output_op.output_tensor(output_tensor.value_index)
+                output_op = graph.get_op_by_name(output_tensor.op.name)
+                return output_op.output_tensor(output_tensor.value_index)
 
-    return new_func
+        return func
+
+    return amanda_func

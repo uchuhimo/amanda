@@ -23,6 +23,12 @@ There are two options:
     poetry install -E all
     ```
 
+### Install git pre-commit hooks
+
+```bash
+pre-commit install
+```
+
 ### Update dependencies
 
 ```bash
@@ -49,15 +55,14 @@ dephell deps tree
 dephell deps tree pytest
 ```
 
-### Install git pre-commit hooks
-
-```bash
-pre-commit install
-```
-
-
 ### run tests
 
 ```bash
 pytest -n auto
+```
+
+### Run an example
+
+```bash
+python src/amanda/tests/test_tf_import_export.py
 ```

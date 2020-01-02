@@ -30,6 +30,13 @@ There are two options:
 
        poetry install -E all
 
+Install git pre-commit hooks
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: bash
+
+   pre-commit install
+
 Update dependencies
 ^^^^^^^^^^^^^^^^^^^
 
@@ -60,16 +67,16 @@ Show dependency tree
    # or
    dephell deps tree pytest
 
-Install git pre-commit hooks
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-.. code-block:: bash
-
-   pre-commit install
-
 run tests
 ^^^^^^^^^
 
 .. code-block:: bash
 
    pytest -n auto
+
+Run an example
+^^^^^^^^^^^^^^
+
+.. code-block:: bash
+
+   python src/amanda/tests/test_tf_import_export.py

@@ -9,7 +9,6 @@ import tensorflow as tf
 
 from amanda import Graph
 from amanda.conversion.tensorflow import (
-    convert_from_tf_func,
     diff_graph_def,
     export_to_checkpoint,
     export_to_graph_def,
@@ -19,6 +18,7 @@ from amanda.conversion.tensorflow import (
     import_from_checkpoint,
     import_from_graph_def,
     import_from_pbtxt,
+    import_from_tf_func,
 )
 from amanda.tests.utils import root_dir
 
@@ -52,7 +52,7 @@ def modify_graph(graph: Graph):
     for op in original_graph.ops:
         for tensor in op.output_tensors:
             output_edges = original_graph.edges_from_tensor(tensor)
-            debug_output = convert_from_tf_func(tf.identity, graph)(tensor)
+            debug_output = import_from_tf_func(tf.identity)(graph)(tensor)
             for edge in output_edges:
                 if edge.dst_op.type != "Assign":
                     edge.dst_op.input_tensors[edge.dst_input_index] = debug_output
@@ -60,11 +60,13 @@ def modify_graph(graph: Graph):
 
 def modify_model(arch_name):
     prefix_dir = root_dir() / "tmp"
-    graph = import_from_checkpoint(
-        tf.train.latest_checkpoint(prefix_dir / "model" / arch_name)
-    )
+    original_checkpoint = tf.train.latest_checkpoint(prefix_dir / "model" / arch_name)
+    print(f">>>>>>>>>>>>>>>> import from the original checkpoint {original_checkpoint}")
+    graph = import_from_checkpoint(original_checkpoint)
     modify_graph(graph)
-    export_to_checkpoint(graph, prefix_dir / "modified_model" / arch_name / arch_name)
+    modified_checkpoint = prefix_dir / "modified_model" / arch_name / arch_name
+    export_to_checkpoint(graph, modified_checkpoint)
+    print(f">>>>>>>>>>>>>>>> export to the modified checkpoint {modified_checkpoint}")
 
 
 def run_model(arch_name, model_dir, input):
@@ -112,6 +114,7 @@ def test_tf_modify_graph(arch_name):
     new_output, new_graph_def = run_model(
         arch_name, model_dir="modified_model", input=input
     )
+
     graph_diff = diff_graph_def(graph_def, new_graph_def)
     assert jsondiff.delete not in graph_diff
     inserted_ops = graph_diff[jsondiff.insert]
@@ -190,3 +193,7 @@ def test_tf_import_export_partitioned_graph():
     graph = import_from_graph_def(graph_def)
     new_graph_def = export_to_graph_def(graph)
     assert diff_graph_def(graph_def, new_graph_def) == {}
+
+
+if __name__ == "__main__":
+    test_tf_modify_graph(arch_name="vgg16")

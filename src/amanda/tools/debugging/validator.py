@@ -5,10 +5,10 @@ import tensorflow as tf
 
 from amanda import Graph, Tensor
 from amanda.conversion.tensorflow import (
-    convert_from_tf_func,
     export_to_checkpoint,
     get_dtype,
     import_from_checkpoint,
+    import_from_tf_func,
 )
 from amanda.tests.test_tf_import_export import run_model
 from amanda.tests.utils import root_dir
@@ -27,7 +27,7 @@ def modify_graph(graph: Graph):
     for op in original_graph.ops:
         for tensor in op.output_tensors:
             output_edges = original_graph.edges_from_tensor(tensor)
-            debug_output: Tensor = convert_from_tf_func(tf.py_func, graph)(
+            debug_output: Tensor = import_from_tf_func(tf.py_func)(graph)(
                 partial(
                     store_as_numpy,
                     store_dir=store_dir,
@@ -61,4 +61,3 @@ def main(arch_name):
 
 if __name__ == "__main__":
     main("vgg16")
-    # test_tf_import_export(arch_name="inception_resnet_v2")
