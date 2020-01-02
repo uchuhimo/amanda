@@ -12,7 +12,7 @@ class Op(Generic[T]):
         control_dependencies=None,
         output_num: int = 1,
     ):
-        self.attrs: Dict[str, Any] = attrs or {}
+        self.attrs: Dict[str, Any] = dict(attrs or {})
         self.input_tensors: List["Tensor[T]"] = list(input_tensors or [])
         self.control_dependencies: List[T] = list(control_dependencies or [])
         self.output_num: int = output_num
@@ -41,7 +41,7 @@ class Tensor(Generic[T]):
 class Graph(Generic[T]):
     def __init__(self, ops: Iterable[T] = None, attrs=None):
         self.ops: Set[T] = set()
-        self.attrs: Dict[str, Any] = attrs or {}
+        self.attrs: Dict[str, Any] = dict(attrs or {})
         if ops is not None:
             for op in ops:
                 self.add_op(op)

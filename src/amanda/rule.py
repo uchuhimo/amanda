@@ -4,7 +4,7 @@ from typing import List, Set
 
 from amanda.exception import OpMappingError
 from amanda.graph import Graph, Op
-from amanda.namespace import Mapper, Namespace
+from amanda.namespace import Mapper, Namespace, map_namespace
 
 
 @dataclass
@@ -15,12 +15,12 @@ class OpMapping:
 
 class Rule(ABC):
     @abstractmethod
-    def apply(self, source: Graph, target: Graph, op: Op) -> OpMapping:
+    def apply(self, graph: Graph, op: Op) -> OpMapping:
         ...
 
 
 class NoopRule(Rule):
-    def apply(self, source: Graph, target: Graph, op: Op) -> OpMapping:
+    def apply(self, graph: Graph, op: Op) -> OpMapping:
         return OpMapping(source_ops=[op], target_ops=[op])
 
 
@@ -29,19 +29,33 @@ class RuleMapper(Mapper):
         self.rules: List[Rule] = rules
 
     def add_rule(self, rule: Rule):
-        self.rules.append(rule)
+        self.rules.insert(0, rule)
 
     def remove_rule(self, rule: Rule):
         self.rules.remove(rule)
 
     def map(self, graph: Graph, namespace: Namespace) -> Graph:
-        new_graph = Graph(attrs=dict(graph.attrs))
+        source_namespace = graph.namespace
+        if namespace == source_namespace:
+            return graph
+        new_graph = graph.duplicate()
+        new_graph.attrs = {
+            map_namespace(name, source_namespace, namespace): value
+            for name, value in new_graph.attrs.items()
+        }
+        new_graph.namespace = namespace
+        for op in new_graph.ops:
+            op.attrs = {
+                map_namespace(name, source_namespace, namespace): value
+                for name, value in op.attrs.items()
+            }
+            op.namespace = namespace
         mapped_ops: Set[Op] = set()
-        for op in graph.post_order_ops:
+        for op in new_graph.post_order_ops:
             if op not in mapped_ops:
                 has_matched_rule = False
                 for rule in self.rules:
-                    mapping = rule.apply(graph, new_graph, op)
+                    mapping = rule.apply(new_graph, op)
                     if len(mapping.source_ops) != 0:
                         mapped_ops.update(mapping.source_ops)
                         for target_op in mapping.target_ops:
@@ -50,6 +64,5 @@ class RuleMapper(Mapper):
                         has_matched_rule = True
                         break
                 if not has_matched_rule:
-                    raise OpMappingError(graph, new_graph, op)
-        new_graph.namespace = namespace
+                    raise OpMappingError(new_graph, op)
         return new_graph

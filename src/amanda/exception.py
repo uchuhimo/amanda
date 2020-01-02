@@ -10,7 +10,6 @@ class OpMappingError(Exception):
     Raised when an op cannot be mapped to another namespace.
     """
 
-    def __init__(self, source_graph, target_graph, op):
-        self.source_graph = source_graph
-        self.target_graph = target_graph
+    def __init__(self, graph, op):
+        self.graph = graph
         self.op = op

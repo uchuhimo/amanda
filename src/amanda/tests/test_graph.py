@@ -2,6 +2,7 @@ import pytest
 
 from amanda import ControlEdge, DataEdge, Graph, InputPort, Op, Tensor
 from amanda.exception import IrremovableOpError
+from amanda.namespace import default_namespace, internal_namespace
 
 
 def test_new_graph():
@@ -88,7 +89,7 @@ def test_control_dependencies(sub_graph, op1):
 
 
 def test_set_attr(simple_graph, op1, op2, op3):
-    simple_graph.set_attr("type", "Conv2d")
+    simple_graph.set_attr(simple_graph.attr_name_in_default_namespace("type"), "Conv2d")
     assert op1.type == op2.type == op3.type == "Conv2d"
 
 
@@ -132,3 +133,12 @@ def test_control_edge(op1, op2):
 
 def test_post_order_ops(simple_graph, op1, op2, op3):
     assert simple_graph.post_order_ops == [op1, op2, op3]
+
+
+def test_get_namespace(simple_graph):
+    assert simple_graph.namespace == default_namespace()
+
+
+def test_set_namespace(simple_graph):
+    simple_graph.namespace = internal_namespace()
+    assert simple_graph.namespace == internal_namespace()

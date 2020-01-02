@@ -5,10 +5,35 @@ from typing import Any, Dict, List, Optional, Set, cast
 
 from amanda import core
 from amanda.exception import IrremovableOpError
-from amanda.namespace import Namespace, Registry, default_namespace, get_global_registry
+from amanda.namespace import (
+    Namespace,
+    Registry,
+    default_namespace,
+    get_global_registry,
+    internal_namespace,
+)
 
 
-class Op(core.Op["Op"]):
+class NamespaceMixin:
+    attrs: Dict[str, Any]
+    namespace_key = internal_namespace().qualified("namespace")
+
+    @property
+    def namespace(self) -> Namespace:
+        return self.attrs.get(self.namespace_key, default_namespace())
+
+    @namespace.setter
+    def namespace(self, namespace: Namespace):
+        self.attrs[self.namespace_key] = namespace
+
+    def attr_name_in_default_namespace(self, attr_name: str) -> str:
+        if self.namespace == default_namespace():
+            return attr_name
+        else:
+            return default_namespace().qualified(attr_name)
+
+
+class Op(core.Op["Op"], NamespaceMixin):
     def __init__(
         self,
         attrs=None,
@@ -45,23 +70,23 @@ class Op(core.Op["Op"]):
         raise IndexError
 
     def has_name(self) -> bool:
-        return "name" in self.attrs
+        return self.attr_name_in_default_namespace("name") in self.attrs
 
     @property
     def name(self) -> str:
-        return self.attrs["name"]
+        return self.attrs[self.attr_name_in_default_namespace("name")]
 
     @name.setter
     def name(self, name: str):
-        self.attrs["name"] = name
+        self.attrs[self.attr_name_in_default_namespace("name")] = name
 
     @property
     def type(self) -> str:
-        return self.attrs["type"]
+        return self.attrs[self.attr_name_in_default_namespace("type")]
 
     @type.setter
     def type(self, type: str):
-        self.attrs["type"] = type
+        self.attrs[self.attr_name_in_default_namespace("type")] = type
 
     def __repr__(self) -> str:
         attrs_string = ", ".join(
@@ -160,7 +185,7 @@ class OutputEdges:
     edges: List[Edge]
 
 
-class Graph(core.Graph[Op]):
+class Graph(core.Graph[Op], NamespaceMixin):
     def __init__(self, ops=None, attrs=None):
         self.name_to_op: Dict[str, Op] = {}
         self.composite_ops: Set[CompositeOp] = []
@@ -368,17 +393,25 @@ class Graph(core.Graph[Op]):
                     return True
         return False
 
-    def duplicate(self, split_fn, merge_fn):
-        # TODO
-        ...
-
-    @property
-    def namespace(self) -> Namespace:
-        return self.attrs["namespace"]
-
-    @namespace.setter
-    def namespace(self, namespace: Namespace):
-        self.attrs["namespace"] = namespace
+    def duplicate(self) -> "Graph":
+        new_graph = Graph(attrs=dict(self.attrs))
+        for op in self.post_order_ops:
+            target_op = Op(
+                attrs=dict(op.attrs),
+                input_tensors=[
+                    new_graph.get_op_by_name(input_tensor.op.name).output_tensor(
+                        input_tensor.output_index
+                    )
+                    for input_tensor in op.input_tensors
+                ],
+                control_dependencies=[
+                    new_graph.get_op_by_name(control_dependency.name)
+                    for control_dependency in op.control_dependencies
+                ],
+                output_num=op.output_num,
+            )
+            new_graph.add_op(target_op)
+        return new_graph
 
     def to_namespace(self, namespace: Namespace, registry: Registry = None) -> "Graph":
         if namespace == self.namespace:

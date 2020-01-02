@@ -25,8 +25,8 @@ from amanda.tests.utils import root_dir
 
 @pytest.fixture(
     params=[
-        "vgg16",
-        # "vgg19",
+        # "vgg16",
+        # # "vgg19",
         "inception_v1",
         # "inception_v3",
         # "resnet_v1_50",

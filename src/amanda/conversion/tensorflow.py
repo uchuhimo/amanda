@@ -27,14 +27,26 @@ from tensorflow.python.framework.op_def_library import (
 from tensorflow.python.util import compat
 
 from amanda.graph import Graph, Op, Tensor
-from amanda.namespace import Namespace, default_namespace, get_global_registry
+from amanda.namespace import (
+    Namespace,
+    default_namespace,
+    get_global_registry,
+    is_qualified,
+)
 from amanda.rule import NoopRule, RuleMapper
 
-_namespace = Namespace(name="tensorflow")
+_namespace = Namespace("tensorflow")
 
 
 def tf_namespace() -> Namespace:
     return _namespace
+
+
+_internal_namespace = tf_namespace() / Namespace("internal")
+
+
+def tf_internal_namespace() -> Namespace:
+    return _internal_namespace
 
 
 _tf_to_default_mapper = RuleMapper(rules=[NoopRule()])
@@ -60,9 +72,20 @@ get_global_registry().add_mapper(
 
 
 class GraphKey:
-    meta_graph = "meta_graph"
-    initialized_variables = "initialized_variables"
-    lower_name_func = "lower_name_func"
+    meta_graph = tf_internal_namespace().qualified("meta_graph")
+    initialized_variables = tf_internal_namespace().qualified("initialized_variables")
+    lower_name_func = tf_internal_namespace().qualified("lower_name_func")
+
+
+class OpKey:
+    device = tf_internal_namespace().qualified("device")
+    dtypes = tf_internal_namespace().qualified("dtypes")
+    contains_index_in_input_name = tf_internal_namespace().qualified(
+        "contains_index_in_input_name"
+    )
+    experimental_debug_info = tf_internal_namespace().qualified(
+        "experimental_debug_info"
+    )
 
 
 def import_from_tf_graph(
@@ -90,18 +113,7 @@ def import_from_tf_graph(
         dtypes = [output_tensor.dtype for output_tensor in tf_op.outputs]
         node = node_defs[tf_op.name]
         op = Op(
-            attrs=dict(
-                name=tf_op.name,
-                type=tf_op.type,
-                device=tf_op.device,
-                __dtypes=dtypes,
-                __contains_index_in_input_name=[
-                    len(input_name.split(":")) != 1
-                    for input_name in node.input
-                    if not input_name.startswith("^")
-                ],
-                **attrs,
-            ),
+            attrs=attrs,
             input_tensors=[
                 from_tf_tensor(input_tensor, graph) for input_tensor in tf_op.inputs
             ],
@@ -111,8 +123,16 @@ def import_from_tf_graph(
             ],
             output_num=len(dtypes),
         )
-        if node.HasField("experimental_debug_info"):
-            op.attrs["experimental_debug_info"] = node.experimental_debug_info
+        init_op_attrs(op, node)
+        op.name = tf_op.name
+        op.type = tf_op.type
+        op.attrs[OpKey.device] = tf_op.device
+        op.attrs[OpKey.dtypes] = dtypes
+        op.attrs[OpKey.contains_index_in_input_name] = [
+            len(input_name.split(":")) != 1
+            for input_name in node.input
+            if not input_name.startswith("^")
+        ]
         graph.add_op(op)
 
     for tf_op in tf_graph.get_operations():
@@ -132,6 +152,12 @@ def init_graph_attrs(graph: Graph):
     graph.attrs[GraphKey.lower_name_func] = lru_cache(maxsize=None)(
         lambda name: name.lower()
     )
+
+
+def init_op_attrs(op: Op, node: tf.NodeDef):
+    op.namespace = tf_namespace()
+    if node.HasField("experimental_debug_info"):
+        op.attrs[OpKey.experimental_debug_info] = node.experimental_debug_info
 
 
 def update_initialized_variables(graph: Graph, tf_graph: tf.Graph, session: tf.Session):
@@ -244,17 +270,7 @@ def import_from_graph_def(
                 dtypes = dtypes[0]
             dtypes = [tf.as_dtype(dtype) for dtype in dtypes]
             op = Op(
-                attrs=dict(
-                    name=node.name,
-                    type=node.op,
-                    device=node.device,
-                    __dtypes=dtypes,
-                    __contains_index_in_input_name=[
-                        input_tensor.contains_index_in_input_name
-                        for input_tensor in input_tensors
-                    ],
-                    **attrs,
-                ),
+                attrs=attrs,
                 input_tensors=[
                     graph.get_op_by_name(input_tensor.op).output_tensor(
                         input_tensor.output_index
@@ -267,8 +283,15 @@ def import_from_graph_def(
                 ],
                 output_num=len(dtypes),
             )
-            if node.HasField("experimental_debug_info"):
-                op.attrs["experimental_debug_info"] = node.experimental_debug_info
+            init_op_attrs(op, node)
+            op.name = node.name
+            op.type = node.op
+            op.attrs[OpKey.device] = node.device
+            op.attrs[OpKey.dtypes] = dtypes
+            op.attrs[OpKey.contains_index_in_input_name] = [
+                input_tensor.contains_index_in_input_name
+                for input_tensor in input_tensors
+            ]
             graph.add_op(op)
 
         for node in graph_def.node:
@@ -350,12 +373,11 @@ def import_from_checkpoint(path: Union[str, Path]) -> Graph:
 
 def export_to_tf_graph(graph: Graph) -> Tuple[tf.Graph, tf.train.Saver, tf.Session]:
     if graph.namespace != tf_namespace():
-        graph.to_default_namespace().to_namespace(tf_namespace())
+        graph = graph.to_default_namespace().to_namespace(tf_namespace())
     tf_graph: tf.Graph
     with tf.Graph().as_default() as tf_graph:
         for op in graph.post_order_ops:
-            attrs = dict(op.attrs)
-            remove_internal_attrs(attrs)
+            attrs = without_internal_attrs(op.attrs)
             with tf.control_dependencies(
                 [
                     tf_graph.get_operation_by_name(control_input.name)
@@ -370,13 +392,13 @@ def export_to_tf_graph(graph: Graph) -> Tuple[tf.Graph, tf.train.Saver, tf.Sessi
                         )
                         for tensor in op.input_tensors
                     ],
-                    dtypes=get_dtypes(op),
+                    dtypes=op.attrs[OpKey.dtypes],
                     input_types=None,
                     name=op.name,
                     attrs=to_attrs_proto(tf_graph._get_op_def(op.type), op.type, attrs),
                 )
-            if "device" in op.attrs:
-                tf_op._set_device(op.attrs["device"])
+            if OpKey.device in op.attrs:
+                tf_op._set_device(op.attrs[OpKey.device])
         saver = tf.train.import_meta_graph(graph.attrs[GraphKey.meta_graph])
         variables = {
             variable.name: variable
@@ -395,34 +417,32 @@ def export_to_tf_graph(graph: Graph) -> Tuple[tf.Graph, tf.train.Saver, tf.Sessi
         return tf_graph, saver, session
 
 
-def remove_internal_attrs(attrs):
-    attrs.pop("name", None)
-    attrs.pop("type", None)
-    attrs.pop("device", None)
-    attrs.pop("experimental_debug_info", None)
-    attrs.pop("__dtypes", None)
-    attrs.pop("__contains_index_in_input_name", None)
+def without_internal_attrs(attrs):
+    return {name: value for name, value in attrs.items() if not is_qualified(name)}
 
 
 def export_to_graph_def(graph: Graph) -> tf.GraphDef:
+    if graph.namespace != tf_namespace():
+        graph = graph.to_default_namespace().to_namespace(tf_namespace())
     tf_graph = tf.Graph()
     graph_def = tf_graph.as_graph_def()
     for op in graph.post_order_ops:
-        attrs = dict(op.attrs)
-        remove_internal_attrs(attrs)
+        attrs = without_internal_attrs(op.attrs)
         node = graph_def.node.add()
         node.name = op.name
         node.op = op.type
-        node.device = op.attrs["device"]
-        if "experimental_debug_info" in op.attrs:
-            node.experimental_debug_info.CopyFrom(op.attrs["experimental_debug_info"])
+        node.device = op.attrs[OpKey.device]
+        if OpKey.experimental_debug_info in op.attrs:
+            node.experimental_debug_info.CopyFrom(
+                op.attrs[OpKey.experimental_debug_info]
+            )
         for name, attr_value in to_attrs_proto(
             tf_graph._get_op_def(op.type), op.type, attrs
         ).items():
             node.attr[name].CopyFrom(attr_value)
         for index, tensor in enumerate(op.input_tensors):
             input_op = tensor.op
-            contains_index_in_name = op.attrs["__contains_index_in_input_name"][index]
+            contains_index_in_name = op.attrs[OpKey.contains_index_in_input_name][index]
             if contains_index_in_name:
                 node.input.append(f"{input_op.name}:{tensor.output_index}")
             else:
@@ -631,12 +651,8 @@ def to_attrs_proto(
     return attr_protos
 
 
-def get_dtypes(op: Op):
-    return op.attrs["__dtypes"]
-
-
 def get_dtype(tensor: Tensor):
-    return get_dtypes(tensor.op)[tensor.output_index]
+    return tensor.op.attrs[OpKey.dtypes][tensor.output_index]
 
 
 def import_from_tf_func(tf_func):

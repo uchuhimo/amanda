@@ -1,6 +1,7 @@
 import pytest
 
 from amanda import Op
+from amanda.namespace import default_namespace, internal_namespace
 
 
 def test_new_op():
@@ -143,3 +144,12 @@ def test_get_type(simple_op):
 def test_set_type(simple_op):
     simple_op.type = "Conv3d"
     assert simple_op.type == "Conv3d"
+
+
+def test_get_namespace(simple_op):
+    assert simple_op.namespace == default_namespace()
+
+
+def test_set_namespace(simple_op):
+    simple_op.namespace = internal_namespace()
+    assert simple_op.namespace == internal_namespace()
