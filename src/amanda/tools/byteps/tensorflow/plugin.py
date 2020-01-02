@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List
 
 from amanda import Graph, InputPort, Op, Tensor
+from amanda.attributes import Attributes
 
 
 @dataclass
@@ -68,7 +69,7 @@ def rewrite_worker(partition_graphs: Dict[str, Graph]):
                 op_attrs = send_op.attrs
                 op = Op(
                     input_tensors=[task.grad_tensor],
-                    attrs=dict(
+                    attrs=Attributes(
                         name=send_op.name,
                         type="SendGradient",
                         T=op_attrs["T"],
@@ -108,7 +109,7 @@ def rewrite_worker(partition_graphs: Dict[str, Graph]):
             for recv_op, dst_ports in recv_ops.items():
                 op_attrs = recv_op.attrs
                 op = Op(
-                    attrs=dict(
+                    attrs=Attributes(
                         name=recv_op.name,
                         type="RecvParameter",
                         tensor_type=op_attrs["tensor_type"],
@@ -184,7 +185,7 @@ def rewrite_ps(partition_graphs: Dict[str, Graph]):
                 op_attrs = update_op.attrs
                 fused_op = Op(
                     input_tensors=[var, lr],
-                    attrs=dict(
+                    attrs=Attributes(
                         name=update_op.name,
                         type="RecvApplyGradientDescent",
                         T=op_attrs["T"],
@@ -211,7 +212,7 @@ def rewrite_ps(partition_graphs: Dict[str, Graph]):
                 attrs = task.send_op.attrs
                 op = Op(
                     input_tensors=[task.var_op.output_tensor()],
-                    attrs=dict(
+                    attrs=Attributes(
                         name=task.send_op.name,
                         type="SendParameter",
                         T=attrs["T"],

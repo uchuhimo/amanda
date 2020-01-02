@@ -12,7 +12,7 @@ store_dir = root_dir() / "tmp" / "debug_info" / arch_name
 
 
 def modify_graph(graph):
-    for op in list(graph.ops):
+    for op in graph.ops:
         for tensor in op.output_tensors:
             debug_op = Op(
                 attrs={
@@ -26,12 +26,10 @@ def modify_graph(graph):
                 output_num=1,
             )
             graph.add_op(debug_op)
-            for downstream_op in list(graph.ops):
-                for index, input_tensor in enumerate(downstream_op.input_tensors):
+            for output_op in graph.ops:
+                for index, input_tensor in enumerate(output_op.input_tensors):
                     if tensor == input_tensor:
-                        downstream_op.update_input_tensor(
-                            index, debug_op.output_tensors[0]
-                        )
+                        output_op.update_input_tensor(index, debug_op.output_tensors[0])
 
 
 def main():

@@ -678,9 +678,9 @@ def import_from_tf_func(tf_func):
 
             with tf.Graph().as_default() as tf_graph:
                 # mimic tensorflow.python.framework.ops.Graph.unique_name
+                lower_name_func = graph.attrs[GraphKey.lower_name_func]
                 tf_graph._names_in_use = {
-                    graph.attrs[GraphKey.lower_name_func](name): 1
-                    for name in graph.names
+                    lower_name_func(name): 1 for name in graph.names
                 }
 
                 all_args = {**args_dict, **kwargs}

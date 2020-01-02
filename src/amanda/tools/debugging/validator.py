@@ -10,7 +10,7 @@ from amanda.conversion.tensorflow import (
     import_from_checkpoint,
     import_from_tf_func,
 )
-from amanda.tests.test_tf_import_export import run_model
+from amanda.tests.test_tf_import_export import run_model, test_tf_modify_graph
 from amanda.tests.utils import root_dir
 
 arch_name = "vgg16"
@@ -60,4 +60,5 @@ def main(arch_name):
 
 
 if __name__ == "__main__":
-    main("vgg16")
+    # main("vgg16")
+    test_tf_modify_graph(arch_name="facenet")

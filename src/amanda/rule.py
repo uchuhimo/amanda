@@ -39,16 +39,18 @@ class RuleMapper(Mapper):
         if namespace == source_namespace:
             return graph
         new_graph = graph.duplicate()
-        new_graph.attrs = {
-            map_namespace(name, source_namespace, namespace): value
-            for name, value in new_graph.attrs.items()
-        }
+        for name, value in new_graph.attrs.items():
+            new_name = map_namespace(name, source_namespace, namespace)
+            if name != new_name:
+                new_graph.attrs[new_name] = value
+                del new_graph.attrs[name]
         new_graph.namespace = namespace
         for op in new_graph.ops:
-            op.attrs = {
-                map_namespace(name, source_namespace, namespace): value
-                for name, value in op.attrs.items()
-            }
+            for name, value in op.attrs.items():
+                new_name = map_namespace(name, source_namespace, namespace)
+                if name != new_name:
+                    op.attrs[new_name] = value
+                    del op.attrs[name]
             op.namespace = namespace
         mapped_ops: Set[Op] = set()
         for op in new_graph.post_order_ops:

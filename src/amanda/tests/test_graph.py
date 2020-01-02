@@ -1,23 +1,24 @@
 import pytest
 
 from amanda import ControlEdge, DataEdge, Graph, InputPort, Op, Tensor
+from amanda.attributes import Attributes
 from amanda.exception import IrremovableOpError
 from amanda.namespace import default_namespace, internal_namespace
 
 
 def test_new_graph():
     graph = Graph()
-    assert isinstance(graph.ops, set) and len(graph.ops) == 0
+    assert len(list(graph.ops)) == 0
 
 
 @pytest.fixture
 def op1():
-    return Op(attrs=dict(name="op1"), output_num=3)
+    return Op(attrs=Attributes(name="op1"), output_num=3)
 
 
 @pytest.fixture
 def op2(op1):
-    return Op(input_tensors=[op1.output_tensor()], attrs=dict(name="op2"))
+    return Op(input_tensors=[op1.output_tensor()], attrs=Attributes(name="op2"))
 
 
 @pytest.fixture
@@ -25,7 +26,7 @@ def op3(op1, op2):
     return Op(
         input_tensors=[op1.output_tensor(2), op2.output_tensor()],
         control_dependencies=[op1],
-        attrs=dict(name="op3"),
+        attrs=Attributes(name="op3"),
     )
 
 
@@ -39,13 +40,13 @@ def simple_graph(op1, op2, op3):
 
 
 def test_new_graph_with_arg(simple_graph, op1, op2, op3):
-    assert simple_graph.ops == {op1, op2, op3}
+    assert set(simple_graph.ops) == {op1, op2, op3}
 
 
 def test_add_op(simple_graph):
     op = Op()
     simple_graph.add_op(op)
-    assert op in simple_graph.ops
+    assert op in simple_graph
 
 
 @pytest.mark.xfail(raises=AssertionError)
@@ -55,7 +56,7 @@ def test_add_existed_op(simple_graph, op1):
 
 def test_remove_op(simple_graph, op3):
     simple_graph.remove_op(op3)
-    assert op3 not in simple_graph.ops
+    assert op3 not in simple_graph
 
 
 @pytest.mark.xfail(raises=AssertionError)

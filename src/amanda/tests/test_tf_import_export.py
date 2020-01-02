@@ -64,6 +64,7 @@ def modify_model(arch_name):
     print(f">>>>>>>>>>>>>>>> import from the original checkpoint {original_checkpoint}")
     graph = import_from_checkpoint(original_checkpoint)
     modify_graph(graph)
+
     modified_checkpoint = prefix_dir / "modified_model" / arch_name / arch_name
     export_to_checkpoint(graph, modified_checkpoint)
     print(f">>>>>>>>>>>>>>>> export to the modified checkpoint {modified_checkpoint}")
