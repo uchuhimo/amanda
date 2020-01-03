@@ -144,6 +144,37 @@ class Op(NamespaceMixin):
     def uuid(self) -> UUID:
         return self.attrs[internal_namespace().qualified("uuid")]
 
+    def __copy__(self):
+        return self.copy()
+
+    def copy(self) -> "Op":
+        """
+        Return a shallow copy of the current op.
+        Attribute values are not copied.
+        They will be shared between these two ops.
+        If you don't want to share attribute values, you can use `Op.deepcopy` instead.
+        """
+        return Op(
+            attrs=self.attrs.copy(),
+            input_tensors=list(self.input_tensors),
+            control_dependencies=list(self.control_dependencies),
+            output_num=self.output_num,
+        )
+
+    def deepcopy(self) -> "Op":
+        """
+        Return a deep copy of the current op.
+        """
+        return Op(
+            attrs=copy.deepcopy(self.attrs),
+            input_tensors=list(self.input_tensors),
+            control_dependencies=list(self.control_dependencies),
+            output_num=self.output_num,
+        )
+
+    def __deepcopy__(self, memodict={}):
+        return self.deepcopy()
+
     def __repr__(self) -> str:
         attrs_string = ", ".join(
             [f"{key}={value}" for key, value in self.attrs.items()]

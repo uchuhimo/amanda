@@ -1,3 +1,5 @@
+import copy
+
 import pytest
 
 from amanda import Op
@@ -160,3 +162,23 @@ def test_get_namespace(simple_op):
 def test_set_namespace(simple_op):
     simple_op.namespace = internal_namespace()
     assert simple_op.namespace == internal_namespace()
+
+
+def test_copy_op(simple_op):
+    op = simple_op
+    op.attrs["mutable"] = []
+    new_op = copy.copy(op)
+    new_op.attrs["test"] = True
+    assert "test" in new_op.attrs and "test" not in op.attrs
+    new_op.attrs["mutable"].append(1)
+    assert new_op.attrs["mutable"] == [1] and op.attrs["mutable"] == [1]
+
+
+def test_deepcopy_op(simple_op):
+    op = simple_op
+    op.attrs["mutable"] = []
+    new_op = copy.deepcopy(op)
+    new_op.attrs["test"] = True
+    assert "test" in new_op.attrs and "test" not in op.attrs
+    new_op.attrs["mutable"].append(1)
+    assert new_op.attrs["mutable"] == [1] and op.attrs["mutable"] == []

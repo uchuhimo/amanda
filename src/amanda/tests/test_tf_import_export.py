@@ -1,4 +1,3 @@
-import copy
 import os
 from pathlib import Path
 
@@ -183,57 +182,6 @@ def test_tf_import_export_graph_def(arch_name):
     with tf.Graph().as_default() as tf_graph:
         tf.train.import_meta_graph(checkpoint_file + ".meta")
     assert get_diff_after_conversion(tf_graph.as_graph_def()) == {}
-
-
-def test_tf_copy_graph(arch_name):
-    checkpoint_dir = root_dir() / "tmp" / "model" / arch_name
-    checkpoint_file = tf.train.latest_checkpoint(checkpoint_dir)
-    with tf.Graph().as_default() as tf_graph:
-        tf.train.import_meta_graph(checkpoint_file + ".meta")
-    graph = import_from_graph_def(tf_graph.as_graph_def())
-    new_graph = copy.copy(graph)
-    new_graph.attrs["test"] = True
-    assert "test" in new_graph.attrs and "test" not in graph.attrs
-    for op in new_graph.ops:
-        op.attrs["test"] = True
-        assert "test" in op.attrs and "test" in graph.get_op_by_name(op.name).attrs
-    op = Op(attrs={"name": "test_tf_copy_graph"})
-    new_graph.add_op(op)
-    assert op in new_graph and op not in graph
-
-
-def test_tf_duplicate_graph(arch_name):
-    checkpoint_dir = root_dir() / "tmp" / "model" / arch_name
-    checkpoint_file = tf.train.latest_checkpoint(checkpoint_dir)
-    with tf.Graph().as_default() as tf_graph:
-        tf.train.import_meta_graph(checkpoint_file + ".meta")
-    graph = import_from_graph_def(tf_graph.as_graph_def())
-    new_graph = graph.duplicate()
-    new_graph.attrs["test"] = True
-    assert "test" in new_graph.attrs and "test" not in graph.attrs
-    for op in new_graph.ops:
-        op.attrs["test"] = True
-        assert "test" in op.attrs and "test" not in graph.get_op_by_name(op.name).attrs
-    op = Op(attrs={"name": "test_tf_copy_graph"})
-    new_graph.add_op(op)
-    assert op in new_graph and op not in graph
-
-
-def test_tf_deepcopy_graph(arch_name):
-    checkpoint_dir = root_dir() / "tmp" / "model" / arch_name
-    checkpoint_file = tf.train.latest_checkpoint(checkpoint_dir)
-    with tf.Graph().as_default() as tf_graph:
-        tf.train.import_meta_graph(checkpoint_file + ".meta")
-    graph = import_from_graph_def(tf_graph.as_graph_def())
-    new_graph = copy.deepcopy(graph)
-    new_graph.attrs["test"] = True
-    assert "test" in new_graph.attrs and "test" not in graph.attrs
-    for op in new_graph.ops:
-        op.attrs["test"] = True
-        assert "test" in op.attrs and "test" not in graph.get_op_by_name(op.name).attrs
-    op = Op(attrs={"name": "test_tf_copy_graph"})
-    new_graph.add_op(op)
-    assert op in new_graph and op not in graph
 
 
 def test_tf_import_export_graph_def_with_saver(arch_name):
