@@ -676,7 +676,7 @@ def to_attrs_proto(
     return attr_protos
 
 
-def get_dtype(tensor: Tensor):
+def get_dtype(tensor: Tensor) -> tf.DType:
     return tensor.op.attrs[OpAttrName.dtypes][tensor.output_index]
 
 

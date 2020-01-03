@@ -51,8 +51,8 @@ setup(
     install_requires=[
         'click', 'contextvars; python_version < "3.7"',
         'dataclasses; python_version < "3.7"', 'immutables', 'mmdnn',
-        'more-itertools', 'protobuf', 'six', 'typing; python_version < "3.7"',
-        'typing-extensions'
+        'more-itertools', 'onnx', 'onnxruntime', 'protobuf', 'six',
+        'typing; python_version < "3.7"', 'typing-extensions'
     ],
     extras_require={
         "all": ["tensorflow==1.13.1", "torch==1.3.1", "torchvision==0.4.2"],

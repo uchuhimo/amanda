@@ -71,6 +71,8 @@ typing-extensions = "*"
 protobuf = "*"
 immutables = "*"
 mmdnn = "*"
+onnx = "*"
+onnxruntime = "*"
 dataclasses = { version = "*", python = "< 3.7" }
 typing = { version = "*", python = "< 3.7" }
 contextvars = { version = "*", python = "< 3.7" }

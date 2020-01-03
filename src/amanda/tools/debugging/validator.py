@@ -25,19 +25,20 @@ def modify_graph(graph: Graph):
     original_graph = graph.copy()
     for op in original_graph.ops:
         for tensor in op.output_tensors:
-            output_edges = original_graph.edges_from_tensor(tensor)
-            debug_output: Tensor = import_from_tf_func(tf.py_func)(graph)(
-                partial(
-                    store_as_numpy,
-                    store_dir=store_dir,
-                    file_name=f"{op.name}_{tensor.output_index}",
-                ),
-                [tensor],
-                get_dtype(tensor),
-            )
-            for edge in output_edges:
-                if edge.dst_op.type != "Assign":
-                    edge.dst_op.input_tensors[edge.dst_input_index] = debug_output
+            if not get_dtype(tensor)._is_ref_dtype:
+                output_edges = original_graph.edges_from_tensor(tensor)
+                if len(output_edges) != 0:
+                    debug_output: Tensor = import_from_tf_func(tf.py_func)(graph)(
+                        partial(
+                            store_as_numpy,
+                            store_dir=store_dir,
+                            file_name=f"{op.name}_{tensor.output_index}",
+                        ),
+                        [tensor],
+                        get_dtype(tensor),
+                    )
+                    for edge in output_edges:
+                        edge.dst_op.input_tensors[edge.dst_input_index] = debug_output
 
 
 def main(arch_name):

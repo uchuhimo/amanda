@@ -885,7 +885,7 @@ marker = "sys_platform == \"linux\""
 name = "jeepney"
 optional = false
 python-versions = ">=3.5"
-version = "0.4.1"
+version = "0.4.2"
 
 [package.extras]
 dev = ["testpath"]
@@ -1101,6 +1101,35 @@ python-versions = ">=3.5"
 version = "1.18.0"
 
 [[package]]
+category = "main"
+description = "Open Neural Network Exchange"
+name = "onnx"
+optional = false
+python-versions = "*"
+version = "1.6.0"
+
+[package.dependencies]
+numpy = "*"
+protobuf = "*"
+six = "*"
+typing-extensions = ">=3.6.2.1"
+
+[package.extras]
+mypy = ["mypy (0.600)"]
+
+[[package]]
+category = "main"
+description = "ONNX Runtime Python bindings"
+name = "onnxruntime"
+optional = false
+python-versions = "*"
+version = "1.1.0"
+
+[package.extras]
+backend = ["onnx (>=1.2.3)"]
+numpy = ["numpy (>=1.15.0)"]
+
+[[package]]
 category = "dev"
 description = "Core utilities for Python packages"
 name = "packaging"
@@ -1198,8 +1227,8 @@ category = "dev"
 description = "A framework for managing and maintaining multi-language pre-commit hooks."
 name = "pre-commit"
 optional = false
-python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
-version = "1.20.0"
+python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,>=2.7"
+version = "1.21.0"
 
 [package.dependencies]
 "aspy.yaml" = "*"
@@ -1980,7 +2009,7 @@ pytorch = ["torch", "torchvision"]
 tensorflow = ["tensorflow"]
 
 [metadata]
-content-hash = "a0e0ed8cb584356e4a92310891a0eb8f0062155cf192e9a6d5925ec03e2a39b6"
+content-hash = "189ad71d15b7e399d6c1a36616072210d2b6781eca9d52623bdca0a12969ad93"
 python-versions = ">= 3.6, < 4"
 
 [metadata.files]
@@ -2432,8 +2461,8 @@ jedi = [
     {file = "jedi-0.15.2.tar.gz", hash = "sha256:e909527104a903606dd63bea6e8e888833f0ef087057829b89a18364a856f807"},
 ]
 jeepney = [
-    {file = "jeepney-0.4.1-py3-none-any.whl", hash = "sha256:f6a3f93464a0cf052f4e87da3c8b3ed1e27696758fb9739c63d3a74d9a1b6774"},
-    {file = "jeepney-0.4.1.tar.gz", hash = "sha256:13806f91a96e9b2623fd2a81b950d763ee471454aafd9eb6d75dbe7afce428fb"},
+    {file = "jeepney-0.4.2-py3-none-any.whl", hash = "sha256:6f45dce1125cf6c58a1c88123d3831f36a789f9204fbad3172eac15f8ccd08d0"},
+    {file = "jeepney-0.4.2.tar.gz", hash = "sha256:0ba6d8c597e9bef1ebd18aaec595f942a264e25c1a48f164d46120eacaa2e9bb"},
 ]
 jinja2 = [
     {file = "Jinja2-2.10.3-py2.py3-none-any.whl", hash = "sha256:74320bb91f31270f9551d46522e33af46a80c3d619f4a4bf42b3164d30b5911f"},
@@ -2576,6 +2605,40 @@ numpy = [
     {file = "numpy-1.18.0-cp38-cp38-win_amd64.whl", hash = "sha256:712f0c32555132f4b641b918bdb1fd3c692909ae916a233ce7f50eac2de87e37"},
     {file = "numpy-1.18.0.zip", hash = "sha256:a9d72d9abaf65628f0f31bbb573b7d9304e43b1e6bbae43149c17737a42764c4"},
 ]
+onnx = [
+    {file = "onnx-1.6.0-cp27-cp27m-macosx_10_6_intel.macosx_10_9_intel.macosx_10_9_x86_64.macosx_10_10_intel.macosx_10_10_x86_64.whl", hash = "sha256:4204fca478bcf668c606470b52cd3f42b111dcf5503b32c46480cabd9b9d4387"},
+    {file = "onnx-1.6.0-cp27-cp27m-manylinux1_i686.whl", hash = "sha256:48acb524204137bd52a312709cb52a693832cce9e72c8f39db382d826e4bb6ec"},
+    {file = "onnx-1.6.0-cp27-cp27m-manylinux1_x86_64.whl", hash = "sha256:6c90c2fdb0836e6fadd093ca053d6cebd00ac4a774759002b0b0860d652a3d31"},
+    {file = "onnx-1.6.0-cp27-cp27mu-manylinux1_i686.whl", hash = "sha256:40a47587025092c9d033f50fe4b9395c021539bcacbbaa141673ecd5eeca0aa0"},
+    {file = "onnx-1.6.0-cp27-cp27mu-manylinux1_x86_64.whl", hash = "sha256:051ac54cb08d9a1ae0dec5fbd79c7604ceb97ddb678bc4145e49a3f4da5d928c"},
+    {file = "onnx-1.6.0-cp35-cp35m-macosx_10_6_intel.macosx_10_9_intel.macosx_10_9_x86_64.macosx_10_10_intel.macosx_10_10_x86_64.whl", hash = "sha256:130d63b6f7bfee367c7693350fe4caea6b7067d254704bb20d136c6e7460ec56"},
+    {file = "onnx-1.6.0-cp35-cp35m-manylinux1_i686.whl", hash = "sha256:926f73ad969ce649ae68be1f2255d7825a703a915a2766de8ec3f73b282f154f"},
+    {file = "onnx-1.6.0-cp35-cp35m-manylinux1_x86_64.whl", hash = "sha256:0cae2a5511cf8522aea726507abad2aa85a5406f5ff7232ba937aadf71f77220"},
+    {file = "onnx-1.6.0-cp35-cp35m-win32.whl", hash = "sha256:d169bebc845e9869f229b8e3f65e3144e647a251ae9594efae52de23502d6b13"},
+    {file = "onnx-1.6.0-cp35-cp35m-win_amd64.whl", hash = "sha256:4a47a4813647d07cb544429e12cf5a71262bc82edd9237c4ae91219b4ef841af"},
+    {file = "onnx-1.6.0-cp36-cp36m-macosx_10_6_intel.macosx_10_9_intel.macosx_10_9_x86_64.macosx_10_10_intel.macosx_10_10_x86_64.whl", hash = "sha256:c67867a426eb661c661d7b2adea5c7876d7c5478b8d5af3c26bb40839b06e8c5"},
+    {file = "onnx-1.6.0-cp36-cp36m-manylinux1_i686.whl", hash = "sha256:f21a7ea757cea83067ce0d2f98b701a5980b0166fc0c0f1202550fdfe16a1c80"},
+    {file = "onnx-1.6.0-cp36-cp36m-manylinux1_x86_64.whl", hash = "sha256:a7e3ab3e81684bc75ac5476b5f2c690ad8d250bc8ece02eed5445c115577e6e4"},
+    {file = "onnx-1.6.0-cp36-cp36m-win32.whl", hash = "sha256:4fbe1630e33bd8d79d4e17a23d24bd8e464871dde37cb21e648c3728d33e64e2"},
+    {file = "onnx-1.6.0-cp36-cp36m-win_amd64.whl", hash = "sha256:42298189743d9f390890c31907bad74899bf023bbb52c68a94b1f6d534468571"},
+    {file = "onnx-1.6.0-cp37-cp37m-macosx_10_6_intel.macosx_10_9_intel.macosx_10_9_x86_64.macosx_10_10_intel.macosx_10_10_x86_64.whl", hash = "sha256:d390ed80b8b1cffa23e25cd4e4a3f3a95c70f438cf5f160659f74f4ab5f6ee04"},
+    {file = "onnx-1.6.0-cp37-cp37m-manylinux1_i686.whl", hash = "sha256:988e20a30b38de2977f61c745ae68931ad9edbc8a687287e38555d17cd25df9d"},
+    {file = "onnx-1.6.0-cp37-cp37m-manylinux1_x86_64.whl", hash = "sha256:9b32e04abe02cba4c4edb6c3cc15db917e734521ca8631e46bea3971a142d709"},
+    {file = "onnx-1.6.0-cp37-cp37m-win32.whl", hash = "sha256:a78d7f0b784b26890f50cb48d7b1718db63f10ed3196cb023dd70631001c73a3"},
+    {file = "onnx-1.6.0-cp37-cp37m-win_amd64.whl", hash = "sha256:912264fedd3df4647b31a4b7cd167982d54b4641eaf91bc1a9982c5eb9ebcb5f"},
+    {file = "onnx-1.6.0.tar.gz", hash = "sha256:3b88c3fe521151651a0403c4d131cb2e0311bd28b753ef692020a432a81ce345"},
+]
+onnxruntime = [
+    {file = "onnxruntime-1.1.0-cp35-cp35m-macosx_10_13_x86_64.whl", hash = "sha256:3b38a147134c83922b955237348c11793406d2dfa442e450aacad793f1cc15bf"},
+    {file = "onnxruntime-1.1.0-cp35-cp35m-manylinux1_x86_64.whl", hash = "sha256:0000e98ac372923bbde16d4d04119c0e60e94e4c3858402bba82e2ef25efb3da"},
+    {file = "onnxruntime-1.1.0-cp35-cp35m-win_amd64.whl", hash = "sha256:0a8fcd6490ba339f84a4414d290b294fbe8e60804e745a5c695820facb3e443a"},
+    {file = "onnxruntime-1.1.0-cp36-cp36m-macosx_10_13_x86_64.whl", hash = "sha256:0ebc7ae01810eb59d24f61442cbab615caa98226fe4919bc4bf0d059ca5f6d72"},
+    {file = "onnxruntime-1.1.0-cp36-cp36m-manylinux1_x86_64.whl", hash = "sha256:d7733f13415f4a88ebcda878d05df10942cc5085a9b50c5661ece1d8c51becd5"},
+    {file = "onnxruntime-1.1.0-cp36-cp36m-win_amd64.whl", hash = "sha256:c6d888762e151e410053749499f7dee5311a560f0b3121a0473104ced6eea370"},
+    {file = "onnxruntime-1.1.0-cp37-cp37m-macosx_10_13_x86_64.whl", hash = "sha256:53f29858d7e9d9c4d0ff77c27dbb73c97f896553cdead148937eef9b4ffb38bb"},
+    {file = "onnxruntime-1.1.0-cp37-cp37m-manylinux1_x86_64.whl", hash = "sha256:3dd4a598733ffa10961319480b643519943ceea984466fb0fca14a4e062673da"},
+    {file = "onnxruntime-1.1.0-cp37-cp37m-win_amd64.whl", hash = "sha256:abddc170c1ebeca92a73ebdda0b1edf53a09036eddaa76a300ecaf5ebdcb4d4f"},
+]
 packaging = [
     {file = "packaging-19.2-py2.py3-none-any.whl", hash = "sha256:d9551545c6d761f3def1677baf08ab2a3ca17c56879e70fecba2fc4dde4ed108"},
     {file = "packaging-19.2.tar.gz", hash = "sha256:28b924174df7a2fa32c1953825ff29c61e2f5e082343165438812f00d3a7fc47"},
@@ -2632,8 +2695,8 @@ pluggy = [
     {file = "pluggy-0.13.1.tar.gz", hash = "sha256:15b2acde666561e1298d71b523007ed7364de07029219b604cf808bfa1c765b0"},
 ]
 pre-commit = [
-    {file = "pre_commit-1.20.0-py2.py3-none-any.whl", hash = "sha256:c2e4810d2d3102d354947907514a78c5d30424d299dc0fe48f5aa049826e9b50"},
-    {file = "pre_commit-1.20.0.tar.gz", hash = "sha256:9f152687127ec90642a2cc3e4d9e1e6240c4eb153615cb02aa1ad41d331cbb6e"},
+    {file = "pre_commit-1.21.0-py2.py3-none-any.whl", hash = "sha256:f92a359477f3252452ae2e8d3029de77aec59415c16ae4189bcfba40b757e029"},
+    {file = "pre_commit-1.21.0.tar.gz", hash = "sha256:8f48d8637bdae6fa70cc97db9c1dd5aa7c5c8bf71968932a380628c25978b850"},
 ]
 prompt-toolkit = [
     {file = "prompt_toolkit-3.0.2-py3-none-any.whl", hash = "sha256:0278d2f51b5ceba6ea8da39f76d15684e84c996b325475f6e5720edc584326a7"},

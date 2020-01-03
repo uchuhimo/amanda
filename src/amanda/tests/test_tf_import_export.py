@@ -52,32 +52,34 @@ def modify_graph(graph: Graph):
     original_graph = graph.copy()
     for op in graph.ops:
         for tensor in op.output_tensors:
-            output_edges = original_graph.edges_from_tensor(tensor)
-            debug_op = Op(
-                attrs={
-                    "name": f"debug_{op.name}_{tensor.output_index}",
-                    "type": "Identity",
-                    "T": get_dtype(tensor),
-                },
-                input_tensors=[tensor],
-            )
-            graph.add_op(debug_op)
-            for edge in output_edges:
-                if edge.dst_op.type != "Assign":
-                    edge.dst_op.input_tensors[
-                        edge.dst_input_index
-                    ] = debug_op.output_tensors[0]
+            if not get_dtype(tensor)._is_ref_dtype:
+                output_edges = original_graph.edges_from_tensor(tensor)
+                if len(output_edges) != 0:
+                    debug_op = Op(
+                        attrs={
+                            "name": f"debug_{op.name}_{tensor.output_index}",
+                            "type": "Identity",
+                            "T": get_dtype(tensor),
+                        },
+                        input_tensors=[tensor],
+                    )
+                    graph.add_op(debug_op)
+                    for edge in output_edges:
+                        edge.dst_op.input_tensors[
+                            edge.dst_input_index
+                        ] = debug_op.output_tensors[0]
 
 
 def modify_graph_with_tf_func(graph: Graph):
     original_graph = graph.copy()
     for op in original_graph.ops:
         for tensor in op.output_tensors:
-            output_edges = original_graph.edges_from_tensor(tensor)
-            debug_output = import_from_tf_func(tf.identity)(graph)(tensor)
-            for edge in output_edges:
-                if edge.dst_op.type != "Assign":
-                    edge.dst_op.input_tensors[edge.dst_input_index] = debug_output
+            if not get_dtype(tensor)._is_ref_dtype:
+                output_edges = original_graph.edges_from_tensor(tensor)
+                if len(output_edges) != 0:
+                    debug_output = import_from_tf_func(tf.identity)(graph)(tensor)
+                    for edge in output_edges:
+                        edge.dst_op.input_tensors[edge.dst_input_index] = debug_output
 
 
 def modify_model(arch_name, output_model_dir, modify_graph_func):
