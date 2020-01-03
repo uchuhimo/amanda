@@ -1,3 +1,4 @@
+import copy
 import os
 from pathlib import Path
 
@@ -7,7 +8,7 @@ import numpy as np
 import pytest
 import tensorflow as tf
 
-from amanda import Graph
+from amanda import Graph, Op
 from amanda.conversion.tensorflow import (
     diff_graph_def,
     export_to_checkpoint,
@@ -15,6 +16,7 @@ from amanda.conversion.tensorflow import (
     export_to_pbtxt,
     export_to_tf_graph,
     get_diff_after_conversion,
+    get_dtype,
     import_from_checkpoint,
     import_from_graph_def,
     import_from_pbtxt,
@@ -25,7 +27,7 @@ from amanda.tests.utils import root_dir
 
 @pytest.fixture(
     params=[
-        # "vgg16",
+        "vgg16",
         # # "vgg19",
         "inception_v1",
         # "inception_v3",
@@ -48,7 +50,28 @@ def arch_name(request):
 
 
 def modify_graph(graph: Graph):
-    original_graph = graph.clone()
+    original_graph = graph.copy()
+    for op in graph.ops:
+        for tensor in op.output_tensors:
+            output_edges = original_graph.edges_from_tensor(tensor)
+            debug_op = Op(
+                attrs={
+                    "name": f"debug_{op.name}_{tensor.output_index}",
+                    "type": "Identity",
+                    "T": get_dtype(tensor),
+                },
+                input_tensors=[tensor],
+            )
+            graph.add_op(debug_op)
+            for edge in output_edges:
+                if edge.dst_op.type != "Assign":
+                    edge.dst_op.input_tensors[
+                        edge.dst_input_index
+                    ] = debug_op.output_tensors[0]
+
+
+def modify_graph_with_tf_func(graph: Graph):
+    original_graph = graph.copy()
     for op in original_graph.ops:
         for tensor in op.output_tensors:
             output_edges = original_graph.edges_from_tensor(tensor)
@@ -58,14 +81,13 @@ def modify_graph(graph: Graph):
                     edge.dst_op.input_tensors[edge.dst_input_index] = debug_output
 
 
-def modify_model(arch_name):
+def modify_model(arch_name, output_model_dir, modify_graph_func):
     prefix_dir = root_dir() / "tmp"
     original_checkpoint = tf.train.latest_checkpoint(prefix_dir / "model" / arch_name)
     print(f">>>>>>>>>>>>>>>> import from the original checkpoint {original_checkpoint}")
     graph = import_from_checkpoint(original_checkpoint)
-    modify_graph(graph)
-
-    modified_checkpoint = prefix_dir / "modified_model" / arch_name / arch_name
+    modify_graph_func(graph)
+    modified_checkpoint = prefix_dir / output_model_dir / arch_name / arch_name
     export_to_checkpoint(graph, modified_checkpoint)
     print(f">>>>>>>>>>>>>>>> export to the modified checkpoint {modified_checkpoint}")
 
@@ -111,11 +133,26 @@ input_shapes = {
 def test_tf_modify_graph(arch_name):
     input = np.random.rand(*input_shapes[arch_name])
     output, graph_def = run_model(arch_name, model_dir="model", input=input)
-    modify_model(arch_name)
+    modify_model(arch_name, "modified_graph", modify_graph)
     new_output, new_graph_def = run_model(
-        arch_name, model_dir="modified_model", input=input
+        arch_name, model_dir="modified_graph", input=input
     )
+    check_modified_graph(graph_def, new_graph_def)
+    assert np.allclose(output, new_output)
 
+
+def test_tf_modify_graph_with_tf_func(arch_name):
+    input = np.random.rand(*input_shapes[arch_name])
+    output, graph_def = run_model(arch_name, model_dir="model", input=input)
+    modify_model(arch_name, "modified_graph_with_tf_func", modify_graph_with_tf_func)
+    new_output, new_graph_def = run_model(
+        arch_name, model_dir="modified_graph_with_tf_func", input=input
+    )
+    check_modified_graph(graph_def, new_graph_def)
+    assert np.allclose(output, new_output)
+
+
+def check_modified_graph(graph_def, new_graph_def):
     graph_diff = diff_graph_def(graph_def, new_graph_def)
     assert jsondiff.delete not in graph_diff
     inserted_ops = graph_diff[jsondiff.insert]
@@ -138,7 +175,6 @@ def test_tf_modify_graph(arch_name):
                 assert input_name in inserted_op_names
         else:
             raise AssertionError(f"{input_diff} has unknown type {type(input_diff)}")
-    assert np.allclose(output, new_output)
 
 
 def test_tf_import_export_graph_def(arch_name):
@@ -147,6 +183,57 @@ def test_tf_import_export_graph_def(arch_name):
     with tf.Graph().as_default() as tf_graph:
         tf.train.import_meta_graph(checkpoint_file + ".meta")
     assert get_diff_after_conversion(tf_graph.as_graph_def()) == {}
+
+
+def test_tf_copy_graph(arch_name):
+    checkpoint_dir = root_dir() / "tmp" / "model" / arch_name
+    checkpoint_file = tf.train.latest_checkpoint(checkpoint_dir)
+    with tf.Graph().as_default() as tf_graph:
+        tf.train.import_meta_graph(checkpoint_file + ".meta")
+    graph = import_from_graph_def(tf_graph.as_graph_def())
+    new_graph = copy.copy(graph)
+    new_graph.attrs["test"] = True
+    assert "test" in new_graph.attrs and "test" not in graph.attrs
+    for op in new_graph.ops:
+        op.attrs["test"] = True
+        assert "test" in op.attrs and "test" in graph.get_op_by_name(op.name).attrs
+    op = Op(attrs={"name": "test_tf_copy_graph"})
+    new_graph.add_op(op)
+    assert op in new_graph and op not in graph
+
+
+def test_tf_duplicate_graph(arch_name):
+    checkpoint_dir = root_dir() / "tmp" / "model" / arch_name
+    checkpoint_file = tf.train.latest_checkpoint(checkpoint_dir)
+    with tf.Graph().as_default() as tf_graph:
+        tf.train.import_meta_graph(checkpoint_file + ".meta")
+    graph = import_from_graph_def(tf_graph.as_graph_def())
+    new_graph = graph.duplicate()
+    new_graph.attrs["test"] = True
+    assert "test" in new_graph.attrs and "test" not in graph.attrs
+    for op in new_graph.ops:
+        op.attrs["test"] = True
+        assert "test" in op.attrs and "test" not in graph.get_op_by_name(op.name).attrs
+    op = Op(attrs={"name": "test_tf_copy_graph"})
+    new_graph.add_op(op)
+    assert op in new_graph and op not in graph
+
+
+def test_tf_deepcopy_graph(arch_name):
+    checkpoint_dir = root_dir() / "tmp" / "model" / arch_name
+    checkpoint_file = tf.train.latest_checkpoint(checkpoint_dir)
+    with tf.Graph().as_default() as tf_graph:
+        tf.train.import_meta_graph(checkpoint_file + ".meta")
+    graph = import_from_graph_def(tf_graph.as_graph_def())
+    new_graph = copy.deepcopy(graph)
+    new_graph.attrs["test"] = True
+    assert "test" in new_graph.attrs and "test" not in graph.attrs
+    for op in new_graph.ops:
+        op.attrs["test"] = True
+        assert "test" in op.attrs and "test" not in graph.get_op_by_name(op.name).attrs
+    op = Op(attrs={"name": "test_tf_copy_graph"})
+    new_graph.add_op(op)
+    assert op in new_graph and op not in graph
 
 
 def test_tf_import_export_graph_def_with_saver(arch_name):
@@ -163,10 +250,9 @@ def test_tf_import_export_graph_def_with_saver(arch_name):
             graph = graph.to_default_namespace()
     new_tf_graph, saver, session = export_to_tf_graph(graph)
     assert diff_graph_def(graph_def, new_tf_graph.as_graph_def()) == {}
-    with new_tf_graph.as_default():
-        with session:
-            saver.restore(session, checkpoint_file)
-            new_output = session.run("MMdnn_Output:0", {"input:0": input})
+    with new_tf_graph.as_default(), session:
+        saver.restore(session, checkpoint_file)
+        new_output = session.run("MMdnn_Output:0", {"input:0": input})
     assert np.allclose(output, new_output)
 
 

@@ -1,7 +1,6 @@
 import pytest
 
 from amanda import ControlEdge, DataEdge, Graph, InputPort, Op, Tensor
-from amanda.attributes import Attributes
 from amanda.exception import IrremovableOpError
 from amanda.namespace import default_namespace, internal_namespace
 
@@ -13,12 +12,12 @@ def test_new_graph():
 
 @pytest.fixture
 def op1():
-    return Op(attrs=Attributes(name="op1"), output_num=3)
+    return Op(attrs=dict(name="op1"), output_num=3)
 
 
 @pytest.fixture
 def op2(op1):
-    return Op(input_tensors=[op1.output_tensor()], attrs=Attributes(name="op2"))
+    return Op(input_tensors=[op1.output_tensor()], attrs=dict(name="op2"))
 
 
 @pytest.fixture
@@ -26,7 +25,7 @@ def op3(op1, op2):
     return Op(
         input_tensors=[op1.output_tensor(2), op2.output_tensor()],
         control_dependencies=[op1],
-        attrs=Attributes(name="op3"),
+        attrs=dict(name="op3"),
     )
 
 

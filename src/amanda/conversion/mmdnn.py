@@ -7,6 +7,7 @@ import numpy as np
 from mmdnn.conversion.common.IR import graph_pb2
 
 from amanda.graph import Graph, Op, Tensor
+from amanda.namespace import is_qualified
 
 
 def export_to_protobuf(graph: Graph):
@@ -24,9 +25,7 @@ def export_to_protobuf(graph: Graph):
         IR_graph_node.name = op.name
         # set attrs for IR_graph_node
 
-        for key in op.attrs:
-            if key == "name" or key == "type":
-                continue
+        for key in without_internal_attrs(op.attrs):
             IR_value = IR_graph_node.attr[key]
             value = op.attrs[key]
             if type(value) == bytes:
@@ -65,6 +64,14 @@ def export_to_protobuf(graph: Graph):
                             IR_value.list.tensor.append(elem_.export_to_IR())
 
     return IR_graph
+
+
+def without_internal_attrs(attrs):
+    return {
+        name: value
+        for name, value in attrs.items()
+        if not (is_qualified(name) or name in ["name", "type"])
+    }
 
 
 def import_from_protobuf(model) -> Graph:

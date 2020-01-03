@@ -1,10 +1,10 @@
 import reprlib
-from typing import Mapping
+from typing import Any, Mapping
 
 import immutables
 
 
-class Attributes(Mapping):
+class Attributes(Mapping[str, Any]):
     def __init__(self, col=None, **kw):
         self._map: immutables.Map
         if isinstance(col, Attributes):
@@ -83,7 +83,7 @@ class Attributes(Mapping):
         items = []
         for key, val in self.items():
             items.append("{!r}: {!r}".format(key, val))
-        return "<Attributes({{{}}})>".format(", ".join(items))
+        return "Attributes({{{}}})".format(", ".join(items))
 
     def __setitem__(self, key, value):
         self._map = self._map.set(key, value)

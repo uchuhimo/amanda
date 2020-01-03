@@ -1,7 +1,7 @@
 from amanda.namespace import Namespace, default_namespace, get_global_registry
 from amanda.rule import NoopRule, RuleMapper
 
-_namespace = Namespace("onnx")
+_namespace = default_namespace() / Namespace("onnx")
 
 
 def onnx_namespace() -> Namespace:
@@ -9,13 +9,11 @@ def onnx_namespace() -> Namespace:
 
 
 _onnx_to_default_mapper = RuleMapper(rules=[NoopRule()])
+_default_to_onnx_mapper = RuleMapper(rules=[NoopRule()])
 
 
 def onnx_to_default_mapper() -> RuleMapper:
     return _onnx_to_default_mapper
-
-
-_default_to_onnx_mapper = RuleMapper(rules=[NoopRule()])
 
 
 def default_to_onnx_mapper() -> RuleMapper:

@@ -14,12 +14,13 @@ store_dir = root_dir() / "tmp" / "debug_info" / arch_name
 def modify_graph(graph):
     for op in graph.ops:
         for tensor in op.output_tensors:
+            op_name = op.attrs["name"]
             debug_op = Op(
                 attrs={
-                    "name": "debug" + op.attrs["name"],
+                    "name": f"debug/{op_name}/{tensor.output_index}",
                     "type": "StoreTensorToFile",
                     "store_dir": store_dir,
-                    "file_name": op.attrs["name"] + ":" + str(tensor.output_index),
+                    "file_name": f"{op_name}_{tensor.output_index}",
                 },
                 input_tensors=[tensor],
                 control_dependencies=[],
@@ -40,3 +41,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    tf.load_op_library

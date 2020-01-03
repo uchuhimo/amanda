@@ -1,8 +1,11 @@
+import copy
 import itertools
 import json
+import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Set, cast
+from uuid import UUID
 
 import immutables
 
@@ -55,6 +58,7 @@ class Op(NamespaceMixin):
         self._output_tensors: List["Tensor"] = [
             Tensor(self, i) for i in range(output_num)
         ]
+        self._attrs[internal_namespace().qualified("uuid")] = uuid.uuid4()
 
     @property
     def attrs(self) -> Attributes:
@@ -118,23 +122,27 @@ class Op(NamespaceMixin):
         raise IndexError
 
     def has_name(self) -> bool:
-        return self.attr_name_in_default_namespace("name") in self.attrs
+        return "name" in self.attrs
 
     @property
     def name(self) -> str:
-        return self.attrs[self.attr_name_in_default_namespace("name")]
+        return self.attrs["name"]
 
     @name.setter
     def name(self, name: str):
-        self.attrs[self.attr_name_in_default_namespace("name")] = name
+        self.attrs["name"] = name
 
     @property
     def type(self) -> str:
-        return self.attrs[self.attr_name_in_default_namespace("type")]
+        return self.attrs["type"]
 
     @type.setter
     def type(self, type: str):
-        self.attrs[self.attr_name_in_default_namespace("type")] = type
+        self.attrs["type"] = type
+
+    @property
+    def uuid(self) -> UUID:
+        return self.attrs[internal_namespace().qualified("uuid")]
 
     def __repr__(self) -> str:
         attrs_string = ", ".join(
@@ -260,17 +268,15 @@ class Graph(NamespaceMixin):
         self._name_to_op: immutables.Map = immutables.Map()
         self._composite_ops: immutables.Map = immutables.Map()
         self._cached_post_order_ops: List[Op] = None
-        self._cached_edges: List[Edge] = None
         self._cached_data_edges: List[Edge] = None
         self._cached_control_edges: List[Edge] = None
         self._cached_tensor_to_edges: Dict[Tensor, List[Edge]] = None
         if ops is not None:
-            for op in ops:
-                self.add_op(op)
+            self.add_ops(ops)
 
     @property
     def ops(self) -> Iterable[Op]:
-        return self._ops
+        return self._ops.values()
 
     @property
     def attrs(self) -> Attributes:
@@ -284,17 +290,34 @@ class Graph(NamespaceMixin):
         self.attrs[name] = value
 
     def add_op(self, op: Op) -> None:
-        assert op not in self._ops
-        self._ops = self._ops.set(op, True)
+        assert op.uuid not in self._ops
+        self._ops = self._ops.set(op.uuid, op)
         if op.has_name():
             assert op.name not in self._name_to_op
             self._name_to_op = self._name_to_op.set(op.name, op)
         if isinstance(op, CompositeOp):
-            self._composite_ops = self._composite_ops.set(op, True)
+            self._composite_ops = self._composite_ops.set(op.uuid, op)
         self.invalidate_cache()
 
+    def add_ops(self, ops: Iterable[Op]) -> None:
+        with self._ops.mutate() as mutable_ops:
+            with self._name_to_op.mutate() as mutable_name_to_op:
+                with self._composite_ops.mutate() as mutable_composite_ops:
+                    for op in ops:
+                        assert op.uuid not in self._ops
+                        mutable_ops[op.uuid] = op
+                        if op.has_name():
+                            assert op.name not in self._name_to_op
+                            mutable_name_to_op[op.name] = op
+                        if isinstance(op, CompositeOp):
+                            mutable_composite_ops[op.uuid] = op
+                    self._ops = mutable_ops.finish()
+                    self._name_to_op = mutable_name_to_op.finish()
+                    self._composite_ops = mutable_composite_ops.finish()
+                    self.invalidate_cache()
+
     def is_removable(self, op: Op) -> bool:
-        for other_op in self._ops:
+        for other_op in self.ops:
             if other_op != op and (
                 op in other_op.input_ops or op in other_op.control_dependencies
             ):
@@ -304,12 +327,12 @@ class Graph(NamespaceMixin):
     def remove_op(self, op: Op) -> None:
         if not self.is_removable(op):
             raise IrremovableOpError
-        assert op in self._ops
-        self._ops = self._ops.delete(op)
+        assert op.uuid in self._ops
+        self._ops = self._ops.delete(op.uuid)
         if op.has_name():
             self._name_to_op = self._name_to_op.delete(op.name)
         if isinstance(op, CompositeOp):
-            self._composite_ops = self._composite_ops.delete(op)
+            self._composite_ops = self._composite_ops.delete(op.uuid)
         self.invalidate_cache()
 
     def get_op_by_name(self, name: str) -> Optional[Op]:
@@ -333,7 +356,7 @@ class Graph(NamespaceMixin):
             )
         )
         output_ops = set(self.ops) - upstream_ops
-        dfs_stack = sorted(list(output_ops), key=lambda op: op.name, reverse=True)
+        dfs_stack = list(output_ops)
         walked_ops: Set[Op] = set()
         returned_ops: Set[Op] = set()
         post_order_ops: List[Op] = []
@@ -355,7 +378,7 @@ class Graph(NamespaceMixin):
         return post_order_ops
 
     @property
-    def data_edges(self) -> List[Edge]:
+    def data_edges(self) -> Iterable[Edge]:
         if self._cached_data_edges is not None:
             return self._cached_data_edges
         self._cached_data_edges = [
@@ -369,7 +392,7 @@ class Graph(NamespaceMixin):
         return self._cached_data_edges
 
     @property
-    def control_edges(self) -> List[Edge]:
+    def control_edges(self) -> Iterable[Edge]:
         if self._cached_control_edges is not None:
             return self._cached_control_edges
         self._cached_control_edges = [
@@ -381,11 +404,8 @@ class Graph(NamespaceMixin):
         return self._cached_control_edges
 
     @property
-    def edges(self) -> List[Edge]:
-        if self._cached_edges is not None:
-            return self._cached_edges
-        self._cached_edges = self.data_edges + self.control_edges
-        return self._cached_edges
+    def edges(self) -> Iterable[Edge]:
+        return itertools.chain(self.data_edges, self.control_edges)
 
     @property
     def tensor_to_edges(self) -> Dict[Tensor, List[Edge]]:
@@ -443,7 +463,7 @@ class Graph(NamespaceMixin):
         return set(control_dependencies_iter())
 
     def __contains__(self, op: Op) -> bool:
-        if op in self._ops:
+        if op.uuid in self._ops:
             return True
         elif len(self._composite_ops) != 0:
             for composite_op in self._composite_ops:
@@ -453,12 +473,20 @@ class Graph(NamespaceMixin):
 
     def invalidate_cache(self):
         self._cached_post_order_ops = None
-        self._cached_edges = None
         self._cached_data_edges = None
         self._cached_control_edges = None
         self._cached_tensor_to_edges = None
 
-    def clone(self) -> "Graph":
+    def __copy__(self):
+        return self.copy()
+
+    def copy(self) -> "Graph":
+        """
+        Return a shallow copy of the current graph.
+        Both ops and graph attribute values are not copied.
+        They will be shared between these two graphs.
+        If you don't want to share ops, you can use `Graph.duplicate` instead.
+        """
         graph = Graph()
         graph._ops = self._ops
         graph._attrs = self.attrs.copy()
@@ -466,8 +494,6 @@ class Graph(NamespaceMixin):
         graph._composite_ops = self._composite_ops
         if self._cached_post_order_ops is not None:
             graph._cached_post_order_ops = self._cached_post_order_ops
-        if self._cached_edges is not None:
-            graph._cached_edges = self._cached_edges
         if self._cached_data_edges is not None:
             graph._cached_data_edges = self._cached_data_edges
         if self._cached_control_edges is not None:
@@ -476,12 +502,6 @@ class Graph(NamespaceMixin):
             graph._cached_tensor_to_edges = self._cached_tensor_to_edges
         return graph
 
-    def __copy__(self):
-        return self.clone()
-
-    def copy(self):
-        return self.clone()
-
     def dict(self):
         return dict(ops=[op.dict() for op in self.ops], attrs=dict(self.attrs),)
 
@@ -489,6 +509,13 @@ class Graph(NamespaceMixin):
         return json.dumps(self.dict(), indent=4)
 
     def duplicate(self) -> "Graph":
+        """
+        Return a duplicate of the current graph.
+        Attribute values of graph and ops are not copied.
+        They will be shared between these two graphs.
+        If you don't update the existed ops,
+        you can use `Graph.copy` instead to reduce copy overhead.
+        """
         new_graph = Graph(attrs=self.attrs.copy())
         for op in self.post_order_ops:
             target_op = Op(
@@ -507,6 +534,32 @@ class Graph(NamespaceMixin):
             )
             new_graph.add_op(target_op)
         return new_graph
+
+    def deepcopy(self) -> "Graph":
+        """
+        Return a deep copy of the current graph.
+        """
+        new_graph = Graph(attrs=copy.deepcopy(self.attrs))
+        for op in self.post_order_ops:
+            target_op = Op(
+                attrs=copy.deepcopy(op.attrs),
+                input_tensors=[
+                    new_graph.get_op_by_name(input_tensor.op.name).output_tensor(
+                        input_tensor.output_index
+                    )
+                    for input_tensor in op.input_tensors
+                ],
+                control_dependencies=[
+                    new_graph.get_op_by_name(control_dependency.name)
+                    for control_dependency in op.control_dependencies
+                ],
+                output_num=op.output_num,
+            )
+            new_graph.add_op(target_op)
+        return new_graph
+
+    def __deepcopy__(self, memodict={}):
+        return self.deepcopy()
 
     def to_namespace(self, namespace: Namespace, registry: Registry = None) -> "Graph":
         if namespace == self.namespace:

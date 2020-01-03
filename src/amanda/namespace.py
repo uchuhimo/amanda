@@ -13,6 +13,12 @@ class Namespace:
     def __truediv__(self, other: "Namespace") -> "Namespace":
         return Namespace(f"{self.namespace}/{other.namespace}")
 
+    def __eq__(self, other):
+        if isinstance(other, Namespace) and self.namespace == other.namespace:
+            return True
+        else:
+            return False
+
 
 def is_qualified(name: str) -> bool:
     return name.startswith("/")
@@ -43,13 +49,11 @@ def map_namespace(name: str, source: Namespace, target: Namespace) -> str:
 
 
 _default_namespace = Namespace("amanda")
+_internal_namespace = _default_namespace / Namespace("internal")
 
 
 def default_namespace() -> Namespace:
     return _default_namespace
-
-
-_internal_namespace = default_namespace() / Namespace("internal")
 
 
 def internal_namespace() -> Namespace:
