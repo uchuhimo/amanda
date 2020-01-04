@@ -4,12 +4,13 @@ import pytest
 
 from amanda import Op
 from amanda.attributes import Attributes
+from amanda.graph import InputTensors
 from amanda.namespace import default_namespace, internal_namespace, is_qualified
 
 
 def test_new_op():
     op = Op()
-    assert isinstance(op.input_tensors, list) and len(op.input_tensors) == 0
+    assert isinstance(op.input_tensors, InputTensors) and len(op.input_tensors) == 0
     assert (
         isinstance(op.control_dependencies, list) and len(op.control_dependencies) == 0
     )
@@ -53,7 +54,10 @@ def without_internal_attrs(attrs):
 
 
 def test_new_op_with_args(input1, input2, control_input1, control_input2, simple_op):
-    assert simple_op.input_tensors == [input1.output_tensor(), input2.output_tensor()]
+    assert list(simple_op.input_tensors) == [
+        input1.output_tensor(),
+        input2.output_tensor(),
+    ]
     assert simple_op.control_dependencies == [control_input1, control_input2]
     assert without_internal_attrs(simple_op.attrs) == dict(name="test", type="Conv2d")
 

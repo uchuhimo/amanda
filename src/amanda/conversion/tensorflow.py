@@ -387,7 +387,7 @@ def export_to_tf_graph(graph: Graph) -> Tuple[tf.Graph, tf.train.Saver, tf.Sessi
         graph = graph.to_default_namespace().to_namespace(tf_namespace())
     tf_graph: tf.Graph
     with tf.Graph().as_default() as tf_graph:
-        for op in graph.post_order_ops:
+        for op in graph.sorted_ops:
             attrs = without_internal_attrs(op.attrs)
             with tf.control_dependencies(
                 [
@@ -447,7 +447,7 @@ def export_to_graph_def(graph: Graph) -> tf.GraphDef:
         graph = graph.to_default_namespace().to_namespace(tf_namespace())
     tf_graph = tf.Graph()
     graph_def = tf_graph.as_graph_def()
-    for op in graph.post_order_ops:
+    for op in graph.sorted_ops:
         attrs = without_internal_attrs(op.attrs)
         node = graph_def.node.add()
         node.name = op.name

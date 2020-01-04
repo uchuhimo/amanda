@@ -1,21 +1,21 @@
 import reprlib
-from typing import Any, Mapping
+from typing import Any, Dict
 
 import immutables
 
 
-class Attributes(Mapping[str, Any]):
+class Attributes(Dict[str, Any]):
     def __init__(self, col=None, **kw):
-        self._map: immutables.Map
         if isinstance(col, Attributes):
-            self._map = col._map
+            _map = col._map
             if kw:
-                self._map = self._map.update(**kw)
+                _map = _map.update(**kw)
         else:
             if col:
-                self._map = immutables.Map(col, **kw)
+                _map = immutables.Map(col, **kw)
             else:
-                self._map = immutables.Map(**kw)
+                _map = immutables.Map(**kw)
+        self._map: immutables.Map[str, Any] = _map
 
     def clear(self):
         self._map = immutables.Map()

@@ -48,12 +48,11 @@ def arch_name(request):
     return request.param
 
 
-def modify_graph(graph: Graph):
-    original_graph = graph.copy()
+def modify_graph_with_primitive_api(graph: Graph):
     for op in graph.ops:
         for tensor in op.output_tensors:
             if not get_dtype(tensor)._is_ref_dtype:
-                output_edges = original_graph.edges_from_tensor(tensor)
+                output_edges = graph.data_edges_from_tensor(tensor)
                 if len(output_edges) != 0:
                     debug_op = Op(
                         attrs={
@@ -71,11 +70,10 @@ def modify_graph(graph: Graph):
 
 
 def modify_graph_with_tf_func(graph: Graph):
-    original_graph = graph.copy()
-    for op in original_graph.ops:
+    for op in graph.ops:
         for tensor in op.output_tensors:
             if not get_dtype(tensor)._is_ref_dtype:
-                output_edges = original_graph.edges_from_tensor(tensor)
+                output_edges = graph.data_edges_from_tensor(tensor)
                 if len(output_edges) != 0:
                     debug_output = import_from_tf_func(tf.identity)(graph)(tensor)
                     for edge in output_edges:
@@ -134,7 +132,7 @@ input_shapes = {
 def test_tf_modify_graph(arch_name):
     input = np.random.rand(*input_shapes[arch_name])
     output, graph_def = run_model(arch_name, model_dir="model", input=input)
-    modify_model(arch_name, "modified_graph", modify_graph)
+    modify_model(arch_name, "modified_graph", modify_graph_with_primitive_api)
     new_output, new_graph_def = run_model(
         arch_name, model_dir="modified_graph", input=input
     )

@@ -22,11 +22,10 @@ def store_as_numpy(input: np.array, store_dir: str, file_name: str):
 
 def modify_graph(graph: Graph):
     store_dir = root_dir() / "tmp" / "debug_info" / arch_name
-    original_graph = graph.copy()
-    for op in original_graph.ops:
+    for op in graph.ops:
         for tensor in op.output_tensors:
             if not get_dtype(tensor)._is_ref_dtype:
-                output_edges = original_graph.edges_from_tensor(tensor)
+                output_edges = graph.data_edges_from_tensor(tensor)
                 if len(output_edges) != 0:
                     debug_output: Tensor = import_from_tf_func(tf.py_func)(graph)(
                         partial(
@@ -53,4 +52,5 @@ def main(arch_name):
 
 if __name__ == "__main__":
     main("vgg16")
-    # test_tf_modify_graph(arch_name="facenet")
+    # modify_model("facenet", "modified_graph", modify_graph_with_primitive_api)
+    # modify_model("nasnet-a_large", "modified_graph", modify_graph_with_primitive_api)

@@ -1,13 +1,16 @@
 import copy
 import itertools
 import json
+import typing
 import uuid
+import weakref
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional, Set, cast
+from dataclasses import dataclass, field
+from typing import Any, Iterable, Iterator, List, Optional, Set
 from uuid import UUID
 
 import immutables
+import numpy as np
 
 from amanda.attributes import Attributes
 from amanda.exception import IrremovableOpError
@@ -42,6 +45,47 @@ class NamespaceMixin:
             return default_namespace().qualified(attr_name)
 
 
+class InputTensors:
+    def __init__(self, op: "Op", tensors: List["Tensor"]):
+        self.op: "Op" = op
+        self.tensors: List["Tensor"] = tensors
+        self._input_ports = [InputPort(op, index) for index in range(len(tensors))]
+        self._input_edges: List["Edge"] = [
+            DataEdge(tensor, self._input_ports[index])
+            for index, tensor in enumerate(tensors)
+        ]
+        for edge in self._input_edges:
+            edge.src_tensor._output_edges.add(edge)
+
+    @property
+    def input_ports(self) -> List["InputPort"]:
+        return self._input_ports
+
+    @property
+    def input_edges(self) -> List["Edge"]:
+        return self._input_edges
+
+    def __setitem__(self, index: int, tensor: "Tensor") -> None:
+        old_tensor: Tensor = self.tensors[index]
+        old_tensor._output_edges.remove(self._input_edges[index])
+        self.tensors[index] = tensor
+        edge = DataEdge(tensor, self._input_ports[index])
+        self._input_edges[index] = edge
+        tensor._output_edges.add(edge)
+
+    def __len__(self) -> int:
+        return len(self.tensors)
+
+    def __iter__(self) -> Iterator["Tensor"]:
+        return iter(self.tensors)
+
+    def __getitem__(self, i: int) -> "Tensor":
+        return self.tensors[i]
+
+    def __contains__(self, tensor: "Tensor") -> bool:
+        return tensor in self.tensors
+
+
 class Op(NamespaceMixin):
     def __init__(
         self,
@@ -51,21 +95,27 @@ class Op(NamespaceMixin):
         output_num: int = 1,
     ):
         self._attrs: Attributes = Attributes(attrs or {})
-        self._input_tensors: List["Tensor"] = list(input_tensors or [])
+        self._input_tensors: InputTensors = InputTensors(
+            self, list(input_tensors or [])
+        )
         self._input_num = len(self._input_tensors)
-        self._control_dependencies: List[Op] = list(control_dependencies or [])
+        self._control_dependencies: List[Op] = []
         self._output_num = output_num
-        self._output_tensors: List["Tensor"] = [
+        self._output_tensors: List[Tensor] = [
             Tensor(self, i) for i in range(output_num)
         ]
+        self._control_dependents: Set[Op] = typing.cast(Set[Op], weakref.WeakSet())
         self._attrs[internal_namespace().qualified("uuid")] = uuid.uuid4()
+        control_dependencies = control_dependencies or []
+        for control_dependency in control_dependencies:
+            self.add_control_dependency(control_dependency)
 
     @property
     def attrs(self) -> Attributes:
         return self._attrs
 
     @property
-    def input_tensors(self) -> List["Tensor"]:
+    def input_tensors(self) -> InputTensors:
         return self._input_tensors
 
     @property
@@ -75,6 +125,10 @@ class Op(NamespaceMixin):
     @property
     def control_dependencies(self) -> List["Op"]:
         return self._control_dependencies
+
+    @property
+    def control_dependents(self) -> List["Op"]:
+        return list(self._control_dependents)
 
     @property
     def output_tensors(self) -> List["Tensor"]:
@@ -96,24 +150,39 @@ class Op(NamespaceMixin):
     def add_control_dependency(self, op: "Op"):
         assert op not in self.control_dependencies
         self.control_dependencies.append(op)
+        op._control_dependents.add(self)
 
     def remove_control_dependency(self, op: "Op"):
         assert op in self.control_dependencies
         self.control_dependencies.remove(op)
+        op._control_dependents.remove(self)
 
     @property
     def input_ops(self) -> List["Op"]:
-        return list(map(lambda port: port.op, self.input_tensors))
+        return list(map(lambda tensor: tensor.op, self.input_tensors))
 
     def input_op(self, index: int) -> "Op":
         if not (0 <= index < len(self.input_tensors)):
             raise IndexError
-        return self.input_ops[index]
+        return self.input_tensors[index].op
+
+    @property
+    def input_ports(self) -> List["InputPort"]:
+        return self.input_tensors.input_ports
 
     def input_port(self, index=0) -> "InputPort":
         if not (0 <= index < len(self.input_tensors)):
             raise IndexError
-        return InputPort(self, index)
+        return self.input_ports[index]
+
+    @property
+    def input_edges(self) -> List["Edge"]:
+        return self.input_tensors.input_edges
+
+    def input_edge(self, index=0) -> "Edge":
+        if not (0 <= index < len(self.input_tensors)):
+            raise IndexError
+        return self.input_edges[index]
 
     def input_index(self, input_op: "Op") -> int:
         for index, input in enumerate(self.input_tensors):
@@ -176,9 +245,18 @@ class Op(NamespaceMixin):
         return self.deepcopy()
 
     def __repr__(self) -> str:
-        attrs_string = ", ".join(
-            [f"{key}={value}" for key, value in self.attrs.items()]
-        )
+        attr_names = list(self.attrs.keys())
+        attr_strings = []
+        for name in ["name", "type"]:
+            if name in attr_names:
+                attr_strings.append(f"{name}={self.attrs[name]}")
+                attr_names.remove(name)
+        attr_names = np.array(attr_names)
+        for name in attr_names[np.logical_not(np.char.startswith(attr_names, "/"))]:
+            attr_strings.append(f"{name}={self.attrs[name]}")
+        for name in attr_names[np.char.startswith(attr_names, "/")]:
+            attr_strings.append(f"{name}={self.attrs[name]}")
+        attrs_string = ", ".join(attr_strings)
         return f"Op({attrs_string})"
 
     def dict(self):
@@ -217,6 +295,13 @@ class CompositeOp(Op):
 class Tensor:
     op: Op
     output_index: int
+    _output_edges: Set["Edge"] = field(
+        default_factory=lambda: typing.cast(Set[Edge], weakref.WeakSet())
+    )
+
+    @property
+    def output_edges(self) -> List["Edge"]:
+        return list(self._output_edges)
 
     def __hash__(self) -> int:
         return hash((self.op, self.output_index))
@@ -286,36 +371,30 @@ class ControlEdge(Edge):
         return hash((self.src_op, self.dst_op))
 
 
-@dataclass
-class OutputEdges:
-    tensor: Tensor
-    edges: List[Edge]
-
-
 class Graph(NamespaceMixin):
     def __init__(self, ops=None, attrs=None):
-        self._ops: immutables.Map = immutables.Map()
+        self._ops: immutables.Map[UUID, Op] = immutables.Map()
         self._attrs: Attributes = Attributes(attrs or {})
-        self._name_to_op: immutables.Map = immutables.Map()
-        self._composite_ops: immutables.Map = immutables.Map()
+        self._name_to_op: immutables.Map[str, Op] = immutables.Map()
+        self._composite_ops: immutables.Map[UUID, Op] = immutables.Map()
         self._cached_post_order_ops: List[Op] = None
-        self._cached_data_edges: List[Edge] = None
-        self._cached_control_edges: List[Edge] = None
-        self._cached_tensor_to_edges: Dict[Tensor, List[Edge]] = None
         if ops is not None:
             self.add_ops(ops)
 
     @property
-    def ops(self) -> Iterable[Op]:
-        return self._ops.values()
+    def ops(self) -> List[Op]:
+        """
+        Return an unsorted list of ops that form this graph.
+        """
+        return list(self._ops.values())
 
     @property
     def attrs(self) -> Attributes:
         return self._attrs
 
     @property
-    def names(self) -> Iterable[str]:
-        return self._name_to_op
+    def names(self) -> List[str]:
+        return list(self._name_to_op.keys())
 
     def update_attr(self, name: str, value: Any):
         self.attrs[name] = value
@@ -331,20 +410,20 @@ class Graph(NamespaceMixin):
         self.invalidate_cache()
 
     def add_ops(self, ops: Iterable[Op]) -> None:
-        with self._ops.mutate() as mutable_ops:
-            with self._name_to_op.mutate() as mutable_name_to_op:
-                with self._composite_ops.mutate() as mutable_composite_ops:
+        with self._ops.mutate() as _ops:
+            with self._name_to_op.mutate() as _name_to_op:
+                with self._composite_ops.mutate() as _composite_ops:
                     for op in ops:
                         assert op.uuid not in self._ops
-                        mutable_ops[op.uuid] = op
+                        _ops[op.uuid] = op
                         if op.has_name():
                             assert op.name not in self._name_to_op
-                            mutable_name_to_op[op.name] = op
+                            _name_to_op[op.name] = op
                         if isinstance(op, CompositeOp):
-                            mutable_composite_ops[op.uuid] = op
-                    self._ops = mutable_ops.finish()
-                    self._name_to_op = mutable_name_to_op.finish()
-                    self._composite_ops = mutable_composite_ops.finish()
+                            _composite_ops[op.uuid] = op
+                    self._ops = _ops.finish()
+                    self._name_to_op = _name_to_op.finish()
+                    self._composite_ops = _composite_ops.finish()
                     self.invalidate_cache()
 
     def is_removable(self, op: Op) -> bool:
@@ -375,7 +454,10 @@ class Graph(NamespaceMixin):
                 op.input_tensors[op.input_index(old_tensor.op)] = new_tensor
 
     @property
-    def post_order_ops(self) -> List[Op]:
+    def sorted_ops(self) -> List[Op]:
+        """
+        Return a topologically sorted list of ops that forms this graph.
+        """
         if self._cached_post_order_ops is not None:
             return self._cached_post_order_ops
         upstream_ops = set(
@@ -409,52 +491,26 @@ class Graph(NamespaceMixin):
         return post_order_ops
 
     @property
-    def data_edges(self) -> Iterable[Edge]:
-        if self._cached_data_edges is not None:
-            return self._cached_data_edges
-        self._cached_data_edges = [
-            DataEdge(
-                src_tensor=cast(Tensor, tensor), dst_port=InputPort(op, input_index),
-            )
-            for op in self.ops
-            for input_index, tensor in enumerate(op.input_tensors)
-            if tensor.op in self
+    def data_edges(self) -> List[Edge]:
+        return [
+            edge for op in self.ops for edge in op.input_edges if edge.src_op in self
         ]
-        return self._cached_data_edges
 
     @property
-    def control_edges(self) -> Iterable[Edge]:
-        if self._cached_control_edges is not None:
-            return self._cached_control_edges
-        self._cached_control_edges = [
+    def control_edges(self) -> List[Edge]:
+        return [
             ControlEdge(src=src, dst=op)
             for op in self.ops
             for src in op.control_dependencies
             if src in self
         ]
-        return self._cached_control_edges
 
     @property
-    def edges(self) -> Iterable[Edge]:
-        return itertools.chain(self.data_edges, self.control_edges)
+    def edges(self) -> List[Edge]:
+        return self.data_edges + self.control_edges
 
-    @property
-    def tensor_to_edges(self) -> Dict[Tensor, List[Edge]]:
-        if self._cached_tensor_to_edges is not None:
-            return self._cached_tensor_to_edges
-        tensor_to_edges: Dict[Tensor, List[Edge]] = {
-            tensor: [] for op in self.ops for tensor in op.output_tensors
-        }
-        for edge in self.data_edges:
-            tensor_to_edges[edge.src_tensor].append(edge)
-        self._cached_tensor_to_edges = tensor_to_edges
-        return tensor_to_edges
-
-    def edges_from_tensor(self, tensor: Tensor) -> List[Edge]:
-        if tensor not in self.tensor_to_edges:
-            return []
-        else:
-            return self.tensor_to_edges[tensor]
+    def data_edges_from_tensor(self, tensor: Tensor) -> List[Edge]:
+        return [edge for edge in tensor.output_edges if edge.dst_op in self]
 
     def set_attr(self, attr: str, value: Any) -> None:
         for op in self.ops:
@@ -496,17 +552,13 @@ class Graph(NamespaceMixin):
     def __contains__(self, op: Op) -> bool:
         if op.uuid in self._ops:
             return True
-        elif len(self._composite_ops) != 0:
-            for composite_op in self._composite_ops:
-                if op in composite_op.graph:
-                    return True
+        for composite_op in self._composite_ops:
+            if op in composite_op.graph:
+                return True
         return False
 
     def invalidate_cache(self):
         self._cached_post_order_ops = None
-        self._cached_data_edges = None
-        self._cached_control_edges = None
-        self._cached_tensor_to_edges = None
 
     def __copy__(self):
         return self.copy()
@@ -525,12 +577,6 @@ class Graph(NamespaceMixin):
         graph._composite_ops = self._composite_ops
         if self._cached_post_order_ops is not None:
             graph._cached_post_order_ops = self._cached_post_order_ops
-        if self._cached_data_edges is not None:
-            graph._cached_data_edges = self._cached_data_edges
-        if self._cached_control_edges is not None:
-            graph._cached_control_edges = self._cached_control_edges
-        if self._cached_tensor_to_edges is not None:
-            graph._cached_tensor_to_edges = self._cached_tensor_to_edges
         return graph
 
     def dict(self):
@@ -548,7 +594,7 @@ class Graph(NamespaceMixin):
         you can use `Graph.copy` instead to reduce copy overhead.
         """
         new_graph = Graph(attrs=self.attrs.copy())
-        for op in self.post_order_ops:
+        for op in self.sorted_ops:
             target_op = Op(
                 attrs=op.attrs.copy(),
                 input_tensors=[
@@ -571,7 +617,7 @@ class Graph(NamespaceMixin):
         Return a deep copy of the current graph.
         """
         new_graph = Graph(attrs=copy.deepcopy(self.attrs))
-        for op in self.post_order_ops:
+        for op in self.sorted_ops:
             target_op = Op(
                 attrs=copy.deepcopy(op.attrs),
                 input_tensors=[

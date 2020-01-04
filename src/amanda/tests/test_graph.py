@@ -134,7 +134,7 @@ def test_control_edge(op1, op2):
 
 
 def test_post_order_ops(simple_graph, op1, op2, op3):
-    assert simple_graph.post_order_ops == [op1, op2, op3]
+    assert simple_graph.sorted_ops == [op1, op2, op3]
 
 
 def test_get_namespace(simple_graph):

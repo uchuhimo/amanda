@@ -53,7 +53,7 @@ class RuleMapper(Mapper):
                     del op.attrs[name]
             op.namespace = namespace
         mapped_ops: Set[Op] = set()
-        for op in new_graph.post_order_ops:
+        for op in new_graph.sorted_ops:
             if op not in mapped_ops:
                 has_matched_rule = False
                 for rule in self.rules:

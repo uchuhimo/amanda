@@ -27,7 +27,7 @@ def rewrite_graph(graph: Graph):
             variables[var.name] = info
 
     # assign priority to gradients, smaller sequence number has higher priority
-    for op in reversed(graph.post_order_ops):
+    for op in reversed(graph.sorted_ops):
         if op.type in ["Variable", "VariableV2"] and op.name in variables:
             grad_op_name = variables[op.name].grad_op.name
             priorities[grad_op_name] = len(priorities)

@@ -19,6 +19,9 @@ class Namespace:
         else:
             return False
 
+    def __repr__(self) -> str:
+        return f"Namespace({self.namespace})"
+
 
 def is_qualified(name: str) -> bool:
     return name.startswith("/")
