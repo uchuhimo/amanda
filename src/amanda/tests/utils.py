@@ -67,7 +67,7 @@ def download_onnx_model(arch_name, model_dir):
         full_model_dir.mkdir(mode=0o755, parents=True)
     download_file(
         onnx_arch_map[arch_name]["url"],
-        directory=str(full_model_dir / arch_name) + "/",
+        directory=str(full_model_dir) + "/",
         auto_unzip=True,
     )
 
@@ -77,11 +77,60 @@ def download_all_onnx_models():
         list(
             executor.map(
                 partial(download_onnx_model, model_dir="onnx_model"),
+                # for a complete list of architecture name supported, see
+                # https://github.com/onnx/models
                 ["mobilenetv2-1.0", "resnet18v2"],
             )
         )
 
 
+def tflite_model_zoo(path: str) -> str:
+    return f"https://storage.googleapis.com/download.tensorflow.org/models/{path}"
+
+
+tflite_arch_map = {
+    "mobilenet_v2_1.0_224_quant": {
+        "url": tflite_model_zoo("tflite_11_05_08/mobilenet_v2_1.0_224_quant.tgz"),
+    },
+    "mobilenet_v2_1.0_224": {
+        "url": tflite_model_zoo("tflite_11_05_08/mobilenet_v2_1.0_224.tgz"),
+    },
+    "nasnet_mobile": {
+        "url": tflite_model_zoo(
+            "tflite/model_zoo/upload_20180427/nasnet_mobile_2018_04_27.tgz"
+        ),
+    },
+}
+
+
+def download_tflite_model(arch_name, model_dir):
+    full_model_dir = root_dir() / "tmp" / model_dir
+    if not full_model_dir.exists():
+        full_model_dir.mkdir(mode=0o755, parents=True)
+    download_file(
+        tflite_arch_map[arch_name]["url"],
+        directory=str(full_model_dir / arch_name) + "/",
+        auto_unzip=True,
+    )
+
+
+def download_all_tflite_models():
+    with ProcessPoolExecutor() as executor:
+        list(
+            executor.map(
+                partial(download_tflite_model, model_dir="tflite_model"),
+                # for a complete list of architecture name supported, see
+                # https://www.tensorflow.org/lite/guide/hosted_models
+                ["mobilenet_v2_1.0_224_quant", "mobilenet_v2_1.0_224", "nasnet_mobile"],
+            )
+        )
+
+
 def download_all_models():
-    download_all_onnx_models()
     download_all_tf_models()
+    download_all_onnx_models()
+    download_all_tflite_models()
+
+
+if __name__ == "__main__":
+    download_all_models()

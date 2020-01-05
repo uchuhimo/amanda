@@ -24,4 +24,4 @@ def test_onnx_import_export(arch_name):
         to_proto(model_dir / "test_data_set_0" / "output_0.pb", onnx.TensorProto)
     )
     prediction = sess.run(None, {input_name: input_tensor})[0]
-    assert np.allclose(prediction, output_tensor)
+    assert np.allclose(prediction, output_tensor, atol=1.0e-3)
