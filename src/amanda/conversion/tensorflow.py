@@ -26,6 +26,7 @@ from tensorflow.python.framework.op_def_library import (
 )
 from tensorflow.python.util import compat
 
+from amanda.conversion.utils import to_proto
 from amanda.graph import Graph, Op, Tensor
 from amanda.namespace import (
     Namespace,
@@ -97,7 +98,7 @@ class OpAttrName:
     )
 
 
-def import_from_tf_graph(
+def import_from_graph(
     tf_graph: tf.Graph, saver_def: SaverDef = None, session: tf.Session = None,
 ) -> Graph:
     graph = Graph()
@@ -206,16 +207,14 @@ class TFTensor:
 
 
 def import_from_graph_def(
-    graph_def: Union[tf.GraphDef, str, Path], saver_def: SaverDef = None,
+    graph_def: Union[tf.GraphDef, str, bytes, Path], saver_def: SaverDef = None,
 ) -> Graph:
-    if not isinstance(graph_def, tf.GraphDef):
-        graph_def = tf.GraphDef()
-        graph_def.ParseFromString(Path(graph_def).read_bytes())
+    graph_def = to_proto(graph_def, tf.GraphDef)
     if saver_def is not None:
         with tf.Graph().as_default() as tf_graph:
             with tf.Session() as session:
                 tf.import_graph_def(graph_def, name="")
-                return import_from_tf_graph(tf_graph, saver_def, session)
+                return import_from_graph(tf_graph, saver_def, session)
     else:
         graph = Graph()
         tf_graph = tf.Graph()
@@ -356,10 +355,11 @@ def import_from_pbtxt(file: Union[str, Path]) -> Graph:
 
 
 def import_from_meta_graph(
-    meta_graph: Union[tf.MetaGraphDef, str, Path],
+    meta_graph: Union[tf.MetaGraphDef, str, bytes, Path],
     checkpoint: Union[str, Path] = None,
     session: tf.Session = None,
 ) -> Graph:
+    meta_graph = to_proto(meta_graph, tf.MetaGraphDef)
     with tf.Graph().as_default() as tf_graph, ExitStack() as exit_stack:
         saver = tf.train.import_meta_graph(meta_graph)
         if checkpoint is not None:
@@ -367,7 +367,7 @@ def import_from_meta_graph(
                 session = tf.Session()
                 exit_stack.enter_context(session)
             saver.restore(session, str(checkpoint))
-        graph = import_from_tf_graph(tf_graph, saver.saver_def, session)
+        graph = import_from_graph(tf_graph, saver.saver_def, session)
         return graph
 
 
@@ -376,13 +376,22 @@ def import_from_checkpoint(path: Union[str, Path]) -> Graph:
     return import_from_meta_graph(path + ".meta", path)
 
 
+def import_from_saved_model(path: Union[str, Path], tags: List[str]) -> Graph:
+    path = str(path)
+    with tf.Graph().as_default() as tf_graph:
+        with tf.Session() as session:
+            meta_graph = tf.saved_model.load(session, tags, path)
+            graph = import_from_graph(tf_graph, meta_graph.saver_def, session)
+            return graph
+
+
 @dataclass
 class FakeNodeDef:
     op: str
     attr: Dict[str, Any]
 
 
-def export_to_tf_graph(graph: Graph) -> Tuple[tf.Graph, tf.train.Saver, tf.Session]:
+def export_to_graph(graph: Graph) -> Tuple[tf.Graph, tf.train.Saver, tf.Session]:
     if graph.namespace != tf_namespace():
         graph = graph.to_default_namespace().to_namespace(tf_namespace())
     tf_graph: tf.Graph
@@ -491,11 +500,27 @@ def export_to_checkpoint(graph: Graph, path: Union[str, Path]) -> None:
     path = Path(path)
     if not path.parent.exists():
         path.parent.mkdir(mode=0o755, parents=True)
-    tf_graph, saver, session = export_to_tf_graph(graph)
+    tf_graph, saver, session = export_to_graph(graph)
     with session, tf_graph.as_default():
         if saver is None:
             saver = tf.train.Saver()
         saver.save(session, str(path))
+
+
+def export_to_saved_model(
+    graph: Graph, path: Union[str, Path], tags: List[str]
+) -> None:
+    path = Path(path)
+    if not path.parent.exists():
+        path.parent.mkdir(mode=0o755, parents=True)
+    tf_graph, saver, session = export_to_graph(graph)
+    path = str(path)
+    builder = tf.saved_model.builder.SavedModelBuilder(path)
+    with tf_graph.as_default(), session:
+        builder.add_meta_graph_and_variables(
+            session, tags, strip_default_attrs=True, saver=saver,
+        )
+    builder.save()
 
 
 def get_diff_after_conversion(graph_def: tf.GraphDef) -> Dict[str, Any]:
@@ -733,7 +758,7 @@ def import_from_tf_func(tf_func):
                             if isinstance(arg, Tensor):
                                 get_tf_args(name)[name][i] = to_tf_tensor(arg)
                 output_tensor: tf.Tensor = tf_func(*tf_args, **tf_kwargs)
-                new_graph = import_from_tf_graph(tf_graph)
+                new_graph = import_from_graph(tf_graph)
                 for input, placeholder in zip(input_tensors, placeholders):
                     placeholder_op = new_graph.get_op_by_name(placeholder.op.name)
                     new_graph.replace_tensor(placeholder_op.output_tensor(0), input)

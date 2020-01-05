@@ -11,14 +11,16 @@ from amanda import Graph, Op
 from amanda.conversion.tensorflow import (
     diff_graph_def,
     export_to_checkpoint,
+    export_to_graph,
     export_to_graph_def,
     export_to_pbtxt,
-    export_to_tf_graph,
+    export_to_saved_model,
     get_diff_after_conversion,
     get_dtype,
     import_from_checkpoint,
     import_from_graph_def,
     import_from_pbtxt,
+    import_from_saved_model,
     import_from_tf_func,
 )
 from amanda.tests.utils import root_dir
@@ -196,11 +198,48 @@ def test_tf_import_export_graph_def_with_saver(arch_name):
             graph_def = tf_graph.as_graph_def()
             graph = import_from_graph_def(graph_def, saver.saver_def)
             graph = graph.to_default_namespace()
-    new_tf_graph, saver, session = export_to_tf_graph(graph)
+    new_tf_graph, saver, session = export_to_graph(graph)
     assert diff_graph_def(graph_def, new_tf_graph.as_graph_def()) == {}
     with new_tf_graph.as_default(), session:
         saver.restore(session, checkpoint_file)
         new_output = session.run("MMdnn_Output:0", {"input:0": input})
+    assert np.allclose(output, new_output)
+
+
+def test_tf_import_export_saved_model(arch_name, tmp_path):
+    checkpoint_dir = root_dir() / "tmp" / "model" / arch_name
+    checkpoint_file = tf.train.latest_checkpoint(checkpoint_dir)
+    input = np.random.rand(*input_shapes[arch_name])
+    path = str(tmp_path / arch_name)
+    new_path = str(tmp_path / f"new_{arch_name}")
+    with tf.Graph().as_default() as tf_graph:
+        with tf.Session() as session:
+            saver = tf.train.import_meta_graph(checkpoint_file + ".meta")
+            saver.restore(session, checkpoint_file)
+            output = session.run("MMdnn_Output:0", {"input:0": input})
+            builder = tf.saved_model.builder.SavedModelBuilder(path)
+            builder.add_meta_graph_and_variables(
+                session,
+                [tf.saved_model.tag_constants.SERVING],
+                strip_default_attrs=True,
+                saver=saver,
+            )
+            builder.save()
+            graph = import_from_saved_model(
+                path, tags=[tf.saved_model.tag_constants.SERVING]
+            )
+            graph = graph.to_default_namespace()
+    export_to_saved_model(graph, new_path, tags=[tf.saved_model.tag_constants.SERVING])
+    with tf.Graph().as_default() as new_tf_graph:
+        with tf.Session() as session:
+            tf.saved_model.load(
+                session, [tf.saved_model.tag_constants.SERVING], new_path
+            )
+            assert (
+                diff_graph_def(tf_graph.as_graph_def(), new_tf_graph.as_graph_def())
+                == {}
+            )
+            new_output = session.run("MMdnn_Output:0", {"input:0": input})
     assert np.allclose(output, new_output)
 
 

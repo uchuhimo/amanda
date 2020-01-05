@@ -1,10 +1,12 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import List
+from pathlib import Path
+from typing import List, Union
 
 import numpy as np
 from mmdnn.conversion.common.IR import graph_pb2
 
+from amanda.conversion.utils import to_proto
 from amanda.graph import Graph, Op
 from amanda.namespace import is_qualified
 
@@ -79,7 +81,10 @@ class MmdnnTensor:
     output_index: int
 
 
-def import_from_protobuf(graph_def: graph_pb2.GraphDef) -> Graph:
+def import_from_graph_def(
+    graph_def: Union[graph_pb2.GraphDef, str, bytes, Path]
+) -> Graph:
+    graph_def = to_proto(graph_def, graph_pb2.GraphDef)
     graph = Graph()
     name_to_node = {node.name: node for node in graph_def.node}
 
