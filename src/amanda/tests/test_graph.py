@@ -151,29 +151,7 @@ def test_copy_graph(simple_graph):
     graph.attrs["mutable"] = []
     for op in graph.ops:
         op.attrs["mutable"] = []
-    new_graph = copy.copy(graph)
-    new_graph.attrs["test"] = True
-    assert "test" in new_graph.attrs and "test" not in graph.attrs
-    new_graph.attrs["mutable"].append(1)
-    assert new_graph.attrs["mutable"] == [1] and graph.attrs["mutable"] == [1]
-    for op in new_graph.ops:
-        op.attrs["test"] = True
-        assert "test" in op.attrs and "test" in graph.get_op_by_name(op.name).attrs
-        op.attrs["mutable"].append(1)
-        assert op.attrs["mutable"] == [1] and graph.get_op_by_name(op.name).attrs[
-            "mutable"
-        ] == [1]
-    op = Op(attrs={"name": "test_tf_copy_graph"})
-    new_graph.add_op(op)
-    assert op in new_graph and op not in graph
-
-
-def test_duplicate_graph(simple_graph):
-    graph = simple_graph
-    graph.attrs["mutable"] = []
-    for op in graph.ops:
-        op.attrs["mutable"] = []
-    new_graph = graph.duplicate()
+    new_graph = graph.copy()
     new_graph.attrs["test"] = True
     assert "test" in new_graph.attrs and "test" not in graph.attrs
     new_graph.attrs["mutable"].append(1)

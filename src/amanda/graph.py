@@ -213,9 +213,6 @@ class Op(NamespaceMixin):
     def uuid(self) -> UUID:
         return self.attrs[internal_namespace().qualified("uuid")]
 
-    def __copy__(self):
-        return self.copy()
-
     def copy(self) -> "Op":
         """
         Return a shallow copy of the current op.
@@ -229,6 +226,9 @@ class Op(NamespaceMixin):
             control_dependencies=list(self.control_dependencies),
             output_num=self.output_num,
         )
+
+    def __copy__(self):
+        return self.copy()
 
     def deepcopy(self) -> "Op":
         """
@@ -512,6 +512,11 @@ class Graph(NamespaceMixin):
     def data_edges_from_tensor(self, tensor: Tensor) -> List[Edge]:
         return [edge for edge in tensor.output_edges if edge.dst_op in self]
 
+    def control_edges_from_op(self, op: Op) -> List[Edge]:
+        return [
+            ControlEdge(src=op, dst=dst) for dst in op.control_dependents if dst in self
+        ]
+
     def set_attr(self, attr: str, value: Any) -> None:
         for op in self.ops:
             op.attrs[attr] = value
@@ -560,38 +565,23 @@ class Graph(NamespaceMixin):
     def invalidate_cache(self):
         self._cached_post_order_ops = None
 
-    def __copy__(self):
-        return self.copy()
+    def to_namespace(self, namespace: Namespace, registry: Registry = None) -> "Graph":
+        if namespace == self.namespace:
+            return self
+        else:
+            registry = registry or get_global_registry()
+            return registry.get_mapper(self.namespace, namespace).map(self, namespace)
+
+    def to_default_namespace(self) -> "Graph":
+        return self.to_namespace(default_namespace())
 
     def copy(self) -> "Graph":
         """
         Return a shallow copy of the current graph.
-        Both ops and graph attribute values are not copied.
-        They will be shared between these two graphs.
-        If you don't want to share ops, you can use `Graph.duplicate` instead.
-        """
-        graph = Graph()
-        graph._ops = self._ops
-        graph._attrs = self.attrs.copy()
-        graph._name_to_op = self._name_to_op
-        graph._composite_ops = self._composite_ops
-        if self._cached_post_order_ops is not None:
-            graph._cached_post_order_ops = self._cached_post_order_ops
-        return graph
-
-    def dict(self):
-        return dict(ops=[op.dict() for op in self.ops], attrs=dict(self.attrs),)
-
-    def json(self):
-        return json.dumps(self.dict(), indent=4)
-
-    def duplicate(self) -> "Graph":
-        """
-        Return a duplicate of the current graph.
         Attribute values of graph and ops are not copied.
         They will be shared between these two graphs.
-        If you don't update the existed ops,
-        you can use `Graph.copy` instead to reduce copy overhead.
+        If you don't want to share attribute values,
+        you can use `Graph.deepcopy` instead.
         """
         new_graph = Graph(attrs=self.attrs.copy())
         for op in self.sorted_ops:
@@ -611,6 +601,9 @@ class Graph(NamespaceMixin):
             )
             new_graph.add_op(target_op)
         return new_graph
+
+    def __copy__(self):
+        return self.copy()
 
     def deepcopy(self) -> "Graph":
         """
@@ -638,12 +631,8 @@ class Graph(NamespaceMixin):
     def __deepcopy__(self, memodict={}):
         return self.deepcopy()
 
-    def to_namespace(self, namespace: Namespace, registry: Registry = None) -> "Graph":
-        if namespace == self.namespace:
-            return self
-        else:
-            registry = registry or get_global_registry()
-            return registry.get_mapper(self.namespace, namespace).map(self, namespace)
+    def dict(self):
+        return dict(ops=[op.dict() for op in self.ops], attrs=dict(self.attrs),)
 
-    def to_default_namespace(self) -> "Graph":
-        return self.to_namespace(default_namespace())
+    def json(self):
+        return json.dumps(self.dict(), indent=4)

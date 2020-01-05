@@ -38,7 +38,7 @@ class RuleMapper(Mapper):
         source_namespace = graph.namespace
         if namespace == source_namespace:
             return graph
-        new_graph = graph.duplicate()
+        new_graph = graph.copy()
         for name, value in new_graph.attrs.items():
             new_name = map_namespace(name, source_namespace, namespace)
             if name != new_name:
