@@ -72,6 +72,7 @@ run tests
 
 .. code-block:: bash
 
+   python src/amanda/tests/download_model.py
    pytest -n auto
 
 Run an example

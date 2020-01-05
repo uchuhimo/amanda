@@ -58,6 +58,7 @@ dephell deps tree pytest
 ### run tests
 
 ```bash
+python src/amanda/tests/download_model.py
 pytest -n auto
 ```
 

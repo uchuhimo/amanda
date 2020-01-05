@@ -1,7 +1,7 @@
 import pytest
 from filelock import FileLock
 
-from amanda.tests.utils import download_all_models
+from amanda.tests.download_model import download_all_models
 
 
 @pytest.fixture(scope="session")
