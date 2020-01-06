@@ -24,6 +24,7 @@ store_tensor_to_file = store_tensor_to_file_ops.store_tensor_to_file
 arch_name = "vgg16"
 prefix_dir = root_dir() / "tmp"
 original_checkpoint_dir = tf.train.latest_checkpoint(prefix_dir / "model" / arch_name)
+assert original_checkpoint_dir is not None
 modified_checkpoint_dir = prefix_dir / "modified_model" / arch_name / arch_name
 store_dir = root_dir() / "tmp" / "debug_info" / arch_name
 
