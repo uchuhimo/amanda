@@ -20,7 +20,7 @@ onnxruntime
 pip
 pre-commit
 protobuf
-pytest
+pytest<=5.1.1
 pytest-xdist
 six
 sphinx

@@ -92,7 +92,7 @@ black = { version = "*", allow-prereleases = true }
 isort = { version = "*", extras = [ "pyproject" ] }
 mypy = "*"
 pre-commit = "*"
-pytest = "*"
+pytest = "<= 5.1.1"
 pytest-xdist = "*"
 filelock = "*"
 tox="*"

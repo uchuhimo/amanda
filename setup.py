@@ -59,8 +59,8 @@ setup(
         "dev": [
             "black", "bump2version", "coverage[toml]", "dephell[full]",
             "filelock", "fissix", "flake8", "ipython", "isort[pyproject]",
-            "jsondiff", "mypy", "pip", "pre-commit", "pytest", "pytest-xdist",
-            "sphinx", "tox", "twine", "watchdog", "wheel"
+            "jsondiff", "mypy", "pip", "pre-commit", "pytest<=5.1.1",
+            "pytest-xdist", "sphinx", "tox", "twine", "watchdog", "wheel"
         ],
         "pytorch": ["torch==1.3.1", "torchvision==0.4.2"],
         "tensorflow": ["tensorflow==1.13.1"]
