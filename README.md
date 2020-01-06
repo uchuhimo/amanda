@@ -59,6 +59,7 @@ dephell deps tree pytest
 
 ```bash
 python src/amanda/tests/download_model.py
+make build_cc
 pytest -n auto
 ```
 

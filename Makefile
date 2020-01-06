@@ -23,6 +23,27 @@ export PRINT_HELP_PYSCRIPT
 
 BROWSER := python -c "$$BROWSER_PYSCRIPT"
 
+CXX := g++
+NVCC := nvcc
+PYTHON_BIN_PATH = python
+
+STORE_TENSOR_SRCS = $(wildcard cc/tensorflow/store_tensor_to_file/kernels/*.cc) $(wildcard cc/tensorflow/store_tensor_to_file/ops/*.cc)
+
+TF_CFLAGS := $(shell $(PYTHON_BIN_PATH) -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_compile_flags()))')
+TF_LFLAGS := $(shell $(PYTHON_BIN_PATH) -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_link_flags()))')
+
+CFLAGS = ${TF_CFLAGS} -fPIC -O2 -std=c++11
+LDFLAGS = -shared ${TF_LFLAGS}
+
+STORE_TENSOR_TARGET_LIB = cc/tensorflow/store_tensor_to_file/ops/store_tensor_to_file_ops.so
+
+store_tensor_op: $(STORE_TENSOR_TARGET_LIB)
+
+build_cc: store_tensor_op
+
+$(STORE_TENSOR_TARGET_LIB): $(STORE_TENSOR_SRCS)
+	$(CXX) $(CFLAGS) -o $@ $^ ${LDFLAGS}
+
 help:
 	@python -c "$$PRINT_HELP_PYSCRIPT" < $(MAKEFILE_LIST)
 
@@ -34,6 +55,7 @@ clean-build: ## remove build artifacts
 	rm -fr .eggs/
 	find . -name '*.egg-info' -exec rm -fr {} +
 	find . -name '*.egg' -exec rm -f {} +
+	rm -f $(STORE_TENSOR_TARGET_LIB)
 
 clean-pyc: ## remove Python file artifacts
 	find . -name '*.pyc' -exec rm -f {} +
@@ -52,10 +74,10 @@ clean-test: ## remove test and coverage artifacts
 lint: ## check style with flake8
 	flake8 src/amanda
 
-test: ## run tests quickly with the default Python
+test: build_cc ## run tests quickly with the default Python
 	pytest -n auto
 
-test-all: ## run tests on every Python version with tox
+test-all: build_cc ## run tests on every Python version with tox
 	tox
 
 coverage: ## check code coverage quickly with the default Python

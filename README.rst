@@ -73,6 +73,7 @@ run tests
 .. code-block:: bash
 
    python src/amanda/tests/download_model.py
+   make build_cc
    pytest -n auto
 
 Run an example

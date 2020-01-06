@@ -21,7 +21,7 @@ def store_as_numpy(input: np.array, store_dir: str, file_name: str):
 
 
 def modify_graph(graph: Graph):
-    store_dir = root_dir() / "tmp" / "debug_info" / arch_name
+    store_dir = root_dir() / "tmp" / "validation_info" / arch_name
     for op in graph.ops:
         for tensor in op.output_tensors:
             if not get_dtype(tensor)._is_ref_dtype:
