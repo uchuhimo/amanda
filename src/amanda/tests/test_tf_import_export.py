@@ -9,7 +9,6 @@ import tensorflow as tf
 
 from amanda import Graph, Op
 from amanda.conversion.tensorflow import (
-    diff_graph_def,
     export_to_checkpoint,
     export_to_graph,
     export_to_graph_def,
@@ -23,6 +22,7 @@ from amanda.conversion.tensorflow import (
     import_from_saved_model,
     import_from_tf_func,
 )
+from amanda.conversion.utils import diff_graph_def
 from amanda.tests.utils import root_dir
 
 
@@ -155,11 +155,14 @@ def test_tf_modify_graph_with_tf_func(arch_name):
 
 def check_modified_graph(graph_def, new_graph_def):
     graph_diff = diff_graph_def(graph_def, new_graph_def)
-    assert jsondiff.delete not in graph_diff
-    inserted_ops = graph_diff[jsondiff.insert]
+    assert [jsondiff.update] == list(graph_diff.keys())
+    assert {"node", "versions"} == set(graph_diff[jsondiff.update].keys())
+    node_diff = graph_diff[jsondiff.update]["node"]
+    assert jsondiff.delete not in node_diff
+    inserted_ops = node_diff[jsondiff.insert]
     assert np.all([node["op"] == "Identity" for node in inserted_ops.values()])
     inserted_op_names = {node["name"] for node in inserted_ops.values()}
-    updated_ops = graph_diff[jsondiff.update]
+    updated_ops = node_diff[jsondiff.update]
     for op_name, updated_op in updated_ops.items():
         assert [jsondiff.update] == list(updated_op.keys())
         assert ["input"] == list(updated_op[jsondiff.update].keys())
@@ -199,7 +202,9 @@ def test_tf_import_export_graph_def_with_saver(arch_name):
             graph = import_from_graph_def(graph_def, saver.saver_def)
             graph = graph.to_default_namespace()
     new_tf_graph, saver, session = export_to_graph(graph)
-    assert diff_graph_def(graph_def, new_tf_graph.as_graph_def()) == {}
+    assert diff_graph_def(graph_def, new_tf_graph.as_graph_def()) == {
+        jsondiff.update: {"versions": {}}
+    }
     with new_tf_graph.as_default(), session:
         saver.restore(session, checkpoint_file)
         new_output = session.run("MMdnn_Output:0", {"input:0": input})
@@ -235,10 +240,9 @@ def test_tf_import_export_saved_model(arch_name, tmp_path):
             tf.saved_model.load(
                 session, [tf.saved_model.tag_constants.SERVING], new_path
             )
-            assert (
-                diff_graph_def(tf_graph.as_graph_def(), new_tf_graph.as_graph_def())
-                == {}
-            )
+            assert diff_graph_def(
+                tf_graph.as_graph_def(), new_tf_graph.as_graph_def()
+            ) == {jsondiff.update: {"versions": {}}}
             new_output = session.run("MMdnn_Output:0", {"input:0": input})
     assert np.allclose(output, new_output)
 

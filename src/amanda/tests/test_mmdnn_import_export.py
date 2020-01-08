@@ -3,7 +3,7 @@ import tensorflow as tf
 from mmdnn.conversion.tensorflow.tensorflow_parser import TensorflowParser
 
 from amanda.conversion.mmdnn import export_to_graph_def, import_from_graph_def
-from amanda.conversion.tensorflow import diff_graph_def
+from amanda.conversion.utils import diff_graph_def
 from amanda.tests.utils import root_dir
 
 

@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 
 
 class Namespace:
@@ -8,10 +8,14 @@ class Namespace:
         self.namespace = namespace
 
     def qualified(self, name: str) -> str:
-        return f"/{self.namespace}/{get_base_name(name)}"
+        return f"/{self.namespace}::{get_base_name(name)}"
 
-    def __truediv__(self, other: "Namespace") -> "Namespace":
-        return Namespace(f"{self.namespace}/{other.namespace}")
+    def __truediv__(self, other: Union["Namespace", str]) -> "Namespace":
+        if isinstance(other, str):
+            namespace = other
+        else:
+            namespace = other.namespace
+        return Namespace(f"{self.namespace}/{namespace}")
 
     def __eq__(self, other):
         if isinstance(other, Namespace) and self.namespace == other.namespace:
@@ -29,14 +33,14 @@ def is_qualified(name: str) -> bool:
 
 def get_namespace(name: str) -> str:
     if is_qualified(name):
-        return name[1 : name.rfind("/")]
+        return name[1 : name.rfind("::")]
     else:
         return ""
 
 
 def get_base_name(name: str) -> str:
     if is_qualified(name):
-        return name[name.rfind("/") + 1 :]
+        return name[name.rfind("::") + 2 :]
     else:
         return name
 

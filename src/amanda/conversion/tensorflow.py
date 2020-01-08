@@ -1,15 +1,12 @@
 import copy
-import sys
-from contextlib import ExitStack, contextmanager
+from contextlib import ExitStack
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Union
 
 import google.protobuf.text_format
-import jsondiff
 import tensorflow as tf
-from google.protobuf import json_format
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework.op_def_pb2 import OpDef
 from tensorflow.core.protobuf.saver_pb2 import SaverDef
@@ -26,7 +23,7 @@ from tensorflow.python.framework.op_def_library import (
 )
 from tensorflow.python.util import compat
 
-from amanda.conversion.utils import to_proto
+from amanda.conversion.utils import diff_graph_def, to_proto
 from amanda.graph import Graph, Op, Tensor
 from amanda.namespace import (
     Namespace,
@@ -50,15 +47,17 @@ def tf_internal_namespace() -> Namespace:
 
 class ToDefaultRule(Rule):
     def apply(self, graph: Graph, op: Op) -> OpMapping:
-        op.name = op.attrs[tf_namespace().qualified("name")]
-        op.type = op.attrs[tf_namespace().qualified("type")]
+        for key in ["name", "type"]:
+            if tf_namespace().qualified(key) in op.attrs:
+                op.attrs[key] = op.attrs[tf_namespace().qualified(key)]
         return OpMapping(source_ops=[op], target_ops=[op])
 
 
 class ToTFRule(Rule):
     def apply(self, graph: Graph, op: Op) -> OpMapping:
-        op.name = op.attrs[default_namespace().qualified("name")]
-        op.type = op.attrs[default_namespace().qualified("type")]
+        for key in ["name", "type"]:
+            if default_namespace().qualified(key) in op.attrs:
+                op.attrs[key] = op.attrs[default_namespace().qualified(key)]
         return OpMapping(source_ops=[op], target_ops=[op])
 
 
@@ -147,7 +146,7 @@ def import_from_graph(
 
     for tf_op in tf_graph.get_operations():
         add_op(tf_op)
-    init_graph_attrs(graph)
+    init_graph_attrs(graph, graph_def)
     meta_graph.graph_def.Clear()
     graph.attrs[GraphAttrName.meta_graph] = meta_graph
     if session is not None:
@@ -155,8 +154,11 @@ def import_from_graph(
     return graph
 
 
-def init_graph_attrs(graph: Graph):
+def init_graph_attrs(graph: Graph, graph_def: tf.GraphDef):
     graph.namespace = tf_namespace()
+    for key in ["versions", "library"]:
+        if graph_def.HasField(key):
+            graph.attrs[key] = getattr(graph_def, key)
     graph.attrs[GraphAttrName.meta_graph] = tf.MetaGraphDef()
     graph.attrs[GraphAttrName.initialized_variables] = {}
     graph.attrs[GraphAttrName.lower_name_func] = lru_cache(maxsize=None)(
@@ -274,7 +276,7 @@ def import_from_graph_def(
 
         for node in graph_def.node:
             add_op(node)
-        init_graph_attrs(graph)
+        init_graph_attrs(graph, graph_def)
         return graph
 
 
@@ -456,6 +458,9 @@ def export_to_graph_def(graph: Graph) -> tf.GraphDef:
         graph = graph.to_default_namespace().to_namespace(tf_namespace())
     tf_graph = tf.Graph()
     graph_def = tf_graph.as_graph_def()
+    for key in ["versions", "library"]:
+        if key in graph.attrs:
+            getattr(graph_def, key).CopyFrom(graph.attrs[key])
     for op in graph.sorted_ops:
         attrs = without_internal_attrs(op.attrs)
         node = graph_def.node.add()
@@ -527,32 +532,6 @@ def get_diff_after_conversion(graph_def: tf.GraphDef) -> Dict[str, Any]:
     graph = import_from_graph_def(graph_def)
     new_graph_def = export_to_graph_def(graph)
     return diff_graph_def(graph_def, new_graph_def)
-
-
-def graph_def_to_dict(graph_def: tf.GraphDef) -> Dict[str, Any]:
-    return {
-        node.name: json_format.MessageToDict(node, preserving_proto_field_name=True)
-        for node in graph_def.node
-    }
-
-
-@contextmanager
-def recursionlimit(limit: int):
-    old_limit = sys.getrecursionlimit()
-    try:
-        sys.setrecursionlimit(limit)
-        yield None
-    finally:
-        sys.setrecursionlimit(old_limit)
-
-
-def diff_graph_def(graph_def1: tf.GraphDef, graph_def2: tf.GraphDef) -> Dict[str, Any]:
-    with recursionlimit(10000):
-        return jsondiff.diff(
-            graph_def_to_dict(graph_def1),
-            graph_def_to_dict(graph_def2),
-            syntax="explicit",
-        )
 
 
 def to_attrs_proto(
