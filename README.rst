@@ -162,20 +162,6 @@ run tests
    make build_cc
    pytest -n auto
 
-Update dependencies
-^^^^^^^^^^^^^^^^^^^
-
-.. code-block:: bash
-
-   poetry update
-
-Bump version
-^^^^^^^^^^^^
-
-.. code-block:: bash
-
-   bumpversion minor  # major, minor, patch
-
 Show information about installed packages
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -191,3 +177,17 @@ Show dependency tree
    dephell deps tree
    # or
    dephell deps tree pytest
+
+Update dependencies
+^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: bash
+
+   poetry update
+
+Bump version
+^^^^^^^^^^^^
+
+.. code-block:: bash
+
+   bumpversion minor  # major, minor, patch

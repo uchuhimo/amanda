@@ -139,18 +139,6 @@ make build_cc
 pytest -n auto
 ```
 
-### Update dependencies
-
-```bash
-poetry update
-```
-
-### Bump version
-
-```bash
-bumpversion minor  # major, minor, patch
-```
-
 ### Show information about installed packages
 
 ```bash
@@ -163,4 +151,16 @@ poetry show
 dephell deps tree
 # or
 dephell deps tree pytest
+```
+
+### Update dependencies
+
+```bash
+poetry update
+```
+
+### Bump version
+
+```bash
+bumpversion minor  # major, minor, patch
 ```
