@@ -46,8 +46,11 @@ steps:
 - script: poetry install -E all
   displayName: 'Install dependencies'
 
+- script: poetry run python src/amanda/tests/download_model.py
+  displayName: 'Download models'
+
 - script: poetry run make build_cc
   displayName: 'Build C++ code'
 
-- script: poetry run pytest -n auto
+- script: poetry run pytest
   displayName: 'Run pytest'
