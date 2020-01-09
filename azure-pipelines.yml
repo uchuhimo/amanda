@@ -19,7 +19,7 @@ steps:
 - task: Cache@2
   inputs:
     key: 'poetry | "$(Agent.OS)" | "$(python.version)" | poetry.lock'
-    path: ${HOME}/.cache/pypoetry/virtualenvs
+    path: /home/vsts/.cache/pypoetry/virtualenvs
     restoreKeys: |
       poetry | "$(Agent.OS)" | "$(python.version)"
   displayName: Cache pip packages
