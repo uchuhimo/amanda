@@ -13,7 +13,7 @@ def arch_name(request):
 
 
 def test_tflite_import_export(arch_name):
-    model_dir = root_dir() / "tmp" / "tflite_model" / arch_name
+    model_dir = root_dir() / "downloads" / "tflite_model" / arch_name
     interpreter = tf.lite.Interpreter(model_path=str(model_dir / f"{arch_name}.tflite"))
     interpreter.allocate_tensors()
     input_details = interpreter.get_input_details()

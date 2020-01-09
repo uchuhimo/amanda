@@ -15,7 +15,7 @@ def arch_name(request):
 
 
 def test_onnx_import_export(arch_name, tmp_path):
-    model_dir = root_dir() / "tmp" / "onnx_model" / arch_name
+    model_dir = root_dir() / "downloads" / "onnx_model" / arch_name
     model_path = str(model_dir / f"{arch_name}.onnx")
     new_model_path = tmp_path / "model.onnx"
     model_def = onnx.load(str(model_path))

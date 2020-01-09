@@ -83,18 +83,19 @@ def modify_graph_with_tf_func(graph: Graph):
 
 
 def modify_model(arch_name, output_model_dir, modify_graph_func):
-    prefix_dir = root_dir() / "tmp"
-    original_checkpoint = tf.train.latest_checkpoint(prefix_dir / "model" / arch_name)
+    original_checkpoint = tf.train.latest_checkpoint(
+        root_dir() / "downloads" / "model" / arch_name
+    )
     print(f">>>>>>>>>>>>>>>> import from the original checkpoint {original_checkpoint}")
     graph = import_from_checkpoint(original_checkpoint)
     modify_graph_func(graph)
-    modified_checkpoint = prefix_dir / output_model_dir / arch_name / arch_name
+    modified_checkpoint = root_dir() / "tmp" / output_model_dir / arch_name / arch_name
     export_to_checkpoint(graph, modified_checkpoint)
     print(f">>>>>>>>>>>>>>>> export to the modified checkpoint {modified_checkpoint}")
 
 
 def run_model(arch_name, model_dir, input):
-    checkpoint_dir = root_dir() / "tmp" / model_dir / arch_name
+    checkpoint_dir = root_dir() / model_dir / arch_name
     if not checkpoint_dir.exists():
         raise FileNotFoundError(f"{checkpoint_dir} is not existed")
     checkpoint_file = tf.train.latest_checkpoint(checkpoint_dir)
@@ -133,10 +134,10 @@ input_shapes = {
 
 def test_tf_modify_graph(arch_name):
     input = np.random.rand(*input_shapes[arch_name])
-    output, graph_def = run_model(arch_name, model_dir="model", input=input)
+    output, graph_def = run_model(arch_name, model_dir="downloads/model", input=input)
     modify_model(arch_name, "modified_graph", modify_graph_with_primitive_api)
     new_output, new_graph_def = run_model(
-        arch_name, model_dir="modified_graph", input=input
+        arch_name, model_dir="tmp/modified_graph", input=input
     )
     check_modified_graph(graph_def, new_graph_def)
     assert np.allclose(output, new_output)
@@ -144,10 +145,10 @@ def test_tf_modify_graph(arch_name):
 
 def test_tf_modify_graph_with_tf_func(arch_name):
     input = np.random.rand(*input_shapes[arch_name])
-    output, graph_def = run_model(arch_name, model_dir="model", input=input)
+    output, graph_def = run_model(arch_name, model_dir="downloads/model", input=input)
     modify_model(arch_name, "modified_graph_with_tf_func", modify_graph_with_tf_func)
     new_output, new_graph_def = run_model(
-        arch_name, model_dir="modified_graph_with_tf_func", input=input
+        arch_name, model_dir="tmp/modified_graph_with_tf_func", input=input
     )
     check_modified_graph(graph_def, new_graph_def)
     assert np.allclose(output, new_output)
@@ -182,7 +183,7 @@ def check_modified_graph(graph_def, new_graph_def):
 
 
 def test_tf_import_export_graph_def(arch_name):
-    checkpoint_dir = root_dir() / "tmp" / "model" / arch_name
+    checkpoint_dir = root_dir() / "downloads" / "model" / arch_name
     checkpoint_file = tf.train.latest_checkpoint(checkpoint_dir)
     with tf.Graph().as_default() as tf_graph:
         tf.train.import_meta_graph(checkpoint_file + ".meta")
@@ -190,7 +191,7 @@ def test_tf_import_export_graph_def(arch_name):
 
 
 def test_tf_import_export_graph_def_with_saver(arch_name):
-    checkpoint_dir = root_dir() / "tmp" / "model" / arch_name
+    checkpoint_dir = root_dir() / "downloads" / "model" / arch_name
     checkpoint_file = tf.train.latest_checkpoint(checkpoint_dir)
     input = np.random.rand(*input_shapes[arch_name])
     with tf.Graph().as_default() as tf_graph:
@@ -212,7 +213,7 @@ def test_tf_import_export_graph_def_with_saver(arch_name):
 
 
 def test_tf_import_export_saved_model(arch_name, tmp_path):
-    checkpoint_dir = root_dir() / "tmp" / "model" / arch_name
+    checkpoint_dir = root_dir() / "downloads" / "model" / arch_name
     checkpoint_file = tf.train.latest_checkpoint(checkpoint_dir)
     input = np.random.rand(*input_shapes[arch_name])
     path = str(tmp_path / arch_name)
@@ -248,7 +249,7 @@ def test_tf_import_export_saved_model(arch_name, tmp_path):
 
 
 def test_tf_import_export_graph_pbtxt(arch_name, tmp_path):
-    checkpoint_dir = root_dir() / "tmp" / "model" / arch_name
+    checkpoint_dir = root_dir() / "downloads" / "model" / arch_name
     checkpoint_file = tf.train.latest_checkpoint(checkpoint_dir)
     with tf.Graph().as_default() as tf_graph:
         tf.train.import_meta_graph(checkpoint_file + ".meta")

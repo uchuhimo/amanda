@@ -22,10 +22,11 @@ store_tensor_to_file_ops = load_library.load_op_library(
 store_tensor_to_file = store_tensor_to_file_ops.store_tensor_to_file
 
 arch_name = "vgg16"
-prefix_dir = root_dir() / "tmp"
-original_checkpoint_dir = tf.train.latest_checkpoint(prefix_dir / "model" / arch_name)
+original_checkpoint_dir = tf.train.latest_checkpoint(
+    root_dir() / "downloads" / "model" / arch_name
+)
 assert original_checkpoint_dir is not None
-modified_checkpoint_dir = prefix_dir / "modified_model" / arch_name / arch_name
+modified_checkpoint_dir = root_dir() / "tmp" / "modified_model" / arch_name / arch_name
 store_dir = root_dir() / "tmp" / "debug_info" / arch_name
 
 if not Path(store_dir).exists():
@@ -63,11 +64,11 @@ def modify_graph(graph):
 
 def main():
     input = np.random.rand(1, 224, 224, 3)
-    output, _ = run_model(arch_name, model_dir="model", input=input)
+    output, _ = run_model(arch_name, model_dir="downloads/model", input=input)
     graph = import_from_checkpoint(original_checkpoint_dir)
     modify_graph(graph)
     export_to_checkpoint(graph, modified_checkpoint_dir)
-    new_output, _ = run_model(arch_name, model_dir="modified_model", input=input)
+    new_output, _ = run_model(arch_name, model_dir="tmp/modified_model", input=input)
     assert np.allclose(output, new_output, atol=1.0e-5)
 
 

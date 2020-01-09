@@ -42,10 +42,10 @@ def modify_graph(graph: Graph):
 
 def main(arch_name):
     input = np.random.rand(1, 224, 224, 3)
-    output, _ = run_model(arch_name, model_dir="model", input=input)
+    output, _ = run_model(arch_name, model_dir="downloads/model", input=input)
     modify_model(arch_name, "modified_model_with_py_func", modify_graph)
     new_output, _ = run_model(
-        arch_name, model_dir="modified_model_with_py_func", input=input
+        arch_name, model_dir="tmp/modified_model_with_py_func", input=input
     )
     assert np.allclose(output, new_output, atol=1.0e-5)
 

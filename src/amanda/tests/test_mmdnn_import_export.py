@@ -33,7 +33,7 @@ def arch_name(request):
 
 # this function tests transformation between IR of MMdnn and IR of amanda
 def test_mmdnn_import_export(arch_name):
-    checkpoint_dir = root_dir() / "tmp" / "model" / arch_name
+    checkpoint_dir = root_dir() / "downloads" / "model" / arch_name
     # convert downloaded model to MMdnn IR
     parser = TensorflowParser(
         tf.train.latest_checkpoint(checkpoint_dir) + ".meta",
