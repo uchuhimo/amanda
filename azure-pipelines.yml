@@ -21,8 +21,14 @@ steps:
     versionSpec: '$(python.version)'
   displayName: 'Use Python $(python.version)'
 
-- script: pip install tox
-  displayName: 'Install Tox'
+- script: pip install poetry
+  displayName: 'Install poetry'
 
-- script: tox -e py
-  displayName: 'Run Tox'
+- script: poetry install -E all
+  displayName: 'Install dependencies'
+
+- script: make build_cc
+  displayName: 'Build C++ code'
+
+- script: pytest -n auto
+  displayName: 'Run pytest'
