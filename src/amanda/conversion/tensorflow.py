@@ -504,7 +504,7 @@ def export_to_pbtxt(graph: Graph, file: Union[str, Path] = None) -> str:
 def export_to_checkpoint(graph: Graph, path: Union[str, Path]) -> None:
     path = Path(path)
     if not path.parent.exists():
-        path.parent.mkdir(mode=0o755, parents=True)
+        path.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
     tf_graph, saver, session = export_to_graph(graph)
     with session, tf_graph.as_default():
         if saver is None:
@@ -517,7 +517,7 @@ def export_to_saved_model(
 ) -> None:
     path = Path(path)
     if not path.parent.exists():
-        path.parent.mkdir(mode=0o755, parents=True)
+        path.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
     tf_graph, saver, session = export_to_graph(graph)
     path = str(path)
     builder = tf.saved_model.builder.SavedModelBuilder(path)

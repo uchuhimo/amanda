@@ -10,7 +10,7 @@ from amanda.tests.utils import root_dir
 def download_tf_model(arch_name, model_dir):
     full_model_dir = root_dir() / "downloads" / model_dir
     if not full_model_dir.exists():
-        full_model_dir.mkdir(mode=0o755, parents=True)
+        full_model_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
     if not (full_model_dir / arch_name / "checkpoint").exists():
         tensorflow_extractor.download(arch_name, str(full_model_dir / arch_name) + "/")
 
@@ -59,7 +59,7 @@ onnx_arch_map = {
 def download_onnx_model(arch_name, model_dir):
     full_model_dir = root_dir() / "downloads" / model_dir
     if not full_model_dir.exists():
-        full_model_dir.mkdir(mode=0o755, parents=True)
+        full_model_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
     download_file(
         onnx_arch_map[arch_name]["url"],
         directory=str(full_model_dir) + "/",
@@ -101,7 +101,7 @@ tflite_arch_map = {
 def download_tflite_model(arch_name, model_dir):
     full_model_dir = root_dir() / "downloads" / model_dir
     if not full_model_dir.exists():
-        full_model_dir.mkdir(mode=0o755, parents=True)
+        full_model_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
     download_file(
         tflite_arch_map[arch_name]["url"],
         directory=str(full_model_dir / arch_name) + "/",
