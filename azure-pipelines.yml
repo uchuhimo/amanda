@@ -22,10 +22,10 @@ variables:
 steps:
 - task: Cache@2
   inputs:
-    key: poetry | $(Agent.OS) | $(python.version) | poetry.lock
+    key: 'poetry | "$(Agent.OS)" | "$(python.version)" | poetry.lock'
     path: $(POETRY_CACHE_FOLDER)
     restoreKeys: |
-      poetry | $(Agent.OS) | $(python.version)
+      poetry | "$(Agent.OS)" | "$(python.version)"
   displayName: Cache pip packages
 
 - task: Cache@2
