@@ -16,8 +16,7 @@ strategy:
       python.version: '3.7'
 
 variables:
-  POETRY_CACHE_FOLDER: $(Agent.HomeDirectory)/.cache/pypoetry/virtualenvs
-  MODEL_CACHE_FOLDER: $(System.DefaultWorkingDirectory)/downloads
+  POETRY_CACHE_FOLDER: $HOME/.cache/pypoetry/virtualenvs
 
 steps:
 - task: Cache@2
@@ -27,13 +26,6 @@ steps:
     restoreKeys: |
       poetry | "$(Agent.OS)" | "$(python.version)"
   displayName: Cache pip packages
-
-- task: Cache@2
-  inputs:
-    key: model
-    path: $(MODEL_CACHE_FOLDER)
-    restoreKeys: model
-  displayName: Cache models
 
 - task: UsePythonVersion@0
   inputs:
