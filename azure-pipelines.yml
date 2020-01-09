@@ -16,9 +16,12 @@ strategy:
       python.version: '3.7'
 
 variables:
-  POETRY_CACHE_FOLDER: $HOME/.cache/pypoetry/virtualenvs
+  POETRY_CACHE_FOLDER: ${HOME}/.cache/pypoetry/virtualenvs
 
 steps:
+- script: echo $(POETRY_CACHE_FOLDER)
+  displayName: 'show POETRY_CACHE_FOLDER'
+
 - task: Cache@2
   inputs:
     key: 'poetry | "$(Agent.OS)" | "$(python.version)" | poetry.lock'
