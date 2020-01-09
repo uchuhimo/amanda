@@ -73,11 +73,11 @@ def import_from_model_def(model_def: Union[onnx.ModelProto, str, bytes, Path]) -
         "model_version",
         "doc_string",
     ]:
-        model_key = f"model/{key}"
+        model_key = f"model:{key}"
         if model_def.HasField(key):
             graph.attrs[model_key] = getattr(model_def, key)
     for key in ["opset_import", "metadata_props"]:
-        model_key = f"model/{key}"
+        model_key = f"model:{key}"
         graph.attrs[model_key] = list(getattr(model_def, key))
     return graph
 
@@ -173,11 +173,11 @@ def export_to_model_def(graph: Graph, file: Union[str, Path] = None) -> onnx.Mod
         "model_version",
         "doc_string",
     ]:
-        model_key = f"model/{key}"
+        model_key = f"model:{key}"
         if model_key in graph.attrs:
             setattr(model_def, key, graph.attrs[model_key])
     for key in ["opset_import", "metadata_props"]:
-        model_key = f"model/{key}"
+        model_key = f"model:{key}"
         getattr(model_def, key).extend(graph.attrs[model_key])
     if file is not None:
         onnx.save(model_def, str(file))
