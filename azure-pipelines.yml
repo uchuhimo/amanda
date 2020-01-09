@@ -24,7 +24,9 @@ steps:
 - script: pip install poetry
   displayName: 'Install poetry'
 
-- script: poetry install -E all
+- script: |
+    poetry env use system
+    poetry install -E all
   displayName: 'Install dependencies'
 
 - script: make build_cc
