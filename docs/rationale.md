@@ -44,29 +44,42 @@ According to the pipeline, there are three instrumentation approaches for neural
 
 Because the computation graph is the currency in the DL world.
 On the one hand, the source code of a neural network is only available during training but unavailable during serving; on the other hand, the compiled binary and the serving engine are unavailable during training.
-The serialized computation graph, as an well-defined exchange format, acts as a bridge between the training stage and the serving stage.
-An instrumentation tool for computation graph can serve scenarios in either stages.
+The serialized computation graph, which is an well-defined exchange format, acts as a bridge between the training stage and the serving stage.
+Thus an instrumentation tool designed around the computation graph can serve scenarios in either stages.
 
 ## Wait. Are we reinventing the wheel?
 
 There are many existed works that provides some sort of graph instrumentation tools for neural networks:
 
-- **ONNX**
-- **MMdnn**
-- **MLIR**
+- **ONNX(common graph format)** is an open computation graph exchange format supported by many DL frameworks. It proposes a common IR that other DL frameworks can convert their training graph to. Some instrumentation tools are provided out of box, including graph validation, graph optimization and shape inference.
+- **MLIR(compiler infrastructure)** is a compiler IR that aimed to serve as a common infrastructure for different DL compilers. It enables instrumentation for its IR by providing a DAG rewriter infrastructure.
+- **MMdnn(domain specific tool)** is an model conversion framework that supports many frameworks, each of which has its own graph format. It avoids the engineering complexity of implementing a separate converter for each pair of two frameworks by introducing a common IR.
+
+All of them are not designed specially for graph instrumentation, but they indeed provide an infrastructure (mainly the proposed common IR) to build a full-featured graph instrumentation framework upon.
+
+Can we directly reuse their infrastructures without propose ours?
+To answer this question, let's induce the design principle behind their IRs.
+In general, an graph IR consists of three components:
+
+- a definition of the computation graph structure
+- definitions of a type system
+- definitions of built-in operations
+
+The design principle of all of them is that their IR is strict in all these three components.
+It means that all frameworks are force to convert to the IR's graph structure, type system, and operations to access their infrastructure.
+Let's call this design principle a "Grand Unified IR" (GUIR) approach for short.
 
 ## Why does the "Grand Unified IR" approach not work?
 
-- source instrumentation
-- superset approach
+Theoretically, it is a feasible approach, provided every operation in every framework can be defined in the IR spec.
+In practice, however, the GUIR approach doesn't work.
+Let's take ONNX as an example.
+ONNX is aimed to be an standard exchange format, and many companies invest a huge amount of time and money to extend its supported operations.
+However, there are only about 137 operators in ONNX v1.5, while TensorFlow r1.13 has more than 500.
+There are two reasons for the lack of operators:
 
-
-IR:
-
-- an structure specification
-- an operation specification
-
-loose vs strict
+- **The engineering complexity is unacceptable.** To support a common IR other than its own IR in every framework means that every operations should be defined twice. One in its own IR, another in the common IR. And every framework should do so. Thus every framework tends to support only a common subset among all frameworks in the common IR.
+- ****
 
 ## Our approach: small compromises, huge gains
 
