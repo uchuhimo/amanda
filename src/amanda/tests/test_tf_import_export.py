@@ -265,8 +265,13 @@ def test_tf_import_export_graph_pbtxt(arch_name, tmp_path):
     assert diff_graph_def(graph_def, new_graph_def) == {}
 
 
-def test_tf_import_export_partitioned_graph():
-    pbtxt_file = root_dir() / "src" / "amanda" / "tests" / "partition-graphs-0.pbtxt"
+@pytest.fixture(params=["partition-graphs-0.pbtxt", "placer_input_1.pbtxt"])
+def partitioned_graph_file(request):
+    return request.param
+
+
+def test_tf_import_export_partitioned_graph(partitioned_graph_file):
+    pbtxt_file = root_dir() / "src" / "amanda" / "tests" / partitioned_graph_file
     graph_def = tf.GraphDef()
     google.protobuf.text_format.Parse(Path(pbtxt_file).read_text(), graph_def)
     graph = import_from_graph_def(graph_def)

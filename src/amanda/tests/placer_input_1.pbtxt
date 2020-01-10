@@ -1,0 +1,3108 @@
+node {
+  name: "SuperScaler_SubgraphData/SuperScaler_SubgraphData/images/shape"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 4
+          }
+        }
+        tensor_content: "\200\000\000\000 \000\000\000 \000\000\000\003\000\000\000"
+      }
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphData/SuperScaler_SubgraphData/images/mean"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphData/SuperScaler_SubgraphData/images/stddev"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphData/SuperScaler_SubgraphData/images/RandomStandardNormal"
+  op: "RandomStandardNormal"
+  input: "SuperScaler_SubgraphData/SuperScaler_SubgraphData/images/shape"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "seed"
+    value {
+      i: 0
+    }
+  }
+  attr {
+    key: "seed2"
+    value {
+      i: 0
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphData/SuperScaler_SubgraphData/images/mul"
+  op: "Mul"
+  input: "SuperScaler_SubgraphData/SuperScaler_SubgraphData/images/RandomStandardNormal"
+  input: "SuperScaler_SubgraphData/SuperScaler_SubgraphData/images/stddev"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphData/SuperScaler_SubgraphData/images"
+  op: "Add"
+  input: "SuperScaler_SubgraphData/SuperScaler_SubgraphData/images/mul"
+  input: "SuperScaler_SubgraphData/SuperScaler_SubgraphData/images/mean"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphData/SuperScaler_SubgraphData/labels"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 128
+          }
+        }
+        float_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphConvs/conv1_weights"
+  op: "VariableV2"
+  device: "/job:localhost/replica:0/task:0/device:GPU:0"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@SuperScaler_SubgraphConvs/conv1_weights"
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        dim {
+          size: 5
+        }
+        dim {
+          size: 5
+        }
+        dim {
+          size: 3
+        }
+        dim {
+          size: 64
+        }
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: ""
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphConvs/conv1_weights/read"
+  op: "Identity"
+  input: "SuperScaler_SubgraphConvs/conv1_weights"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@SuperScaler_SubgraphConvs/conv1_weights"
+      }
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_matmul"
+  op: "Conv2D"
+  input: "SuperScaler_SubgraphData/SuperScaler_SubgraphData/images"
+  input: "SuperScaler_SubgraphConvs/conv1_weights/read"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "data_format"
+    value {
+      s: "NHWC"
+    }
+  }
+  attr {
+    key: "dilations"
+    value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+      }
+    }
+  }
+  attr {
+    key: "explicit_paddings"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "padding"
+    value {
+      s: "SAME"
+    }
+  }
+  attr {
+    key: "strides"
+    value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+      }
+    }
+  }
+  attr {
+    key: "use_cudnn_on_gpu"
+    value {
+      b: true
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphConvs/conv1_biases"
+  op: "VariableV2"
+  device: "/job:localhost/replica:0/task:0/device:GPU:0"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@SuperScaler_SubgraphConvs/conv1_biases"
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        dim {
+          size: 64
+        }
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: ""
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphConvs/conv1_biases/read"
+  op: "Identity"
+  input: "SuperScaler_SubgraphConvs/conv1_biases"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@SuperScaler_SubgraphConvs/conv1_biases"
+      }
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_add"
+  op: "BiasAdd"
+  input: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_matmul"
+  input: "SuperScaler_SubgraphConvs/conv1_biases/read"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "data_format"
+    value {
+      s: "NHWC"
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_relu"
+  op: "Relu"
+  input: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_add"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/pool1"
+  op: "MaxPool"
+  input: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_relu"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "data_format"
+    value {
+      s: "NHWC"
+    }
+  }
+  attr {
+    key: "ksize"
+    value {
+      list {
+        i: 1
+        i: 3
+        i: 3
+        i: 1
+      }
+    }
+  }
+  attr {
+    key: "padding"
+    value {
+      s: "SAME"
+    }
+  }
+  attr {
+    key: "strides"
+    value {
+      list {
+        i: 1
+        i: 2
+        i: 2
+        i: 1
+      }
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/norm1"
+  op: "LRN"
+  input: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/pool1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "alpha"
+    value {
+      f: 0.000111111112
+    }
+  }
+  attr {
+    key: "beta"
+    value {
+      f: 0.75
+    }
+  }
+  attr {
+    key: "bias"
+    value {
+      f: 1
+    }
+  }
+  attr {
+    key: "depth_radius"
+    value {
+      i: 4
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphConvs/conv2_weights"
+  op: "VariableV2"
+  device: "/job:localhost/replica:0/task:0/device:GPU:0"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@SuperScaler_SubgraphConvs/conv2_weights"
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        dim {
+          size: 5
+        }
+        dim {
+          size: 5
+        }
+        dim {
+          size: 64
+        }
+        dim {
+          size: 64
+        }
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: ""
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphConvs/conv2_weights/read"
+  op: "Identity"
+  input: "SuperScaler_SubgraphConvs/conv2_weights"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@SuperScaler_SubgraphConvs/conv2_weights"
+      }
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_matmul"
+  op: "Conv2D"
+  input: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/norm1"
+  input: "SuperScaler_SubgraphConvs/conv2_weights/read"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "data_format"
+    value {
+      s: "NHWC"
+    }
+  }
+  attr {
+    key: "dilations"
+    value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+      }
+    }
+  }
+  attr {
+    key: "explicit_paddings"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "padding"
+    value {
+      s: "SAME"
+    }
+  }
+  attr {
+    key: "strides"
+    value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+      }
+    }
+  }
+  attr {
+    key: "use_cudnn_on_gpu"
+    value {
+      b: true
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphConvs/conv2_biases"
+  op: "VariableV2"
+  device: "/job:localhost/replica:0/task:0/device:GPU:0"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@SuperScaler_SubgraphConvs/conv2_biases"
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        dim {
+          size: 64
+        }
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: ""
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphConvs/conv2_biases/read"
+  op: "Identity"
+  input: "SuperScaler_SubgraphConvs/conv2_biases"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@SuperScaler_SubgraphConvs/conv2_biases"
+      }
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_add"
+  op: "BiasAdd"
+  input: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_matmul"
+  input: "SuperScaler_SubgraphConvs/conv2_biases/read"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "data_format"
+    value {
+      s: "NHWC"
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_relu"
+  op: "Relu"
+  input: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_add"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/norm2"
+  op: "LRN"
+  input: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_relu"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "alpha"
+    value {
+      f: 0.000111111112
+    }
+  }
+  attr {
+    key: "beta"
+    value {
+      f: 0.75
+    }
+  }
+  attr {
+    key: "bias"
+    value {
+      f: 1
+    }
+  }
+  attr {
+    key: "depth_radius"
+    value {
+      i: 4
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/pool2"
+  op: "MaxPool"
+  input: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/norm2"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "data_format"
+    value {
+      s: "NHWC"
+    }
+  }
+  attr {
+    key: "ksize"
+    value {
+      list {
+        i: 1
+        i: 3
+        i: 3
+        i: 1
+      }
+    }
+  }
+  attr {
+    key: "padding"
+    value {
+      s: "SAME"
+    }
+  }
+  attr {
+    key: "strides"
+    value {
+      list {
+        i: 1
+        i: 2
+        i: 2
+        i: 1
+      }
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/reshape/shape"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 2
+          }
+        }
+        tensor_content: "\200\000\000\000\377\377\377\377"
+      }
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/reshape"
+  op: "Reshape"
+  input: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/pool2"
+  input: "SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/reshape/shape"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tshape"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphFCs/dense3_weights"
+  op: "VariableV2"
+  device: "/job:localhost/replica:0/task:0/device:GPU:0"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@SuperScaler_SubgraphFCs/dense3_weights"
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        dim {
+          size: 4096
+        }
+        dim {
+          size: 384
+        }
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: ""
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphFCs/dense3_weights/read"
+  op: "Identity"
+  input: "SuperScaler_SubgraphFCs/dense3_weights"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@SuperScaler_SubgraphFCs/dense3_weights"
+      }
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphFCs/dense3_biases"
+  op: "VariableV2"
+  device: "/job:localhost/replica:0/task:0/device:GPU:0"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@SuperScaler_SubgraphFCs/dense3_biases"
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        dim {
+          size: 384
+        }
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: ""
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphFCs/dense3_biases/read"
+  op: "Identity"
+  input: "SuperScaler_SubgraphFCs/dense3_biases"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@SuperScaler_SubgraphFCs/dense3_biases"
+      }
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_matmul"
+  op: "MatMul"
+  input: "SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/reshape"
+  input: "SuperScaler_SubgraphFCs/dense3_weights/read"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "transpose_a"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "transpose_b"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_add"
+  op: "BiasAdd"
+  input: "SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_matmul"
+  input: "SuperScaler_SubgraphFCs/dense3_biases/read"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "data_format"
+    value {
+      s: "NHWC"
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_relu"
+  op: "Relu"
+  input: "SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_add"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphFCs/dense4_weights"
+  op: "VariableV2"
+  device: "/job:localhost/replica:0/task:0/device:GPU:0"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@SuperScaler_SubgraphFCs/dense4_weights"
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        dim {
+          size: 384
+        }
+        dim {
+          size: 192
+        }
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: ""
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphFCs/dense4_weights/read"
+  op: "Identity"
+  input: "SuperScaler_SubgraphFCs/dense4_weights"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@SuperScaler_SubgraphFCs/dense4_weights"
+      }
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphFCs/dense4_biases"
+  op: "VariableV2"
+  device: "/job:localhost/replica:0/task:0/device:GPU:0"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@SuperScaler_SubgraphFCs/dense4_biases"
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        dim {
+          size: 192
+        }
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: ""
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphFCs/dense4_biases/read"
+  op: "Identity"
+  input: "SuperScaler_SubgraphFCs/dense4_biases"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@SuperScaler_SubgraphFCs/dense4_biases"
+      }
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_matmul"
+  op: "MatMul"
+  input: "SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_relu"
+  input: "SuperScaler_SubgraphFCs/dense4_weights/read"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "transpose_a"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "transpose_b"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_add"
+  op: "BiasAdd"
+  input: "SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_matmul"
+  input: "SuperScaler_SubgraphFCs/dense4_biases/read"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "data_format"
+    value {
+      s: "NHWC"
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_relu"
+  op: "Relu"
+  input: "SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_add"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphFCs/softmax_linear_weights"
+  op: "VariableV2"
+  device: "/job:localhost/replica:0/task:0/device:GPU:0"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@SuperScaler_SubgraphFCs/softmax_linear_weights"
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        dim {
+          size: 192
+        }
+        dim {
+          size: 10
+        }
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: ""
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphFCs/softmax_linear_weights/read"
+  op: "Identity"
+  input: "SuperScaler_SubgraphFCs/softmax_linear_weights"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@SuperScaler_SubgraphFCs/softmax_linear_weights"
+      }
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphFCs/softmax_linear_biases"
+  op: "VariableV2"
+  device: "/job:localhost/replica:0/task:0/device:GPU:0"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@SuperScaler_SubgraphFCs/softmax_linear_biases"
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        dim {
+          size: 10
+        }
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: ""
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphFCs/softmax_linear_biases/read"
+  op: "Identity"
+  input: "SuperScaler_SubgraphFCs/softmax_linear_biases"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@SuperScaler_SubgraphFCs/softmax_linear_biases"
+      }
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/softmax_matmul"
+  op: "MatMul"
+  input: "SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_relu"
+  input: "SuperScaler_SubgraphFCs/softmax_linear_weights/read"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "transpose_a"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "transpose_b"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/softmax_add"
+  op: "BiasAdd"
+  input: "SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/softmax_matmul"
+  input: "SuperScaler_SubgraphFCs/softmax_linear_biases/read"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "data_format"
+    value {
+      s: "NHWC"
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphLoss/SuperScaler_Backward_SubgraphBpLoss/labels_cast"
+  op: "Cast"
+  input: "SuperScaler_SubgraphData/SuperScaler_SubgraphData/labels"
+  attr {
+    key: "DstT"
+    value {
+      type: DT_INT64
+    }
+  }
+  attr {
+    key: "SrcT"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Truncate"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphLoss/SuperScaler_Backward_SubgraphBpLoss/cross_entropy_per_example/cross_entropy_per_example"
+  op: "SparseSoftmaxCrossEntropyWithLogits"
+  input: "SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/softmax_add"
+  input: "SuperScaler_SubgraphLoss/SuperScaler_Backward_SubgraphBpLoss/labels_cast"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tlabels"
+    value {
+      type: DT_INT64
+    }
+  }
+}
+node {
+  name: "gradients/Shape"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "gradients/grad_ys_0"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "gradients/Fill"
+  op: "Fill"
+  input: "gradients/Shape"
+  input: "gradients/grad_ys_0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "index_type"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphLoss/SuperScaler_Backward_SubgraphBpLoss/cross_entropy_grad/Reshape/shape"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        int_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphLoss/SuperScaler_Backward_SubgraphBpLoss/cross_entropy_grad/Reshape"
+  op: "Reshape"
+  input: "gradients/Fill"
+  input: "gradients/SuperScaler_SubgraphLoss/SuperScaler_Backward_SubgraphBpLoss/cross_entropy_grad/Reshape/shape"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tshape"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphLoss/SuperScaler_Backward_SubgraphBpLoss/cross_entropy_grad/Const"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        int_val: 128
+      }
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphLoss/SuperScaler_Backward_SubgraphBpLoss/cross_entropy_grad/Tile"
+  op: "Tile"
+  input: "gradients/SuperScaler_SubgraphLoss/SuperScaler_Backward_SubgraphBpLoss/cross_entropy_grad/Reshape"
+  input: "gradients/SuperScaler_SubgraphLoss/SuperScaler_Backward_SubgraphBpLoss/cross_entropy_grad/Const"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tmultiples"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphLoss/SuperScaler_Backward_SubgraphBpLoss/cross_entropy_grad/Const_1"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 128
+      }
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphLoss/SuperScaler_Backward_SubgraphBpLoss/cross_entropy_grad/truediv"
+  op: "RealDiv"
+  input: "gradients/SuperScaler_SubgraphLoss/SuperScaler_Backward_SubgraphBpLoss/cross_entropy_grad/Tile"
+  input: "gradients/SuperScaler_SubgraphLoss/SuperScaler_Backward_SubgraphBpLoss/cross_entropy_grad/Const_1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphLoss/SuperScaler_Backward_SubgraphBpLoss/cross_entropy_per_example/cross_entropy_per_example_grad/PreventGradient"
+  op: "PreventGradient"
+  input: "SuperScaler_SubgraphLoss/SuperScaler_Backward_SubgraphBpLoss/cross_entropy_per_example/cross_entropy_per_example:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "message"
+    value {
+      s: "Currently there is no way to take the second derivative of sparse_softmax_cross_entropy_with_logits due to the fused implementation\'s interaction with tf.gradients()"
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphLoss/SuperScaler_Backward_SubgraphBpLoss/cross_entropy_per_example/cross_entropy_per_example_grad/ExpandDims/dim"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: -1
+      }
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphLoss/SuperScaler_Backward_SubgraphBpLoss/cross_entropy_per_example/cross_entropy_per_example_grad/ExpandDims"
+  op: "ExpandDims"
+  input: "gradients/SuperScaler_SubgraphLoss/SuperScaler_Backward_SubgraphBpLoss/cross_entropy_grad/truediv"
+  input: "gradients/SuperScaler_SubgraphLoss/SuperScaler_Backward_SubgraphBpLoss/cross_entropy_per_example/cross_entropy_per_example_grad/ExpandDims/dim"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tdim"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphLoss/SuperScaler_Backward_SubgraphBpLoss/cross_entropy_per_example/cross_entropy_per_example_grad/mul"
+  op: "Mul"
+  input: "gradients/SuperScaler_SubgraphLoss/SuperScaler_Backward_SubgraphBpLoss/cross_entropy_per_example/cross_entropy_per_example_grad/ExpandDims"
+  input: "gradients/SuperScaler_SubgraphLoss/SuperScaler_Backward_SubgraphBpLoss/cross_entropy_per_example/cross_entropy_per_example_grad/PreventGradient"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/softmax_add_grad/BiasAddGrad"
+  op: "BiasAddGrad"
+  input: "gradients/SuperScaler_SubgraphLoss/SuperScaler_Backward_SubgraphBpLoss/cross_entropy_per_example/cross_entropy_per_example_grad/mul"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "data_format"
+    value {
+      s: "NHWC"
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/softmax_add_grad/tuple/group_deps"
+  op: "NoOp"
+  input: "^gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/softmax_add_grad/BiasAddGrad"
+  input: "^gradients/SuperScaler_SubgraphLoss/SuperScaler_Backward_SubgraphBpLoss/cross_entropy_per_example/cross_entropy_per_example_grad/mul"
+}
+node {
+  name: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/softmax_add_grad/tuple/control_dependency"
+  op: "Identity"
+  input: "gradients/SuperScaler_SubgraphLoss/SuperScaler_Backward_SubgraphBpLoss/cross_entropy_per_example/cross_entropy_per_example_grad/mul"
+  input: "^gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/softmax_add_grad/tuple/group_deps"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@gradients/SuperScaler_SubgraphLoss/SuperScaler_Backward_SubgraphBpLoss/cross_entropy_per_example/cross_entropy_per_example_grad/mul"
+      }
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/softmax_add_grad/tuple/control_dependency_1"
+  op: "Identity"
+  input: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/softmax_add_grad/BiasAddGrad"
+  input: "^gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/softmax_add_grad/tuple/group_deps"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/softmax_add_grad/BiasAddGrad"
+      }
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/softmax_matmul_grad/MatMul"
+  op: "MatMul"
+  input: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/softmax_add_grad/tuple/control_dependency"
+  input: "SuperScaler_SubgraphFCs/softmax_linear_weights/read"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "transpose_a"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "transpose_b"
+    value {
+      b: true
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/softmax_matmul_grad/MatMul_1"
+  op: "MatMul"
+  input: "SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_relu"
+  input: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/softmax_add_grad/tuple/control_dependency"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "transpose_a"
+    value {
+      b: true
+    }
+  }
+  attr {
+    key: "transpose_b"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/softmax_matmul_grad/tuple/group_deps"
+  op: "NoOp"
+  input: "^gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/softmax_matmul_grad/MatMul"
+  input: "^gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/softmax_matmul_grad/MatMul_1"
+}
+node {
+  name: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/softmax_matmul_grad/tuple/control_dependency"
+  op: "Identity"
+  input: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/softmax_matmul_grad/MatMul"
+  input: "^gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/softmax_matmul_grad/tuple/group_deps"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/softmax_matmul_grad/MatMul"
+      }
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/softmax_matmul_grad/tuple/control_dependency_1"
+  op: "Identity"
+  input: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/softmax_matmul_grad/MatMul_1"
+  input: "^gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/softmax_matmul_grad/tuple/group_deps"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/softmax_matmul_grad/MatMul_1"
+      }
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_relu_grad/ReluGrad"
+  op: "ReluGrad"
+  input: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/softmax_matmul_grad/tuple/control_dependency"
+  input: "SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_relu"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_add_grad/BiasAddGrad"
+  op: "BiasAddGrad"
+  input: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_relu_grad/ReluGrad"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "data_format"
+    value {
+      s: "NHWC"
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_add_grad/tuple/group_deps"
+  op: "NoOp"
+  input: "^gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_add_grad/BiasAddGrad"
+  input: "^gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_relu_grad/ReluGrad"
+}
+node {
+  name: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_add_grad/tuple/control_dependency"
+  op: "Identity"
+  input: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_relu_grad/ReluGrad"
+  input: "^gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_add_grad/tuple/group_deps"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_relu_grad/ReluGrad"
+      }
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_add_grad/tuple/control_dependency_1"
+  op: "Identity"
+  input: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_add_grad/BiasAddGrad"
+  input: "^gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_add_grad/tuple/group_deps"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_add_grad/BiasAddGrad"
+      }
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_matmul_grad/MatMul"
+  op: "MatMul"
+  input: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_add_grad/tuple/control_dependency"
+  input: "SuperScaler_SubgraphFCs/dense4_weights/read"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "transpose_a"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "transpose_b"
+    value {
+      b: true
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_matmul_grad/MatMul_1"
+  op: "MatMul"
+  input: "SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_relu"
+  input: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_add_grad/tuple/control_dependency"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "transpose_a"
+    value {
+      b: true
+    }
+  }
+  attr {
+    key: "transpose_b"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_matmul_grad/tuple/group_deps"
+  op: "NoOp"
+  input: "^gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_matmul_grad/MatMul"
+  input: "^gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_matmul_grad/MatMul_1"
+}
+node {
+  name: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_matmul_grad/tuple/control_dependency"
+  op: "Identity"
+  input: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_matmul_grad/MatMul"
+  input: "^gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_matmul_grad/tuple/group_deps"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_matmul_grad/MatMul"
+      }
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_matmul_grad/tuple/control_dependency_1"
+  op: "Identity"
+  input: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_matmul_grad/MatMul_1"
+  input: "^gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_matmul_grad/tuple/group_deps"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_matmul_grad/MatMul_1"
+      }
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_relu_grad/ReluGrad"
+  op: "ReluGrad"
+  input: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_matmul_grad/tuple/control_dependency"
+  input: "SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_relu"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_add_grad/BiasAddGrad"
+  op: "BiasAddGrad"
+  input: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_relu_grad/ReluGrad"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "data_format"
+    value {
+      s: "NHWC"
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_add_grad/tuple/group_deps"
+  op: "NoOp"
+  input: "^gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_add_grad/BiasAddGrad"
+  input: "^gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_relu_grad/ReluGrad"
+}
+node {
+  name: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_add_grad/tuple/control_dependency"
+  op: "Identity"
+  input: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_relu_grad/ReluGrad"
+  input: "^gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_add_grad/tuple/group_deps"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_relu_grad/ReluGrad"
+      }
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_add_grad/tuple/control_dependency_1"
+  op: "Identity"
+  input: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_add_grad/BiasAddGrad"
+  input: "^gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_add_grad/tuple/group_deps"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_add_grad/BiasAddGrad"
+      }
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_matmul_grad/MatMul"
+  op: "MatMul"
+  input: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_add_grad/tuple/control_dependency"
+  input: "SuperScaler_SubgraphFCs/dense3_weights/read"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "transpose_a"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "transpose_b"
+    value {
+      b: true
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_matmul_grad/MatMul_1"
+  op: "MatMul"
+  input: "SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/reshape"
+  input: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_add_grad/tuple/control_dependency"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "transpose_a"
+    value {
+      b: true
+    }
+  }
+  attr {
+    key: "transpose_b"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_matmul_grad/tuple/group_deps"
+  op: "NoOp"
+  input: "^gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_matmul_grad/MatMul"
+  input: "^gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_matmul_grad/MatMul_1"
+}
+node {
+  name: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_matmul_grad/tuple/control_dependency"
+  op: "Identity"
+  input: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_matmul_grad/MatMul"
+  input: "^gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_matmul_grad/tuple/group_deps"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_matmul_grad/MatMul"
+      }
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_matmul_grad/tuple/control_dependency_1"
+  op: "Identity"
+  input: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_matmul_grad/MatMul_1"
+  input: "^gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_matmul_grad/tuple/group_deps"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_matmul_grad/MatMul_1"
+      }
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/reshape_grad/Shape"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 4
+          }
+        }
+        tensor_content: "\200\000\000\000\010\000\000\000\010\000\000\000@\000\000\000"
+      }
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/reshape_grad/Reshape"
+  op: "Reshape"
+  input: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_matmul_grad/tuple/control_dependency"
+  input: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/reshape_grad/Shape"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tshape"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/pool2_grad/MaxPoolGrad"
+  op: "MaxPoolGrad"
+  input: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/norm2"
+  input: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/pool2"
+  input: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/reshape_grad/Reshape"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "data_format"
+    value {
+      s: "NHWC"
+    }
+  }
+  attr {
+    key: "ksize"
+    value {
+      list {
+        i: 1
+        i: 3
+        i: 3
+        i: 1
+      }
+    }
+  }
+  attr {
+    key: "padding"
+    value {
+      s: "SAME"
+    }
+  }
+  attr {
+    key: "strides"
+    value {
+      list {
+        i: 1
+        i: 2
+        i: 2
+        i: 1
+      }
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/norm2_grad/LRNGrad"
+  op: "LRNGrad"
+  input: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/pool2_grad/MaxPoolGrad"
+  input: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_relu"
+  input: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/norm2"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "alpha"
+    value {
+      f: 0.000111111112
+    }
+  }
+  attr {
+    key: "beta"
+    value {
+      f: 0.75
+    }
+  }
+  attr {
+    key: "bias"
+    value {
+      f: 1
+    }
+  }
+  attr {
+    key: "depth_radius"
+    value {
+      i: 4
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_relu_grad/ReluGrad"
+  op: "ReluGrad"
+  input: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/norm2_grad/LRNGrad"
+  input: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_relu"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_add_grad/BiasAddGrad"
+  op: "BiasAddGrad"
+  input: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_relu_grad/ReluGrad"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "data_format"
+    value {
+      s: "NHWC"
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_add_grad/tuple/group_deps"
+  op: "NoOp"
+  input: "^gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_add_grad/BiasAddGrad"
+  input: "^gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_relu_grad/ReluGrad"
+}
+node {
+  name: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_add_grad/tuple/control_dependency"
+  op: "Identity"
+  input: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_relu_grad/ReluGrad"
+  input: "^gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_add_grad/tuple/group_deps"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_relu_grad/ReluGrad"
+      }
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_add_grad/tuple/control_dependency_1"
+  op: "Identity"
+  input: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_add_grad/BiasAddGrad"
+  input: "^gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_add_grad/tuple/group_deps"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_add_grad/BiasAddGrad"
+      }
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_matmul_grad/ShapeN"
+  op: "ShapeN"
+  input: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/norm1"
+  input: "SuperScaler_SubgraphConvs/conv2_weights/read"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "out_type"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_matmul_grad/Conv2DBackpropInput"
+  op: "Conv2DBackpropInput"
+  input: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_matmul_grad/ShapeN"
+  input: "SuperScaler_SubgraphConvs/conv2_weights/read"
+  input: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_add_grad/tuple/control_dependency"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "data_format"
+    value {
+      s: "NHWC"
+    }
+  }
+  attr {
+    key: "dilations"
+    value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+      }
+    }
+  }
+  attr {
+    key: "explicit_paddings"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "padding"
+    value {
+      s: "SAME"
+    }
+  }
+  attr {
+    key: "strides"
+    value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+      }
+    }
+  }
+  attr {
+    key: "use_cudnn_on_gpu"
+    value {
+      b: true
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_matmul_grad/Conv2DBackpropFilter"
+  op: "Conv2DBackpropFilter"
+  input: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/norm1"
+  input: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_matmul_grad/ShapeN:1"
+  input: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_add_grad/tuple/control_dependency"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "data_format"
+    value {
+      s: "NHWC"
+    }
+  }
+  attr {
+    key: "dilations"
+    value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+      }
+    }
+  }
+  attr {
+    key: "explicit_paddings"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "padding"
+    value {
+      s: "SAME"
+    }
+  }
+  attr {
+    key: "strides"
+    value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+      }
+    }
+  }
+  attr {
+    key: "use_cudnn_on_gpu"
+    value {
+      b: true
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_matmul_grad/tuple/group_deps"
+  op: "NoOp"
+  input: "^gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_matmul_grad/Conv2DBackpropFilter"
+  input: "^gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_matmul_grad/Conv2DBackpropInput"
+}
+node {
+  name: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_matmul_grad/tuple/control_dependency"
+  op: "Identity"
+  input: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_matmul_grad/Conv2DBackpropInput"
+  input: "^gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_matmul_grad/tuple/group_deps"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_matmul_grad/Conv2DBackpropInput"
+      }
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_matmul_grad/tuple/control_dependency_1"
+  op: "Identity"
+  input: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_matmul_grad/Conv2DBackpropFilter"
+  input: "^gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_matmul_grad/tuple/group_deps"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_matmul_grad/Conv2DBackpropFilter"
+      }
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/norm1_grad/LRNGrad"
+  op: "LRNGrad"
+  input: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_matmul_grad/tuple/control_dependency"
+  input: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/pool1"
+  input: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/norm1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "alpha"
+    value {
+      f: 0.000111111112
+    }
+  }
+  attr {
+    key: "beta"
+    value {
+      f: 0.75
+    }
+  }
+  attr {
+    key: "bias"
+    value {
+      f: 1
+    }
+  }
+  attr {
+    key: "depth_radius"
+    value {
+      i: 4
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/pool1_grad/MaxPoolGrad"
+  op: "MaxPoolGrad"
+  input: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_relu"
+  input: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/pool1"
+  input: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/norm1_grad/LRNGrad"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "data_format"
+    value {
+      s: "NHWC"
+    }
+  }
+  attr {
+    key: "ksize"
+    value {
+      list {
+        i: 1
+        i: 3
+        i: 3
+        i: 1
+      }
+    }
+  }
+  attr {
+    key: "padding"
+    value {
+      s: "SAME"
+    }
+  }
+  attr {
+    key: "strides"
+    value {
+      list {
+        i: 1
+        i: 2
+        i: 2
+        i: 1
+      }
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_relu_grad/ReluGrad"
+  op: "ReluGrad"
+  input: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/pool1_grad/MaxPoolGrad"
+  input: "SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_relu"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_add_grad/BiasAddGrad"
+  op: "BiasAddGrad"
+  input: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_relu_grad/ReluGrad"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "data_format"
+    value {
+      s: "NHWC"
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_add_grad/tuple/group_deps"
+  op: "NoOp"
+  input: "^gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_add_grad/BiasAddGrad"
+  input: "^gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_relu_grad/ReluGrad"
+}
+node {
+  name: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_add_grad/tuple/control_dependency"
+  op: "Identity"
+  input: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_relu_grad/ReluGrad"
+  input: "^gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_add_grad/tuple/group_deps"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_relu_grad/ReluGrad"
+      }
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_add_grad/tuple/control_dependency_1"
+  op: "Identity"
+  input: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_add_grad/BiasAddGrad"
+  input: "^gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_add_grad/tuple/group_deps"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_add_grad/BiasAddGrad"
+      }
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_matmul_grad/ShapeN"
+  op: "ShapeN"
+  input: "SuperScaler_SubgraphData/SuperScaler_SubgraphData/images"
+  input: "SuperScaler_SubgraphConvs/conv1_weights/read"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "out_type"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_matmul_grad/Conv2DBackpropInput"
+  op: "Conv2DBackpropInput"
+  input: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_matmul_grad/ShapeN"
+  input: "SuperScaler_SubgraphConvs/conv1_weights/read"
+  input: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_add_grad/tuple/control_dependency"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "data_format"
+    value {
+      s: "NHWC"
+    }
+  }
+  attr {
+    key: "dilations"
+    value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+      }
+    }
+  }
+  attr {
+    key: "explicit_paddings"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "padding"
+    value {
+      s: "SAME"
+    }
+  }
+  attr {
+    key: "strides"
+    value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+      }
+    }
+  }
+  attr {
+    key: "use_cudnn_on_gpu"
+    value {
+      b: true
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_matmul_grad/Conv2DBackpropFilter"
+  op: "Conv2DBackpropFilter"
+  input: "SuperScaler_SubgraphData/SuperScaler_SubgraphData/images"
+  input: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_matmul_grad/ShapeN:1"
+  input: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_add_grad/tuple/control_dependency"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "data_format"
+    value {
+      s: "NHWC"
+    }
+  }
+  attr {
+    key: "dilations"
+    value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+      }
+    }
+  }
+  attr {
+    key: "explicit_paddings"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "padding"
+    value {
+      s: "SAME"
+    }
+  }
+  attr {
+    key: "strides"
+    value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+      }
+    }
+  }
+  attr {
+    key: "use_cudnn_on_gpu"
+    value {
+      b: true
+    }
+  }
+}
+node {
+  name: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_matmul_grad/tuple/group_deps"
+  op: "NoOp"
+  input: "^gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_matmul_grad/Conv2DBackpropFilter"
+  input: "^gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_matmul_grad/Conv2DBackpropInput"
+}
+node {
+  name: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_matmul_grad/tuple/control_dependency_1"
+  op: "Identity"
+  input: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_matmul_grad/Conv2DBackpropFilter"
+  input: "^gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_matmul_grad/tuple/group_deps"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_matmul_grad/Conv2DBackpropFilter"
+      }
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphOptimizer/GradientDescent/learning_rate"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.123456
+      }
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphOptimizer/GradientDescent/update_SuperScaler_SubgraphConvs/conv1_weights/ApplyGradientDescent"
+  op: "ApplyGradientDescent"
+  input: "SuperScaler_SubgraphConvs/conv1_weights"
+  input: "SuperScaler_SubgraphOptimizer/GradientDescent/learning_rate"
+  input: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_matmul_grad/tuple/control_dependency_1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@SuperScaler_SubgraphConvs/conv1_weights"
+      }
+    }
+  }
+  attr {
+    key: "use_locking"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphOptimizer/GradientDescent/update_SuperScaler_SubgraphConvs/conv1_biases/ApplyGradientDescent"
+  op: "ApplyGradientDescent"
+  input: "SuperScaler_SubgraphConvs/conv1_biases"
+  input: "SuperScaler_SubgraphOptimizer/GradientDescent/learning_rate"
+  input: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv1/conv1_add_grad/tuple/control_dependency_1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@SuperScaler_SubgraphConvs/conv1_biases"
+      }
+    }
+  }
+  attr {
+    key: "use_locking"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphOptimizer/GradientDescent/update_SuperScaler_SubgraphConvs/conv2_weights/ApplyGradientDescent"
+  op: "ApplyGradientDescent"
+  input: "SuperScaler_SubgraphConvs/conv2_weights"
+  input: "SuperScaler_SubgraphOptimizer/GradientDescent/learning_rate"
+  input: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_matmul_grad/tuple/control_dependency_1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@SuperScaler_SubgraphConvs/conv2_weights"
+      }
+    }
+  }
+  attr {
+    key: "use_locking"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphOptimizer/GradientDescent/update_SuperScaler_SubgraphConvs/conv2_biases/ApplyGradientDescent"
+  op: "ApplyGradientDescent"
+  input: "SuperScaler_SubgraphConvs/conv2_biases"
+  input: "SuperScaler_SubgraphOptimizer/GradientDescent/learning_rate"
+  input: "gradients/SuperScaler_SubgraphConvs/SuperScaler_Backward_SubgraphBpConvs/SuperScaler_Backward_SubgraphBpConv2/conv2_add_grad/tuple/control_dependency_1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@SuperScaler_SubgraphConvs/conv2_biases"
+      }
+    }
+  }
+  attr {
+    key: "use_locking"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphOptimizer/GradientDescent/update_SuperScaler_SubgraphFCs/dense3_weights/ApplyGradientDescent"
+  op: "ApplyGradientDescent"
+  input: "SuperScaler_SubgraphFCs/dense3_weights"
+  input: "SuperScaler_SubgraphOptimizer/GradientDescent/learning_rate"
+  input: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_matmul_grad/tuple/control_dependency_1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@SuperScaler_SubgraphFCs/dense3_weights"
+      }
+    }
+  }
+  attr {
+    key: "use_locking"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphOptimizer/GradientDescent/update_SuperScaler_SubgraphFCs/dense3_biases/ApplyGradientDescent"
+  op: "ApplyGradientDescent"
+  input: "SuperScaler_SubgraphFCs/dense3_biases"
+  input: "SuperScaler_SubgraphOptimizer/GradientDescent/learning_rate"
+  input: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense3_add_grad/tuple/control_dependency_1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@SuperScaler_SubgraphFCs/dense3_biases"
+      }
+    }
+  }
+  attr {
+    key: "use_locking"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphOptimizer/GradientDescent/update_SuperScaler_SubgraphFCs/dense4_weights/ApplyGradientDescent"
+  op: "ApplyGradientDescent"
+  input: "SuperScaler_SubgraphFCs/dense4_weights"
+  input: "SuperScaler_SubgraphOptimizer/GradientDescent/learning_rate"
+  input: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_matmul_grad/tuple/control_dependency_1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@SuperScaler_SubgraphFCs/dense4_weights"
+      }
+    }
+  }
+  attr {
+    key: "use_locking"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphOptimizer/GradientDescent/update_SuperScaler_SubgraphFCs/dense4_biases/ApplyGradientDescent"
+  op: "ApplyGradientDescent"
+  input: "SuperScaler_SubgraphFCs/dense4_biases"
+  input: "SuperScaler_SubgraphOptimizer/GradientDescent/learning_rate"
+  input: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/dense4_add_grad/tuple/control_dependency_1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@SuperScaler_SubgraphFCs/dense4_biases"
+      }
+    }
+  }
+  attr {
+    key: "use_locking"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphOptimizer/GradientDescent/update_SuperScaler_SubgraphFCs/softmax_linear_weights/ApplyGradientDescent"
+  op: "ApplyGradientDescent"
+  input: "SuperScaler_SubgraphFCs/softmax_linear_weights"
+  input: "SuperScaler_SubgraphOptimizer/GradientDescent/learning_rate"
+  input: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/softmax_matmul_grad/tuple/control_dependency_1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@SuperScaler_SubgraphFCs/softmax_linear_weights"
+      }
+    }
+  }
+  attr {
+    key: "use_locking"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphOptimizer/GradientDescent/update_SuperScaler_SubgraphFCs/softmax_linear_biases/ApplyGradientDescent"
+  op: "ApplyGradientDescent"
+  input: "SuperScaler_SubgraphFCs/softmax_linear_biases"
+  input: "SuperScaler_SubgraphOptimizer/GradientDescent/learning_rate"
+  input: "gradients/SuperScaler_SubgraphFCs/SuperScaler_Backward_SubgraphBpFCs/softmax_add_grad/tuple/control_dependency_1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@SuperScaler_SubgraphFCs/softmax_linear_biases"
+      }
+    }
+  }
+  attr {
+    key: "use_locking"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "SuperScaler_SubgraphOptimizer/GradientDescent"
+  op: "NoOp"
+  input: "^SuperScaler_SubgraphOptimizer/GradientDescent/update_SuperScaler_SubgraphConvs/conv1_biases/ApplyGradientDescent"
+  input: "^SuperScaler_SubgraphOptimizer/GradientDescent/update_SuperScaler_SubgraphConvs/conv1_weights/ApplyGradientDescent"
+  input: "^SuperScaler_SubgraphOptimizer/GradientDescent/update_SuperScaler_SubgraphConvs/conv2_biases/ApplyGradientDescent"
+  input: "^SuperScaler_SubgraphOptimizer/GradientDescent/update_SuperScaler_SubgraphConvs/conv2_weights/ApplyGradientDescent"
+  input: "^SuperScaler_SubgraphOptimizer/GradientDescent/update_SuperScaler_SubgraphFCs/dense3_biases/ApplyGradientDescent"
+  input: "^SuperScaler_SubgraphOptimizer/GradientDescent/update_SuperScaler_SubgraphFCs/dense3_weights/ApplyGradientDescent"
+  input: "^SuperScaler_SubgraphOptimizer/GradientDescent/update_SuperScaler_SubgraphFCs/dense4_biases/ApplyGradientDescent"
+  input: "^SuperScaler_SubgraphOptimizer/GradientDescent/update_SuperScaler_SubgraphFCs/dense4_weights/ApplyGradientDescent"
+  input: "^SuperScaler_SubgraphOptimizer/GradientDescent/update_SuperScaler_SubgraphFCs/softmax_linear_biases/ApplyGradientDescent"
+  input: "^SuperScaler_SubgraphOptimizer/GradientDescent/update_SuperScaler_SubgraphFCs/softmax_linear_weights/ApplyGradientDescent"
+}
+library {
+}
+versions {
+  producer: 38
+}

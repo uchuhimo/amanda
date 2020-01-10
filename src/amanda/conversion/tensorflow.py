@@ -281,10 +281,19 @@ def import_from_graph_def(
 
 
 def get_dtype_proto(node_def, op_def, output_arg):
+    def with_number_attr(dtype):
+        if len(output_arg.number_attr) != 0:
+            for attr in op_def.attr:
+                if attr.name == output_arg.number_attr:
+                    return [dtype] * node_def.attr[attr.name].i
+            raise AssertionError()
+        else:
+            return dtype
+
     if len(output_arg.type_attr) != 0:
         for attr in op_def.attr:
             if attr.name == output_arg.type_attr:
-                return node_def.attr[attr.name].type
+                return with_number_attr(node_def.attr[attr.name].type)
         raise AssertionError()
     elif len(output_arg.type_list_attr) != 0:
         for attr in op_def.attr:
@@ -293,7 +302,7 @@ def get_dtype_proto(node_def, op_def, output_arg):
         raise AssertionError()
     else:
         assert output_arg.type != types_pb2.DT_INVALID
-        return output_arg.type
+        return with_number_attr(output_arg.type)
 
 
 def get_dtypes(tf_graph, node_def):
