@@ -140,7 +140,7 @@ def test_tf_modify_graph(arch_name):
         arch_name, model_dir="tmp/modified_graph", input=input
     )
     check_modified_graph(graph_def, new_graph_def)
-    assert np.allclose(output, new_output)
+    np.testing.assert_allclose(output, new_output)
 
 
 def test_tf_modify_graph_with_tf_func(arch_name):
@@ -151,7 +151,7 @@ def test_tf_modify_graph_with_tf_func(arch_name):
         arch_name, model_dir="tmp/modified_graph_with_tf_func", input=input
     )
     check_modified_graph(graph_def, new_graph_def)
-    assert np.allclose(output, new_output)
+    np.testing.assert_allclose(output, new_output)
 
 
 def check_modified_graph(graph_def, new_graph_def):
@@ -209,7 +209,7 @@ def test_tf_import_export_graph_def_with_saver(arch_name):
     with new_tf_graph.as_default(), session:
         saver.restore(session, checkpoint_file)
         new_output = session.run("MMdnn_Output:0", {"input:0": input})
-    assert np.allclose(output, new_output)
+    np.testing.assert_allclose(output, new_output)
 
 
 def test_tf_import_export_saved_model(arch_name, tmp_path):
@@ -245,7 +245,7 @@ def test_tf_import_export_saved_model(arch_name, tmp_path):
                 tf_graph.as_graph_def(), new_tf_graph.as_graph_def()
             ) == {jsondiff.update: {"versions": {}}}
             new_output = session.run("MMdnn_Output:0", {"input:0": input})
-    assert np.allclose(output, new_output)
+    np.testing.assert_allclose(output, new_output)
 
 
 def test_tf_import_export_graph_pbtxt(arch_name, tmp_path):

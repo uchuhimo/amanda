@@ -28,12 +28,12 @@ def test_onnx_import_export(arch_name, tmp_path):
         to_proto(model_dir / "test_data_set_0" / "output_0.pb", onnx.TensorProto)
     )
     prediction = session.run(None, {input_name: input_tensor})[0]
-    assert np.allclose(prediction, output_tensor, atol=1.0e-3)
+    np.testing.assert_allclose(prediction, output_tensor, atol=1.0e-3)
     graph = import_from_model_def(model_path).to_default_namespace()
     new_model_def = export_to_model_def(graph, new_model_path)
     new_session = rt.InferenceSession(str(new_model_path))
     new_prediction = new_session.run(None, {input_name: input_tensor})[0]
-    assert np.allclose(prediction, new_prediction)
+    np.testing.assert_allclose(prediction, new_prediction)
     assert new_model_def == onnx.load(str(new_model_path))
     for key in [
         "float_data",

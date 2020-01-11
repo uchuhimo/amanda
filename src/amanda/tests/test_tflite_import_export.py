@@ -25,4 +25,4 @@ def test_tflite_import_export(arch_name):
     interpreter.set_tensor(input_details[0]["index"], input_data)
     interpreter.invoke()
     output_data = interpreter.get_tensor(output_details[0]["index"])
-    assert np.allclose(output_data, output_data)
+    np.testing.assert_allclose(output_data, output_data)

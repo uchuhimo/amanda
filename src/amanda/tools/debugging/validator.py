@@ -47,7 +47,7 @@ def main(arch_name):
     new_output, _ = run_model(
         arch_name, model_dir="tmp/modified_model_with_py_func", input=input
     )
-    assert np.allclose(output, new_output, atol=1.0e-5)
+    np.testing.assert_allclose(output, new_output, atol=1.0e-5)
 
 
 if __name__ == "__main__":
