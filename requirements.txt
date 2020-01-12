@@ -17,6 +17,7 @@ more-itertools
 mypy
 onnx
 onnxruntime
+pillow<7
 pip
 pre-commit
 protobuf

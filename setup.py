@@ -51,7 +51,7 @@ setup(
     install_requires=[
         'click', 'contextvars; python_version < "3.7"',
         'dataclasses; python_version < "3.7"', 'immutables', 'mmdnn',
-        'more-itertools', 'onnx', 'onnxruntime', 'protobuf', 'six',
+        'more-itertools', 'onnx', 'onnxruntime', 'pillow<7', 'protobuf', 'six',
         'typing; python_version < "3.7"', 'typing-extensions'
     ],
     extras_require={
