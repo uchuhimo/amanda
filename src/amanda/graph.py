@@ -6,7 +6,7 @@ import uuid
 import weakref
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Iterator, List, Optional, Set
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Set
 from uuid import UUID
 
 import immutables
@@ -23,20 +23,24 @@ from amanda.namespace import (
 )
 
 
-class NamespaceMixin:
-    _namespace_key = internal_namespace().qualified("namespace")
+class OpAttrKey:
+    namespace = internal_namespace().qualified("namespace")
+    uuid = internal_namespace().qualified("uuid")
+    has_name = internal_namespace().qualified("has_name")
 
+
+class NamespaceMixin:
     @property
     def attrs(self) -> Attributes:
         ...
 
     @property
     def namespace(self) -> Namespace:
-        return self.attrs.get(self._namespace_key, default_namespace())
+        return self.attrs.get(OpAttrKey.namespace, default_namespace())
 
     @namespace.setter
     def namespace(self, namespace: Namespace):
-        self.attrs[self._namespace_key] = namespace
+        self.attrs[OpAttrKey.namespace] = namespace
 
     def attr_name_in_default_namespace(self, attr_name: str) -> str:
         if self.namespace == default_namespace():
@@ -105,7 +109,7 @@ class Op(NamespaceMixin):
             Tensor(self, i) for i in range(output_num)
         ]
         self._control_dependents: Set[Op] = typing.cast(Set[Op], weakref.WeakSet())
-        self._attrs[internal_namespace().qualified("uuid")] = uuid.uuid4()
+        self._attrs[OpAttrKey.uuid] = uuid.uuid4()
         control_dependencies = control_dependencies or []
         for control_dependency in control_dependencies:
             self.add_control_dependency(control_dependency)
@@ -191,10 +195,14 @@ class Op(NamespaceMixin):
         raise IndexError
 
     def has_name(self) -> bool:
-        return "name" in self.attrs
+        if OpAttrKey.has_name in self.attrs:
+            return self.attrs[OpAttrKey.has_name]
+        else:
+            return "name" in self.attrs
 
     @property
     def name(self) -> str:
+        assert self.has_name()
         return self.attrs["name"]
 
     @name.setter
@@ -211,7 +219,7 @@ class Op(NamespaceMixin):
 
     @property
     def uuid(self) -> UUID:
-        return self.attrs[internal_namespace().qualified("uuid")]
+        return self.attrs[OpAttrKey.uuid]
 
     def copy(self) -> "Op":
         """
@@ -246,6 +254,9 @@ class Op(NamespaceMixin):
 
     def __repr__(self) -> str:
         attr_names = list(self.attrs.keys())
+        attr_names.remove(OpAttrKey.uuid)
+        attr_names.remove(OpAttrKey.namespace)
+        attr_names.remove(OpAttrKey.has_name)
         attr_strings = []
         for name in ["name", "type"]:
             if name in attr_names:
@@ -584,22 +595,24 @@ class Graph(NamespaceMixin):
         you can use `Graph.deepcopy` instead.
         """
         new_graph = Graph(attrs=self.attrs.copy())
+        uuid_to_new_op: Dict[uuid.UUID, Op] = {}
         for op in self.sorted_ops:
             target_op = Op(
                 attrs=op.attrs.copy(),
                 input_tensors=[
-                    new_graph.get_op_by_name(input_tensor.op.name).output_tensor(
+                    uuid_to_new_op[input_tensor.op.uuid].output_tensor(
                         input_tensor.output_index
                     )
                     for input_tensor in op.input_tensors
                 ],
                 control_dependencies=[
-                    new_graph.get_op_by_name(control_dependency.name)
+                    uuid_to_new_op[control_dependency.uuid]
                     for control_dependency in op.control_dependencies
                 ],
                 output_num=op.output_num,
             )
             new_graph.add_op(target_op)
+            uuid_to_new_op[op.uuid] = target_op
         return new_graph
 
     def __copy__(self):

@@ -4,7 +4,7 @@ import torch
 import torch.jit
 import torchvision.models as models
 
-from amanda.conversion.pytorch import import_from_graph
+from amanda.conversion.pytorch import export_to_graph, import_from_graph
 
 
 @pytest.fixture(
@@ -52,10 +52,13 @@ def test_pytorch_import_export_script(scripted_model):
     np.testing.assert_allclose(output.detach().numpy(), output.detach().numpy())
 
 
+@pytest.mark.skip
 def test_pytorch_import_export_trace(traced_model):
     x = torch.randn(1, 3, 224, 224, requires_grad=False)
+    output = traced_model(x)
     torch_graph = traced_model.graph
     graph = import_from_graph(torch_graph)
-    print(len(graph.ops))
-    output = traced_model(x)
-    np.testing.assert_allclose(output.detach().numpy(), output.detach().numpy())
+    new_torch_graph = export_to_graph(graph)
+    traced_model.forward.graph = new_torch_graph
+    new_output = traced_model(x)
+    np.testing.assert_allclose(output.detach().numpy(), new_output.detach().numpy())
