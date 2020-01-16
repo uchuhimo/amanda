@@ -51,18 +51,18 @@ setup(
     install_requires=[
         'click', 'contextvars; python_version < "3.7"',
         'dataclasses; python_version < "3.7"', 'immutables', 'mmdnn',
-        'more-itertools', 'onnx', 'onnxruntime', 'pillow<7', 'protobuf', 'six',
+        'more-itertools', 'onnx', 'onnxruntime', 'protobuf', 'six',
         'typing; python_version < "3.7"', 'typing-extensions'
     ],
     extras_require={
-        "all": ["tensorflow==1.13.1", "torch==1.3.1", "torchvision==0.4.2"],
+        "all": ["tensorflow==1.13.1", "torch==1.4.0", "torchvision==0.5.0"],
         "dev": [
             "black", "bump2version", "coverage[toml]", "dephell[full]",
             "filelock", "fissix", "flake8", "ipython", "isort[pyproject]",
             "jsondiff", "mypy", "pip", "pre-commit", "pytest", "pytest-xdist",
             "sphinx", "tox", "twine", "watchdog", "wheel"
         ],
-        "pytorch": ["torch==1.3.1", "torchvision==0.4.2"],
+        "pytorch": ["torch==1.4.0", "torchvision==0.5.0"],
         "tensorflow": ["tensorflow==1.13.1"]
     },
 )

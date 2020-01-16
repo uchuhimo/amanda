@@ -128,7 +128,7 @@ def export_to_graph(graph: Graph) -> TorchGraph:
         torch_graph.appendNode(node)
     # for input_tensor in graph.attrs["inputs"]:
     #     torch_graph.addInput(op_to_node[input_tensor.op].outputsAt(input_tensor.output_index))
-    torch_graph.lint()
+    # torch_graph.lint()
     return torch_graph
 
 
