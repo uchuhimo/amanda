@@ -22,6 +22,7 @@ pre-commit
 protobuf
 pytest
 pytest-xdist
+scipy
 six
 sphinx
 tensorflow==1.13.1
