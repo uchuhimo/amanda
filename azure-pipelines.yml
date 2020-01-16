@@ -18,10 +18,10 @@ strategy:
 steps:
 - task: Cache@2
   inputs:
-    key: 'poetry | "$(Agent.OS)" | "$(python.version)" | poetry.lock'
+    key: 'poetry | "$(Agent.OS)" | "$(python.version)" | v2 | poetry.lock'
     path: /home/vsts/.cache/pypoetry/virtualenvs
     restoreKeys: |
-      poetry | "$(Agent.OS)" | "$(python.version)"
+      poetry | "$(Agent.OS)" | "$(python.version)" | v2
   displayName: Cache pip packages
 
 - task: UsePythonVersion@0
