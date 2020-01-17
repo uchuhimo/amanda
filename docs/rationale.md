@@ -5,7 +5,7 @@ To explain our motivation to propose Amanda, let's briefly introduce some backgr
 
 ## What is instrumentation?
 
-Instrumentation is a technique to insert extra code into an existed program, usually for:
+Instrumentation is a technique to insert extra code into an existed program[1], usually for:
 
 - **Program analysis** like performance profiling, code tracing, code coverage and debugging
 - **Simulation/Emulation** for processor or cache
@@ -27,19 +27,11 @@ Using instrumentation, we can also insert code into an existed neural network, u
 - **Quantization** to replace some operations in a neural network to its quantized version
 - **Pruning** for weight/activation masking
 
-There are three instrumentation approaches:
-
-- **Source code instrumentation** that instruments source code of the neural network.
-- **(Computation) graph instrumentation** that instruments the computation graph. The computation graph is the intermediate representation of the neural network. Some DL frameworks expose them to be directly manipulated by users.
-- **Binary instrumentation** that instruments the compiled binary or the execution engine.
-
-## Three typical scenarios in the instrumentation for neural network
-
 Let's briefly introduce some examples to better understand the application scenarios of instrumentation for neural network:
 
 - **Debugging**: In this case, we want to insert code into a neural network to dump all the intermediate results of every operation.
 - **Quantization**: In this case, we want to replace every Conv operations with its quantized version in a trained model, and then convert the model to another model format for serving.
-- **(Computation) Graph partition**: In this case, we want to partition a large model into several small sub-graphs that can be fit into a single GPU's memory. Since different frameworks share the same partition strategy, we want to use the same instrumentation code for multiple frameworks.
+- **Effective path extraction[2]**: In this case, we want to extract a critical subset of neurons, synapses, and weights in the neural network that contributes most to the predicted class's output, which is called effective path. To extract effective path, we need to dump all the intermediate results during the inference, and then reconstruct the paths by back-propagation. During reconstruction, we apply the corresponding extraction op of each op to the output neurons in effective path the get the critical input neurons, synapses and weights in the current layer. Since different frameworks share the same extraction strategy, we want to use the same instrumentation code for multiple frameworks.
 
 The examples above show three typical scenarios that the complexity is proportional to the number of involved frameworks (or ecosystems, we use them interchangeably):
 
@@ -47,17 +39,28 @@ The examples above show three typical scenarios that the complexity is proportio
 - **Instrument in one ecosystem, apply to another ecosystem (one-to-one case)**. In this case, we write instrumentation code for an ecosystem, and convert the modified graph to another ecosystem's graph format. The corresponding example is quantization.
 - **Instrument once, apply to multiple ecosystems (one-to-many case)**. To achieve the goal of applying to multiple ecosystems, we need to build a common operation set across all the supported ecosystems, and verify that no operation in the graph is out of this common set. Graph partition in our examples has to deal with this level of complexity.
 
+There are three instrumentation approaches:
+
+- **Source code instrumentation** that instruments source code of the neural network.
+- **(Computation) graph instrumentation** that instruments the computation graph. The computation graph is the intermediate representation of the neural network. Some DL frameworks expose them to be directly manipulated by users.
+- **Binary instrumentation** that instruments the compiled binary or the execution engine.
+
 ## The current approaches: What's missing?
 
 Although not designed specially for instrumentation, there are many existed works that provides some sort of instrumentation tools for neural networks:
 
-- **TensorFlow Session Hooks** are TensorFlow's built-in tools to modify graph during the lifecycle of the session. Using session hooks, we can add op to the graph before finalized graph and observe the output value of arbitrary ops.
-- **PyTorch Module Hooks** are PyTorch's built-in tools to modify the forward and backward passes. We can add code before / after every op executes.
-- **MXNet Block Hooks** are MXNet's built-in tools to modify the graph. It is similar to PyTorch module hooks except that it only works in the forward pass.
-- **Grappler** is TensorFlow's internal graph rewriting tool, which is used to develop compilation passes in TensorFlow's compiler.
-- **MMdnn** is an model conversion framework that supports many frameworks, each of which has its own graph format. It avoids the engineering complexity of implementing a separate converter for each pair of two frameworks by introducing a common IR.
-- **ONNX** is an open computation graph exchange format supported by many DL frameworks. It proposes a common IR that other DL frameworks can convert their training graph to. Some instrumentation tools are provided out of box, including graph validation, graph optimization and shape inference.
-- **TFLite Profiler** is TFLite's built-in profiler. It can provide runtime information for a serving model, including execution time and GPU memory usage.
+- For no-mapping case:
+    - Source code instrumentation
+        - **PyTorch Module Hooks** are PyTorch's built-in tools to modify the forward and backward passes. We can add code before / after every op executes.
+        - **MXNet Block Hooks** are MXNet's built-in tools to modify the graph. It is similar to PyTorch module hooks except that it only works in the forward pass.
+    - Graph instrumentation
+        - **TensorFlow Session Hooks** are TensorFlow's built-in tools to modify graph during the lifecycle of the session. Using session hooks, we can add op to the graph before finalized graph and observe the output value of arbitrary ops.
+        - **Grappler** is TensorFlow's internal graph rewriting tool, which is used to develop compilation passes in TensorFlow's compiler.
+    - Binary instrumentation
+        - **TFLite Profiler** is TFLite's built-in profiler. It can provide runtime information for a serving model, including execution time and GPU memory usage. There are few binary instrumentation tools for neural network, TFLite Profiler is not an instrumentation tool but has a similar design with a binary instrumentation tool.
+- For one-to-many case:
+    - **MMdnn** is an model conversion framework that supports many frameworks, each of which has its own graph format. It avoids the engineering complexity of implementing a separate converter for each pair of two frameworks by introducing a common IR.
+    - **ONNX** is an open computation graph exchange format supported by many DL frameworks. It proposes a common IR that other DL frameworks can convert their training graph to. Some instrumentation tools are provided out of box, including graph validation, graph optimization and shape inference.
 
 To support all the three scenarios mentioned above, many features are requested in a instrumentation framework:
 
@@ -90,30 +93,17 @@ We follow several design principles to meet all the requirements above, which al
 
 - A graph instrumentation framework
 
-    We choose graph instrumentation among three possible instrumentation approaches because the computation graph is the currency in the DL world.
-    On the one hand, the source code of a neural network is only available during training but unavailable during serving; on the other hand, the compiled binary and the serving engine are unavailable during training.
-    The serialized computation graph, which is an well-defined exchange format, acts as a bridge between the training stage and the serving stage.
-    Thus an instrumentation tool designed around the computation graph can serve scenarios in either stages.
+    We choose graph instrumentation among three possible instrumentation approaches because graph instrumentation is a general abstraction that is sufficient for all three scenarios. The serialized computation graph, which is an well-defined exchange format, acts as a bridge between the training stage and the serving stage. Thus an instrumentation tool designed around the computation graph can serve scenarios in either stages.
 
     In spite of all these advantages, Graph instrumentation is not a perfect alternative for either source code instrumentation or binary instrumentation. Compared to source code, computation graph is more low-level and harder to instrument; compared to binary instrumentation, graph instrumentation cannot access the runtime state of the execution engine, making it unsuitable for operations' performance profiling (since we don't know how operations are scheduled during graph instrumentation).
 
-- A low learning curve
+- A minimal abstraction
 
-    We provide the minimum abstraction for each scenario to lower users' learning curve.
-    Existed instrumentation tools use a common IR to support multiple frameworks, which is strict in all three components of an IR:
+    We provide the minimum abstraction for graph instrumentation by removing some unnecessary strong assumption introduced by existed frameworks:
 
-    - Use the same computation graph structure
-    - Use the same type system
-    - Use the same set of built-in operations
+    - Closed operation set assumption: Existed tools like ONNX assume that the operation set is a closed set. This assumption introduces an unacceptable engineering complexity that we need to create a superset of all operations in all supported frameworks. In Amanda, we employ an open operation set instead.
+    - Tensor layout assumption: Existed tools assume that tensors are in a specific layout. For example, only dense tensor or sparse tensor in DOK format is allowed in ONNX; only dense tensor is allowed in MMdnn. In Amanda, any tensor layout is allowed as long as the shape is correct.
+    - Required attribute assumption: Existed tools assume that some attributes are required. For example, name attribute is required in TensorFlow/MMdnn, but op in PyTorch Graph is anonymous. In Amanda, any attribute of operation/graph is optional.
 
-    The common IR approach is a heavy abstraction for our scenarios:
-
-    - In no-mapping case, we only need to consider a single framework, thus don't need a common IR at all.
-    - In one-to-one case, we only need to consider the conversion between two frameworks, a common IR is not necessary.
-    - In one-to-many case, a common IR is only necessary only when we need to unify the semantics of all the operations, which is a rare case.
-
-    Besides the heavy abstraction, the engineering complexity to build a common IR is also unacceptable. To support a common IR other than its own IR in every framework means that every operations should be defined twice. One in its own IR, another in the common IR. And every framework should do so. Thus every framework tends to support only a common subset among all frameworks in the common IR.
-
-    Instead, we only define a common computation graph structure that is general enough to represent any frameworks' graphs.
-    When a mapping from one framework to another framework is required, we use a table mapping mechanism to bridge them.
-    User can extend this table to meet their own requirements, and share their extension with the community to help each other.
+[1]: Pin: building customized program analysis tools with dynamic instrumentation
+[2]: Adversarial Defense Through Network Profiling Based Path Extraction
