@@ -171,15 +171,12 @@ fabric.properties
 
 .idea
 *___jb_tmp___
-*.png
-*.jpg
 *.tar.gz
 *.tar.xz
 *.tar
 *.pth
 *.csv
 *.bak
-*.pdf
 *.xlsx
 .pyre
 .vscode
