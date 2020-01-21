@@ -118,7 +118,7 @@ We follow several design principles to meet all the requirements above, which al
 
     - **Diversity**: Every framework has multiple frontends (Python/C++) and backends (CPU/GPU/TPU), but each of them often has a single graph format. It's hard to provide a unified representation with the same semantics across multiple frontends (should unify the semantics of different languages) and backends (should unify the semantics of binaries in different ISAs). Choosing graph can avoid the diversity problem.
 
-        ![](rationale.assets/why_graph.png)
+        ![](docs/rationale.assets/why_graph.png)
 
     - **Availability**: The serialized computation graph, which is an well-defined exchange format, acts as a bridge between the training stage and the serving stage. In the serving stage, source code is usually not available since most released models is in the graph format; In the training stage, binary for serving is not available since serving stage uses different execution engines with the training stage and the binary will be different. The graph is the only choose to support both two stages at the same time.
     - **High Level semantics**: High level semantics will lose gradually when going through the compilation pipeline. In the graph stage, all necessary semantics for all our scenarios is kept. Some source code information will lose, such as the function information and the source line number. However, most mainstream frameworks are steadily working to enrich the expressiveness of graph. For example, Both TensorFlow and PyTorch have record source line information in the graph.
@@ -131,15 +131,15 @@ We follow several design principles to meet all the requirements above, which al
     - Closed operation set assumption: Existed tools like ONNX assume that the operation set is a closed set. This assumption introduces an unacceptable engineering complexity that we need to create a superset of all operations in all supported frameworks. In Amanda, we employ an open operation set instead.
     - Tensor format assumption: Existed tools assume that tensors are in a specific format. For example, only dense tensor or sparse tensor in DOK format is allowed in ONNX while only dense tensor is allowed in MMdnn. In Amanda, any tensor format is allowed as long as the shape is correct.
     - Required attribute assumption: Existed tools assume that some attributes are required. For example, name attribute is required in TensorFlow/MMdnn, but op in PyTorch Graph is anonymous, which breaks the assumption. In Amanda, any attribute of operation/graph is optional by default.
-    
+
     Although removing these three strong assumptions, we get a minimum graph abstraction:
-    
+
     - **Op** is a node that represents a certain computation. We can attach optional attributes to it.
     - **Tensor** is the value passed between ops, which is produced and owned by an op
     - **Graph** is the container of ops. We can attach optional attributes to it.
-    
+
     Based on this minimum graph abstraction, we need a mapping mechanism to fill the gap between different frameworks. Each component of the mapping mechanism will replace one of the removed strong assumptions:
-    
+
     - **Operation mapping** to convert between different kinds of ops (replace closed operation set assumption)
     - **Tensor mapping** to convert between different tensor formats (replace tensor format assumption)
     - **Attribute mapping** to convert between different attributes of different graphs/ops (replace required attribute assumption)

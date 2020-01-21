@@ -1,5 +1,8 @@
+import types
 from typing import Any, Dict
 
+import torch
+import torch.jit
 from torch._C import Graph as TorchGraph
 from torch._C import Node as TorchNode
 
@@ -59,6 +62,15 @@ get_global_registry().add_mapper(
 get_global_registry().add_mapper(
     default_namespace(), pytorch_namespace(), default_to_pytorch_mapper()
 )
+
+
+def import_from_module(module: torch.nn.Module) -> Graph:
+    if not isinstance(module, torch.jit.ScriptModule):
+        module = torch.jit.script(module)
+    torch_graph = module.graph
+    graph = import_from_graph(torch_graph)
+    graph.attrs["training"] = module.training
+    return graph
 
 
 def import_from_graph(torch_graph: TorchGraph) -> Graph:
@@ -130,6 +142,25 @@ def export_to_graph(graph: Graph) -> TorchGraph:
     #     torch_graph.addInput(op_to_node[input_tensor.op].outputsAt(input_tensor.output_index))
     # torch_graph.lint()
     return torch_graph
+
+
+def export_to_module(graph: Graph) -> torch.nn.Module:
+    torch_graph = export_to_graph(graph)
+    forward_func = torch._C._create_function_from_graph("forward", torch_graph)
+    module = torch.nn.Module()
+    module.forward = types.MethodType(forward_func, module)
+    if "training" in graph.attrs:
+        module.train(graph.attrs["training"])
+    return module
+
+
+def import_and_export(module: torch.nn.Module) -> torch.nn.Module:
+    torch_graph = module.graph
+    forward_func = torch._C._create_function_from_graph("forward", torch_graph)
+    module = torch.nn.Module()
+    module.forward = types.MethodType(forward_func, module)
+    # return module
+    return forward_func
 
 
 def without_internal_attrs(attrs):
