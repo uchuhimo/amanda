@@ -118,7 +118,7 @@ We follow several design principles to meet all the requirements above, which al
 
     - **Diversity**: Every framework has multiple frontends (Python/C++) and backends (CPU/GPU/TPU), but each of them often has a single graph format. It's hard to provide a unified representation with the same semantics across multiple frontends (should unify the semantics of different languages) and backends (should unify the semantics of binaries in different ISAs). Choosing graph can avoid the diversity problem.
 
-        ![](docs/rationale.assets/why_graph.png)
+        ![Diversity](rationale.assets/why_graph.png)
 
     - **Availability**: The serialized computation graph, which is an well-defined exchange format, acts as a bridge between the training stage and the serving stage. In the serving stage, source code is usually not available since most released models is in the graph format; In the training stage, binary for serving is not available since serving stage uses different execution engines with the training stage and the binary will be different. The graph is the only choose to support both two stages at the same time.
     - **High Level semantics**: High level semantics will lose gradually when going through the compilation pipeline. In the graph stage, all necessary semantics for all our scenarios is kept. Some source code information will lose, such as the function information and the source line number. However, most mainstream frameworks are steadily working to enrich the expressiveness of graph. For example, Both TensorFlow and PyTorch have record source line information in the graph.
