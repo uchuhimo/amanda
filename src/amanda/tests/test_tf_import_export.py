@@ -15,7 +15,6 @@ from amanda.conversion.tensorflow import (
     export_to_pbtxt,
     export_to_saved_model,
     get_diff_after_conversion,
-    get_dtype,
     import_from_checkpoint,
     import_from_graph_def,
     import_from_pbtxt,
@@ -53,14 +52,14 @@ def arch_name(request):
 def modify_graph_with_primitive_api(graph: Graph):
     for op in graph.ops:
         for tensor in op.output_tensors:
-            if not get_dtype(tensor)._is_ref_dtype:
+            if not tensor.attrs["dtype"]._is_ref_dtype:
                 output_edges = graph.data_edges_from_tensor(tensor)
                 if len(output_edges) != 0:
                     debug_op = Op(
                         attrs={
                             "name": f"debug_{op.name}_{tensor.output_index}",
                             "type": "Identity",
-                            "T": get_dtype(tensor),
+                            "T": tensor.attrs["dtype"],
                         },
                         input_tensors=[tensor],
                     )
@@ -74,7 +73,7 @@ def modify_graph_with_primitive_api(graph: Graph):
 def modify_graph_with_tf_func(graph: Graph):
     for op in graph.ops:
         for tensor in op.output_tensors:
-            if not get_dtype(tensor)._is_ref_dtype:
+            if not tensor.attrs["dtype"]._is_ref_dtype:
                 output_edges = graph.data_edges_from_tensor(tensor)
                 if len(output_edges) != 0:
                     debug_output = import_from_tf_func(tf.identity)(graph)(tensor)

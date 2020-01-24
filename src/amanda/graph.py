@@ -228,12 +228,15 @@ class Op(NamespaceMixin):
         They will be shared between these two ops.
         If you don't want to share attribute values, you can use `Op.deepcopy` instead.
         """
-        return Op(
+        op = Op(
             attrs=self.attrs.copy(),
             input_tensors=list(self.input_tensors),
             control_dependencies=list(self.control_dependencies),
             output_num=self.output_num,
         )
+        for tensor, new_tensor in zip(self.output_tensors, op.output_tensors):
+            new_tensor._attrs = tensor.attrs.copy()
+        return op
 
     def __copy__(self):
         return self.copy()
@@ -242,12 +245,15 @@ class Op(NamespaceMixin):
         """
         Return a deep copy of the current op.
         """
-        return Op(
+        op = Op(
             attrs=copy.deepcopy(self.attrs),
             input_tensors=list(self.input_tensors),
             control_dependencies=list(self.control_dependencies),
             output_num=self.output_num,
         )
+        for tensor, new_tensor in zip(self.output_tensors, op.output_tensors):
+            new_tensor._attrs = copy.deepcopy(tensor.attrs)
+        return op
 
     def __deepcopy__(self, memodict={}):
         return self.deepcopy()
@@ -255,8 +261,10 @@ class Op(NamespaceMixin):
     def __repr__(self) -> str:
         attr_names = list(self.attrs.keys())
         attr_names.remove(OpAttrKey.uuid)
-        attr_names.remove(OpAttrKey.namespace)
-        attr_names.remove(OpAttrKey.has_name)
+        if OpAttrKey.namespace in attr_names:
+            attr_names.remove(OpAttrKey.namespace)
+        if OpAttrKey.has_name in attr_names:
+            attr_names.remove(OpAttrKey.has_name)
         attr_strings = []
         for name in ["name", "type"]:
             if name in attr_names:
@@ -264,7 +272,9 @@ class Op(NamespaceMixin):
                 attr_names.remove(name)
         attr_names = np.array(attr_names)
         for name in attr_names[np.logical_not(np.char.startswith(attr_names, "/"))]:
-            attr_strings.append(f"{name}={self.attrs[name]}")
+            value_string = str(self.attrs[name])
+            if "\n" not in value_string:
+                attr_strings.append(f"{name}={value_string}")
         for name in attr_names[np.char.startswith(attr_names, "/")]:
             attr_strings.append(f"{name}={self.attrs[name]}")
         attrs_string = ", ".join(attr_strings)
@@ -306,9 +316,14 @@ class CompositeOp(Op):
 class Tensor:
     op: Op
     output_index: int
+    _attrs: Attributes = field(default_factory=lambda: Attributes())
     _output_edges: Set["Edge"] = field(
         default_factory=lambda: typing.cast(Set[Edge], weakref.WeakSet())
     )
+
+    @property
+    def attrs(self) -> Attributes:
+        return self._attrs
 
     @property
     def output_edges(self) -> List["Edge"]:
@@ -611,6 +626,8 @@ class Graph(NamespaceMixin):
                 ],
                 output_num=op.output_num,
             )
+            for tensor, new_tensor in zip(op.output_tensors, target_op.output_tensors):
+                new_tensor._attrs = tensor.attrs.copy()
             new_graph.add_op(target_op)
             uuid_to_new_op[op.uuid] = target_op
         return new_graph
@@ -638,6 +655,8 @@ class Graph(NamespaceMixin):
                 ],
                 output_num=op.output_num,
             )
+            for tensor, new_tensor in zip(op.output_tensors, target_op.output_tensors):
+                new_tensor._attrs = copy.deepcopy(tensor.attrs)
             new_graph.add_op(target_op)
         return new_graph
 
@@ -649,3 +668,18 @@ class Graph(NamespaceMixin):
 
     def json(self):
         return json.dumps(self.dict(), indent=4)
+
+    def dump_to_str(self) -> str:
+        uuid_to_id = dict(zip([op.uuid for op in self.sorted_ops], itertools.count(0)))
+        op_strs = []
+        for op in self.sorted_ops:
+            output_op_ids_ = [
+                uuid_to_id[edge.dst_op.uuid]
+                for tensor in op.output_tensors
+                for edge in self.data_edges_from_tensor(tensor)
+            ]
+            op_strs.append(f"{uuid_to_id[op.uuid]}: {op} -> {output_op_ids_}")
+        return "\n".join(op_strs)
+
+    def print(self) -> None:
+        print(self.dump_to_str())

@@ -7,8 +7,7 @@ import torch.jit
 import torchvision.models as models
 from torchvision.models.detection.generalized_rcnn import GeneralizedRCNN
 
-from amanda.conversion.pytorch import import_and_export, import_from_graph
-from amanda.tests.utils import root_dir
+from amanda.conversion.pytorch import export_to_module, import_from_module
 
 
 @pytest.fixture(
@@ -55,15 +54,14 @@ def assert_close(output, new_output, model):
         np.testing.assert_allclose(output.detach().numpy(), new_output.detach().numpy())
 
 
+@pytest.mark.skip
 def test_pytorch_import_export_script(model_and_input):
     model, x = model_and_input
     scripted_model = torch.jit.script(model)
-    scripted_model.eval()
-    torch_graph = scripted_model.graph
-    graph = import_from_graph(torch_graph)
-    print(len(graph.ops))
     output = scripted_model(x)
-    new_output = output
+    graph = import_from_module(scripted_model)
+    new_model = export_to_module(graph)
+    new_output = new_model(x)
     assert_close(output, new_output, model)
 
 
@@ -72,12 +70,8 @@ def test_pytorch_import_export_trace(model_and_input):
     if isinstance(model, GeneralizedRCNN):
         return
     traced_model = torch.jit.trace(model, (x,))
-    traced_model.save(str(root_dir() / "tmp/model.pt"))
-    # TODO: training is always true
-    traced_model.eval()
     output = traced_model(x)
-    # graph = import_from_module(traced_model)
-    # new_model = export_to_module(graph)
-    new_model = import_and_export(traced_model)
+    graph = import_from_module(traced_model)
+    new_model = export_to_module(graph)
     new_output = new_model(x)
     assert_close(output, new_output, model)

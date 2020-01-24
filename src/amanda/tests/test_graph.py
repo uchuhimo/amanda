@@ -151,18 +151,27 @@ def test_copy_graph(simple_graph):
     graph.attrs["mutable"] = []
     for op in graph.ops:
         op.attrs["mutable"] = []
+        op.output_tensor(0).attrs["mutable"] = []
     new_graph = graph.copy()
     new_graph.attrs["test"] = True
     assert "test" in new_graph.attrs and "test" not in graph.attrs
     new_graph.attrs["mutable"].append(1)
     assert new_graph.attrs["mutable"] == [1] and graph.attrs["mutable"] == [1]
-    for op in new_graph.ops:
-        op.attrs["test"] = True
-        assert "test" in op.attrs and "test" not in graph.get_op_by_name(op.name).attrs
-        op.attrs["mutable"].append(1)
-        assert op.attrs["mutable"] == [1] and graph.get_op_by_name(op.name).attrs[
-            "mutable"
-        ] == [1]
+    for new_op in new_graph.ops:
+        new_op.attrs["test"] = True
+        new_op.output_tensor(0).attrs["test"] = True
+        op = graph.get_op_by_name(new_op.name)
+        assert "test" not in op.attrs and "test" in new_op.attrs
+        assert (
+            "test" in new_op.output_tensor(0).attrs
+            and "test" not in op.output_tensor(0).attrs
+        )
+        new_op.attrs["mutable"].append(1)
+        new_op.output_tensor(0).attrs["mutable"].append(1)
+        assert new_op.attrs["mutable"] == [1] and op.attrs["mutable"] == [1]
+        assert new_op.output_tensor(0).attrs["mutable"] == [1] and op.output_tensor(
+            0
+        ).attrs["mutable"] == [1]
     op = Op(attrs={"name": "test_tf_copy_graph"})
     new_graph.add_op(op)
     assert op in new_graph and op not in graph
@@ -173,18 +182,27 @@ def test_deepcopy_graph(simple_graph):
     graph.attrs["mutable"] = []
     for op in graph.ops:
         op.attrs["mutable"] = []
+        op.output_tensor(0).attrs["mutable"] = []
     new_graph = copy.deepcopy(graph)
     new_graph.attrs["test"] = True
     assert "test" in new_graph.attrs and "test" not in graph.attrs
     new_graph.attrs["mutable"].append(1)
     assert new_graph.attrs["mutable"] == [1] and graph.attrs["mutable"] == []
-    for op in new_graph.ops:
-        op.attrs["test"] = True
-        assert "test" in op.attrs and "test" not in graph.get_op_by_name(op.name).attrs
-        op.attrs["mutable"].append(1)
+    for new_op in new_graph.ops:
+        new_op.attrs["test"] = True
+        new_op.output_tensor(0).attrs["test"] = True
+        op = graph.get_op_by_name(new_op.name)
+        assert "test" not in op.attrs and "test" in new_op.attrs
         assert (
-            op.attrs["mutable"] == [1]
-            and graph.get_op_by_name(op.name).attrs["mutable"] == []
+            "test" in new_op.output_tensor(0).attrs
+            and "test" not in op.output_tensor(0).attrs
+        )
+        new_op.attrs["mutable"].append(1)
+        new_op.output_tensor(0).attrs["mutable"].append(1)
+        assert new_op.attrs["mutable"] == [1] and op.attrs["mutable"] == []
+        assert (
+            new_op.output_tensor(0).attrs["mutable"] == [1]
+            and op.output_tensor(0).attrs["mutable"] == []
         )
     op = Op(attrs={"name": "test_tf_copy_graph"})
     new_graph.add_op(op)

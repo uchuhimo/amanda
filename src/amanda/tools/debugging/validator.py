@@ -5,7 +5,7 @@ import numpy as np
 import tensorflow as tf
 
 from amanda import Graph, Tensor
-from amanda.conversion.tensorflow import get_dtype, import_from_tf_func
+from amanda.conversion.tensorflow import import_from_tf_func
 from amanda.tests.test_tf_import_export import modify_model, run_model
 from amanda.tests.utils import root_dir
 
@@ -24,7 +24,7 @@ def modify_graph(graph: Graph):
     store_dir = root_dir() / "tmp" / "validation_info" / arch_name
     for op in graph.ops:
         for tensor in op.output_tensors:
-            if not get_dtype(tensor)._is_ref_dtype:
+            if not tensor.attrs["dtype"]._is_ref_dtype:
                 output_edges = graph.data_edges_from_tensor(tensor)
                 if len(output_edges) != 0:
                     debug_output: Tensor = import_from_tf_func(tf.py_func)(graph)(
@@ -34,7 +34,7 @@ def modify_graph(graph: Graph):
                             file_name=f"{op.name}_{tensor.output_index}",
                         ),
                         [tensor],
-                        get_dtype(tensor),
+                        tensor.attrs["dtype"],
                     )
                     for edge in output_edges:
                         edge.dst_op.input_tensors[edge.dst_input_index] = debug_output

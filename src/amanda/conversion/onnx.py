@@ -117,12 +117,11 @@ def import_from_graph_def(graph_def: Union[onnx.GraphProto, str, bytes, Path]) -
             output_num=len(node.output),
         )
         for index, output_tensor_name in enumerate(node.output):
-            name_to_tensor[output_tensor_name] = op.output_tensor(index)
+            output_tensor = op.output_tensor(index)
+            output_tensor.attrs["name"] = output_tensor_name
+            name_to_tensor[output_tensor_name] = output_tensor
         op.namespace = onnx_namespace()
         op.type = node.op_type
-        op.attrs[onnx_internal_namespace().qualified("output_tensor_names")] = list(
-            node.output
-        )
         for key in ["name", "domain", "doc_string"]:
             if node.HasField(key):
                 op.attrs[key] = getattr(node, key)
@@ -201,15 +200,14 @@ def export_to_graph_def(graph: Graph, file: Union[str, Path] = None) -> onnx.Gra
         for key in ["name", "domain", "doc_string"]:
             if key in op.attrs:
                 setattr(node, key, op.attrs[key])
-        output_tensors_key = onnx_internal_namespace().qualified("output_tensor_names")
-        node.output.extend(op.attrs[output_tensors_key])
+        node.output.extend(
+            [output_tensor.attrs["name"] for output_tensor in op.output_tensors]
+        )
         node.input.extend(
             [
                 input_tensor.op.name
                 if input_tensor.op.name in graph_inputs
-                else graph.get_op_by_name(input_tensor.op.name).attrs[
-                    output_tensors_key
-                ][input_tensor.output_index]
+                else input_tensor.attrs["name"]
                 for input_tensor in op.input_tensors
             ]
         )

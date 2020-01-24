@@ -88,7 +88,6 @@ class GraphAttrName:
 
 
 class OpAttrName:
-    dtypes = tf_internal_namespace().qualified("dtypes")
     contains_index_in_input_name = tf_internal_namespace().qualified(
         "contains_index_in_input_name"
     )
@@ -119,7 +118,6 @@ def import_from_graph(
         attrs = {
             attr_name: tf_op.get_attr(attr_name) for attr_name in tf_op.node_def.attr
         }
-        dtypes = [output_tensor.dtype for output_tensor in tf_op.outputs]
         node = node_defs[tf_op.name]
         op = Op(
             attrs=attrs,
@@ -130,18 +128,19 @@ def import_from_graph(
                 graph.get_op_by_name(control_input_op.name)
                 for control_input_op in tf_op.control_inputs
             ],
-            output_num=len(dtypes),
+            output_num=len(tf_op.outputs),
         )
         init_op_attrs(op, node)
         op.name = tf_op.name
         op.type = tf_op.type
         op.attrs["device"] = tf_op.device
-        op.attrs[OpAttrName.dtypes] = dtypes
         op.attrs[OpAttrName.contains_index_in_input_name] = [
             len(input_name.split(":")) != 1
             for input_name in node.input
             if not input_name.startswith("^")
         ]
+        for tf_output_tensor, output_tensor in zip(tf_op.outputs, op.output_tensors):
+            output_tensor.attrs["dtype"] = tf_output_tensor.dtype
         graph.add_op(op)
 
     for tf_op in tf_graph.get_operations():
@@ -267,11 +266,12 @@ def import_from_graph_def(
             op.name = node.name
             op.type = node.op
             op.attrs["device"] = node.device
-            op.attrs[OpAttrName.dtypes] = dtypes
             op.attrs[OpAttrName.contains_index_in_input_name] = [
                 input_tensor.contains_index_in_input_name
                 for input_tensor in input_tensors
             ]
+            for dtype, output_tensor in zip(dtypes, op.output_tensors):
+                output_tensor.attrs["dtype"] = dtype
             graph.add_op(op)
 
         for node in graph_def.node:
@@ -418,6 +418,12 @@ def export_to_graph(graph: Graph) -> Tuple[tf.Graph, tf.train.Saver, tf.Session]
                 attrs_proto = to_attrs_proto(
                     tf_graph._get_op_def(op.type), op.type, attrs
                 )
+                dtypes = [
+                    output_tensor.attrs.get("dtype")
+                    for output_tensor in op.output_tensors
+                ]
+                if None in dtypes:
+                    dtypes = get_dtypes(tf_graph, FakeNodeDef(op.type, attrs_proto))
                 tf_op = tf_graph.create_op(
                     op_type=op.type,
                     inputs=[
@@ -426,10 +432,7 @@ def export_to_graph(graph: Graph) -> Tuple[tf.Graph, tf.train.Saver, tf.Session]
                         )
                         for tensor in op.input_tensors
                     ],
-                    dtypes=op.attrs.get(
-                        OpAttrName.dtypes,
-                        get_dtypes(tf_graph, FakeNodeDef(op.type, attrs_proto)),
-                    ),
+                    dtypes=dtypes,
                     input_types=None,
                     name=op.name,
                     attrs=attrs_proto,
@@ -689,10 +692,6 @@ def to_attrs_proto(
     return attr_protos
 
 
-def get_dtype(tensor: Tensor) -> tf.DType:
-    return tensor.op.attrs[OpAttrName.dtypes][tensor.output_index]
-
-
 _py_funcs: List[Any] = []
 
 
@@ -717,7 +716,7 @@ def import_from_tf_func(tf_func):
             placeholders: List[tf.Tensor] = []
 
             def to_tf_tensor(tensor: Tensor) -> tf.Tensor:
-                placeholder = tf.placeholder(get_dtype(tensor))
+                placeholder = tf.placeholder(tensor.attrs["dtype"])
                 input_tensors.append(tensor)
                 placeholders.append(placeholder)
                 return placeholder

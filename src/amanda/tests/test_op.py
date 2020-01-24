@@ -41,12 +41,14 @@ def control_input2():
 
 @pytest.fixture
 def simple_op(input1, input2, control_input1, control_input2):
-    return Op(
+    op = Op(
         input_tensors=[input1.output_tensor(), input2.output_tensor()],
         control_dependencies=[control_input1, control_input2],
         attrs=dict(name="test", type="Conv2d"),
         output_num=2,
     )
+    op.output_tensor(0).attrs["dtype"] = "int32"
+    return op
 
 
 def without_internal_attrs(attrs):
@@ -141,6 +143,13 @@ def test_input_op_with_too_large_index(simple_op):
     simple_op.input_op(2)
 
 
+def test_set_tensor_attr(simple_op):
+    tensor = simple_op.output_tensor(0)
+    assert tensor.attrs == Attributes({"dtype": "int32"})
+    tensor.attrs["value"] = []
+    assert tensor.attrs == Attributes({"dtype": "int32", "value": []})
+
+
 def test_get_name(simple_op):
     assert simple_op.name == "test"
 
@@ -171,18 +180,39 @@ def test_set_namespace(simple_op):
 def test_copy_op(simple_op):
     op = simple_op
     op.attrs["mutable"] = []
+    op.output_tensor(0).attrs["mutable"] = []
     new_op = copy.copy(op)
     new_op.attrs["test"] = True
+    new_op.output_tensor(0).attrs["test"] = True
     assert "test" in new_op.attrs and "test" not in op.attrs
+    assert (
+        "test" in new_op.output_tensor(0).attrs
+        and "test" not in op.output_tensor(0).attrs
+    )
     new_op.attrs["mutable"].append(1)
+    new_op.output_tensor(0).attrs["mutable"].append(1)
     assert new_op.attrs["mutable"] == [1] and op.attrs["mutable"] == [1]
+    assert new_op.output_tensor(0).attrs["mutable"] == [1] and op.output_tensor(
+        0
+    ).attrs["mutable"] == [1]
 
 
 def test_deepcopy_op(simple_op):
     op = simple_op
     op.attrs["mutable"] = []
+    op.output_tensor(0).attrs["mutable"] = []
     new_op = copy.deepcopy(op)
     new_op.attrs["test"] = True
+    new_op.output_tensor(0).attrs["test"] = True
     assert "test" in new_op.attrs and "test" not in op.attrs
+    assert (
+        "test" in new_op.output_tensor(0).attrs
+        and "test" not in op.output_tensor(0).attrs
+    )
     new_op.attrs["mutable"].append(1)
+    new_op.output_tensor(0).attrs["mutable"].append(1)
     assert new_op.attrs["mutable"] == [1] and op.attrs["mutable"] == []
+    assert (
+        new_op.output_tensor(0).attrs["mutable"] == [1]
+        and op.output_tensor(0).attrs["mutable"] == []
+    )

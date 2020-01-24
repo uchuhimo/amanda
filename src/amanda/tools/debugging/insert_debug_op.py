@@ -5,11 +5,7 @@ import tensorflow as tf
 from tensorflow.python.framework import load_library
 
 from amanda import Op
-from amanda.conversion.tensorflow import (
-    export_to_checkpoint,
-    get_dtype,
-    import_from_checkpoint,
-)
+from amanda.conversion.tensorflow import export_to_checkpoint, import_from_checkpoint
 from amanda.tests.test_tf_import_export import run_model
 from amanda.tests.utils import root_dir
 
@@ -36,7 +32,7 @@ if not Path(store_dir).exists():
 def modify_graph(graph):
     for op in graph.ops:
         for tensor in op.output_tensors:
-            dtype = get_dtype(tensor)
+            dtype = tensor.attrs["dtype"]
             if not dtype._is_ref_dtype:
                 op_name = op.attrs["name"]
                 debug_op = Op(
