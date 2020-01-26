@@ -270,13 +270,14 @@ class Op(NamespaceMixin):
             if name in attr_names:
                 attr_strings.append(f"{name}={self.attrs[name]}")
                 attr_names.remove(name)
-        attr_names = np.array(attr_names)
-        for name in attr_names[np.logical_not(np.char.startswith(attr_names, "/"))]:
-            value_string = str(self.attrs[name])
-            if "\n" not in value_string:
-                attr_strings.append(f"{name}={value_string}")
-        for name in attr_names[np.char.startswith(attr_names, "/")]:
-            attr_strings.append(f"{name}={self.attrs[name]}")
+        if len(attr_names) != 0:
+            attr_names = np.array(attr_names)
+            for name in attr_names[np.logical_not(np.char.startswith(attr_names, "/"))]:
+                value_string = str(self.attrs[name])
+                if "\n" not in value_string:
+                    attr_strings.append(f"{name}={value_string}")
+            for name in attr_names[np.char.startswith(attr_names, "/")]:
+                attr_strings.append(f"{name}={self.attrs[name]}")
         attrs_string = ", ".join(attr_strings)
         return f"Op({attrs_string})"
 

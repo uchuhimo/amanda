@@ -24,7 +24,7 @@ from amanda.conversion.pytorch import export_to_module, import_from_module
         models.mobilenet_v2,
         models.mnasnet0_5,
         partial(models.detection.maskrcnn_resnet50_fpn, pretrained_backbone=False),
-        partial(models.quantization.mobilenet_v2, quantize=True),
+        # partial(models.quantization.mobilenet_v2, quantize=True),
     ],
 )
 def model_and_input(request):

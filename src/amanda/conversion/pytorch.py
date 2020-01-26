@@ -85,6 +85,7 @@ def import_from_graph(torch_graph: TorchGraph) -> Graph:
     graph = Graph()
     node_to_op: Dict[TorchNode, Op] = {}
     node: TorchNode
+    op_type_counter: Dict[str, int] = {}
 
     torch._C._jit_pass_inline(torch_graph)
 
@@ -114,11 +115,16 @@ def import_from_graph(torch_graph: TorchGraph) -> Graph:
         op.attrs["sourceRange"] = node.sourceRange()
         op.attrs[OpAttrKey.has_name] = False
         op.attrs[pytorch_internal_namespace().qualified("attr_kinds")] = attr_kinds
+        count = op_type_counter.get(op.type, 0)
+        op_type_counter[op.type] = count + 1
+        op.attrs[default_namespace().qualified("name")] = f"{op.type}_{count}"
         for output_tensor, output_value in zip(op.output_tensors, node.outputs()):
             output_tensor.attrs["type"] = output_value.type()
         graph.add_op(op)
         node_to_op[node] = op
 
+    for input_value in torch_graph.inputs():
+        add_op(input_value.node())
     for node in torch_graph.nodes():
         add_op(node)
 
@@ -165,9 +171,12 @@ def export_to_graph(graph: Graph) -> TorchGraph:
         op_to_node[op] = node
         torch_graph.appendNode(node)
     for output_tensor in graph.attrs["outputs"]:
-        torch_graph.registerOutput(
-            op_to_node[output_tensor.op].outputsAt(output_tensor.output_index)
-        )
+        if output_tensor in graph.attrs["inputs"]:
+            torch_graph.registerOutput(input_tensors[output_tensor])
+        else:
+            torch_graph.registerOutput(
+                op_to_node[output_tensor.op].outputsAt(output_tensor.output_index)
+            )
     return torch_graph
 
 
