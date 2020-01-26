@@ -37,7 +37,7 @@ def download_all_tf_models():
                     "mobilenet_v2_1.0_224",
                     # "inception_resnet_v2",
                     # "nasnet-a_large",
-                    "facenet",
+                    # "facenet",
                     # "rnn_lstm_gru_stacked",
                 ],
             )
