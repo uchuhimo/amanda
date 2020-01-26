@@ -35,6 +35,9 @@ steps:
 - script: poetry install -E all
   displayName: 'Install dependencies'
 
+- script: apt install ninja-build
+  displayName: 'Install C++ dependencies'
+
 - script: poetry run python src/amanda/tests/download_model.py
   displayName: 'Download models'
 
