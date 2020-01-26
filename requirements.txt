@@ -33,4 +33,5 @@ twine
 typing; python_version < "3.7"
 typing-extensions
 watchdog
+wget
 wheel

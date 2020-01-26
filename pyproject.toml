@@ -102,6 +102,7 @@ Sphinx="*"
 twine="*"
 ipython = "*"
 jsondiff = "*"
+wget = "*"
 
 [tool.poetry.extras]
 tensorflow = ["tensorflow"]
