@@ -43,10 +43,10 @@ class StoreTensorToFileOp : public OpKernel {
     output_tensor->CopyFrom(input_tensor, input_tensor.shape());
 
     std::string filename = store_dir_ + "/" + file_name_;
-    std::ofstream write;
-    write.open(filename.c_str());
-    write << input_tensor.DebugString();
-    write.close();
+    std::ofstream fout(filename, std::ios::out | std::ios::binary);
+    auto tensor_data = input_tensor.tensor_data();
+    fout.write(tensor_data.data(), tensor_data.size());
+    fout.close();
   }
 
   private:
