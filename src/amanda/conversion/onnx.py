@@ -3,8 +3,8 @@ from typing import Any, Dict, List, Set, Union
 
 import onnx
 
-from amanda import Graph, Op, Tensor
 from amanda.conversion.utils import to_proto
+from amanda.graph import Graph, Op, Tensor
 from amanda.namespace import (
     Namespace,
     default_namespace,

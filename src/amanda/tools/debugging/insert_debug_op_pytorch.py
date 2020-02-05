@@ -1,14 +1,11 @@
 from pathlib import Path
 
 import numpy as np
-import torch
 import torch.jit
 import torch.utils.cpp_extension
 import torchvision.models as models
-from torch._C import StringType
 
-from amanda import Op
-from amanda.conversion.pytorch import export_to_module, import_from_module
+import amanda
 from amanda.tests.utils import root_dir
 
 op_source = """
@@ -17,10 +14,10 @@ op_source = """
 #include <memory>
 
 torch::Tensor store_tensor_to_file(
-  torch::Tensor input,
-  std::string store_dir,
-  std::string file_name
+  torch::Tensor input
 ) {
+  std::string store_dir = "/tmp";
+  std::string file_name = "tensor_data";
   auto bytes = torch::jit::pickle_save(input);
   auto filename = store_dir + "/" + file_name;
   std::ofstream fout(filename, std::ios::out | std::ios::binary);
@@ -30,13 +27,12 @@ torch::Tensor store_tensor_to_file(
 }
 
 static auto registry = torch::RegisterOperators(
-  "amanda::store_tensor_to_file(Tensor input, str store_dir, str file_name) -> Tensor",
+  "amanda::store_tensor_to_file(Tensor input) -> Tensor",
   &store_tensor_to_file,
   torch::RegisterOperators::options().aliasAnalysis(
     torch::AliasAnalysisKind::FROM_SCHEMA)
   );
 """
-
 
 torch.utils.cpp_extension.load_inline(
     name="store_tensor_to_file",
@@ -52,55 +48,65 @@ store_dir = root_dir() / "tmp" / "debug_info_pytorch" / arch_name
 if not Path(store_dir).exists():
     Path(store_dir).mkdir(mode=0o755, parents=True, exist_ok=True)
 
+input = torch.randn(1, 3, 224, 224)
+model = models.vgg11(pretrained=False, progress=False)
+model.eval()
+traced_model = torch.jit.trace(model, (input,))
+global new_model
 
-def modify_graph(graph):
+
+def run_original_model():
+    return traced_model(input)
+
+
+def run_modified_model():
+    return new_model(input)
+
+
+def verify_output(output, new_output):
+    np.testing.assert_allclose(output.detach().numpy(), new_output.detach().numpy())
+
+
+def is_valid(tensor: amanda.Tensor) -> bool:
+    return tensor.attrs["type"].kind() == "TensorType"
+
+
+def set_attrs(debug_op: amanda.Op, tensor: amanda.Tensor):
+    debug_op.output_tensors[0].attrs["type"] = tensor.attrs["type"]
+
+
+def modify_graph(graph: amanda.Graph):
     for op in graph.ops:
         for tensor in op.output_tensors:
-            if tensor.attrs["type"].kind() == "TensorType":
-                store_dir_op = Op(
-                    attrs={"type": "prim::Constant", "value": str(store_dir)}
-                )
-                store_dir_op.output_tensors[0].attrs["type"] = StringType.get()
-                file_name_op = Op(
-                    attrs={
-                        "type": "prim::Constant",
-                        "value": op.attrs["/amanda/name"].replace(":", "_"),
-                    }
-                )
-                file_name_op.output_tensors[0].attrs["type"] = StringType.get()
-                debug_op = Op(
+            if is_valid(tensor):
+                debug_op = amanda.create_op(
                     attrs={"type": "amanda::store_tensor_to_file"},
-                    input_tensors=[
-                        tensor,
-                        store_dir_op.output_tensors[0],
-                        file_name_op.output_tensors[0],
-                    ],
+                    input_tensors=[tensor],
                     control_dependencies=[],
                     output_num=1,
                 )
-                debug_op.output_tensors[0].attrs["type"] = tensor.attrs["type"]
+                set_attrs(debug_op, tensor)
+
                 for output_op in graph.ops:
                     for index, input_tensor in enumerate(output_op.input_tensors):
                         if tensor == input_tensor:
                             output_op.update_input_tensor(
                                 index, debug_op.output_tensors[0]
                             )
-                graph.add_op(store_dir_op)
-                graph.add_op(file_name_op)
                 graph.add_op(debug_op)
 
 
 def main():
-    input = torch.randn(1, 3, 224, 224)
-    model = models.vgg11(pretrained=False, progress=False)
-    model.eval()
-    traced_model = torch.jit.trace(model, (input,))
-    output = traced_model(input)
-    graph = import_from_module(traced_model)
+    global new_model
+
+    output = run_original_model()
+
+    graph = amanda.pytorch.import_from_module(traced_model)
     modify_graph(graph)
-    new_model = export_to_module(graph)
-    new_output = new_model(input)
-    np.testing.assert_allclose(output.detach().numpy(), new_output.detach().numpy())
+    new_model = amanda.pytorch.export_to_module(graph)
+
+    new_output = run_modified_model()
+    verify_output(output, new_output)
 
 
 if __name__ == "__main__":

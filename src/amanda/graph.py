@@ -298,6 +298,17 @@ class Op(NamespaceMixin):
         return json.dumps(self.dict(), indent=4)
 
 
+def create_op(
+    attrs=None, input_tensors=None, control_dependencies=None, output_num: int = 1,
+) -> Op:
+    return Op(
+        attrs=attrs,
+        input_tensors=input_tensors,
+        control_dependencies=control_dependencies,
+        output_num=output_num,
+    )
+
+
 class CompositeOp(Op):
     def __init__(self, graph: "Graph", attrs=None):
         attrs = attrs or {}

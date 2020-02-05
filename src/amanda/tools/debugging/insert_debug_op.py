@@ -4,8 +4,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.framework import load_library
 
-from amanda import Op
-from amanda.conversion.tensorflow import export_to_checkpoint, import_from_checkpoint
+import amanda
 from amanda.tests.test_tf_import_export import run_model
 from amanda.tests.utils import root_dir
 
@@ -28,27 +27,44 @@ store_dir = root_dir() / "tmp" / "debug_info" / arch_name
 if not Path(store_dir).exists():
     Path(store_dir).mkdir(mode=0o755, parents=True, exist_ok=True)
 
+input = np.random.rand(1, 224, 224, 3)
 
-def modify_graph(graph):
+
+def run_original_model():
+    output, _ = run_model(arch_name, model_dir="downloads/model", input=input)
+    return output
+
+
+def run_modified_model():
+    new_output, _ = run_model(arch_name, model_dir="tmp/modified_model", input=input)
+    return new_output
+
+
+def verify_output(output, new_output):
+    np.testing.assert_allclose(output, new_output, atol=1.0e-5)
+
+
+def is_valid(tensor: amanda.Tensor) -> bool:
+    return not tensor.attrs["dtype"]._is_ref_dtype
+
+
+def set_attrs(debug_op: amanda.Op, tensor: amanda.Tensor):
+    debug_op.attrs["name"] = f"debug/{tensor.op.attrs['name']}/{tensor.output_index}"
+    debug_op.attrs["T"] = tensor.attrs["dtype"]
+
+
+def modify_graph(graph: amanda.Graph):
     for op in graph.ops:
         for tensor in op.output_tensors:
-            dtype = tensor.attrs["dtype"]
-            if not dtype._is_ref_dtype:
-                op_name = op.attrs["name"]
-                debug_op = Op(
-                    attrs={
-                        "name": f"debug/{op_name}/{tensor.output_index}",
-                        "type": "StoreTensorToFile",
-                        "T": dtype,
-                        "store_dir": str(store_dir),
-                        "file_name": f"{op_name}_{tensor.output_index}".replace(
-                            "/", "_"
-                        ),
-                    },
+            if is_valid(tensor):
+                debug_op = amanda.create_op(
+                    attrs={"type": "StoreTensorToFile"},
                     input_tensors=[tensor],
                     control_dependencies=[],
                     output_num=1,
                 )
+                set_attrs(debug_op, tensor)
+
                 for output_op in graph.ops:
                     for index, input_tensor in enumerate(output_op.input_tensors):
                         if tensor == input_tensor:
@@ -59,13 +75,14 @@ def modify_graph(graph):
 
 
 def main():
-    input = np.random.rand(1, 224, 224, 3)
-    output, _ = run_model(arch_name, model_dir="downloads/model", input=input)
-    graph = import_from_checkpoint(original_checkpoint_dir)
+    output = run_original_model()
+
+    graph = amanda.tensorflow.import_from_checkpoint(original_checkpoint_dir)
     modify_graph(graph)
-    export_to_checkpoint(graph, modified_checkpoint_dir)
-    new_output, _ = run_model(arch_name, model_dir="tmp/modified_model", input=input)
-    np.testing.assert_allclose(output, new_output, atol=1.0e-5)
+    amanda.tensorflow.export_to_checkpoint(graph, modified_checkpoint_dir)
+
+    new_output = run_modified_model()
+    verify_output(output, new_output)
 
 
 if __name__ == "__main__":

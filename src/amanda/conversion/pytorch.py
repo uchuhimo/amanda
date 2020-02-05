@@ -8,8 +8,7 @@ from torch._C import Graph as TorchGraph
 from torch._C import Node as TorchNode
 from torch._C import Value as TorchValue
 
-from amanda import Graph, Op
-from amanda.graph import OpAttrKey, Tensor
+from amanda.graph import Graph, Op, OpAttrKey, Tensor
 from amanda.namespace import (
     Namespace,
     default_namespace,

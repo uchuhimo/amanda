@@ -22,8 +22,8 @@ using namespace tensorflow;
 // see https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/op_def_builder.cc 's FinalizeAttr for attribute type
 REGISTER_OP("StoreTensorToFile")
   .Attr("T: type")
-  .Attr("store_dir: string")
-  .Attr("file_name: string")
+  .Attr("store_dir: string = '/tmp'")
+  .Attr("file_name: string = 'tensor_data'")
   .Input("in: T")
   .Output("out: T")
   .SetShapeFn(::tensorflow::shape_inference::UnchangedShape);
