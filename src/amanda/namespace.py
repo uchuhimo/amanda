@@ -10,6 +10,9 @@ class Namespace:
     def qualified(self, name: str) -> str:
         return f"/{self.namespace}/{get_base_name(name)}"
 
+    def belong_to(self, namespace: "Namespace") -> bool:
+        return self.namespace.startswith(namespace.namespace + "/")
+
     def __truediv__(self, other: Union["Namespace", str]) -> "Namespace":
         if isinstance(other, str):
             namespace = other
@@ -22,6 +25,9 @@ class Namespace:
             return True
         else:
             return False
+
+    def __hash__(self):
+        return hash(self.namespace)
 
     def __repr__(self) -> str:
         return f"Namespace({self.namespace})"
