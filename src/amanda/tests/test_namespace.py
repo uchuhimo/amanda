@@ -6,11 +6,11 @@ from amanda.namespace import get_base_name, get_namespace, is_qualified
 
 @pytest.fixture
 def namespace():
-    return Namespace("/level1/level2")
+    return Namespace("level1/level2")
 
 
 def test_qualified(namespace):
-    assert namespace.qualified("level3") == "level1/level2/level3"
+    assert namespace.qualified("level3") == "/level1/level2/level3"
 
 
 def test_belong_to(namespace):
@@ -26,7 +26,7 @@ def test_eq(namespace):
 
 
 def test_repr(namespace):
-    assert repr(namespace) == "Namespace(/level1/level2)"
+    assert repr(namespace) == "Namespace(level1/level2)"
 
 
 def test_is_qualified():
