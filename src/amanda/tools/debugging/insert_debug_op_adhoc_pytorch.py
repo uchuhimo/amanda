@@ -7,6 +7,7 @@ import torchvision.models as models
 
 import amanda
 from amanda.tests.utils import root_dir
+from amanda.tools.debugging.insert_debug_op_adhoc import modify_graph
 
 op_source = """
 #include <torch/script.h>
@@ -65,27 +66,6 @@ def run_modified_model():
 
 def verify_output(output, new_output):
     np.testing.assert_allclose(output.detach().numpy(), new_output.detach().numpy())
-
-
-def modify_graph(graph: amanda.Graph):
-    for op in graph.ops:
-        for tensor in op.output_tensors:
-            if tensor.attrs["type"].kind() == "TensorType":
-                debug_op = amanda.create_op(
-                    attrs={"type": "amanda::store_tensor_to_file"},
-                    input_tensors=[tensor],
-                    control_dependencies=[],
-                    output_num=1,
-                )
-                debug_op.output_tensors[0].attrs["type"] = tensor.attrs["type"]
-
-                for output_op in graph.ops:
-                    for index, input_tensor in enumerate(output_op.input_tensors):
-                        if tensor == input_tensor:
-                            output_op.update_input_tensor(
-                                index, debug_op.output_tensors[0]
-                            )
-                graph.add_op(debug_op)
 
 
 def main():

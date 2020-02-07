@@ -68,3 +68,39 @@ class RuleMapper(Mapper):
                 if not has_matched_rule:
                     raise OpMappingError(new_graph, op)
         return new_graph
+
+
+class RawRuleMapper(Mapper):
+    def __init__(self, rules: List[Rule]):
+        self.rules: List[Rule] = rules
+
+    def add_rule(self, rule: Rule):
+        self.rules.insert(0, rule)
+
+    def remove_rule(self, rule: Rule):
+        self.rules.remove(rule)
+
+    def map(self, graph: Graph, namespace: Namespace) -> Graph:
+        source_namespace = graph.namespace
+        if namespace == source_namespace:
+            return graph
+        new_graph = graph.copy()
+        new_graph.namespace = namespace
+        if len(self.rules) == 0:
+            return new_graph
+        mapped_ops: Set[Op] = set()
+        for op in new_graph.sorted_ops:
+            if op not in mapped_ops:
+                has_matched_rule = False
+                for rule in self.rules:
+                    mapping = rule.apply(new_graph, op)
+                    if len(mapping.source_ops) != 0:
+                        mapped_ops.update(mapping.source_ops)
+                        for target_op in mapping.target_ops:
+                            if target_op not in new_graph:
+                                new_graph.add_op(target_op)
+                        has_matched_rule = True
+                        break
+                if not has_matched_rule:
+                    raise OpMappingError(new_graph, op)
+        return new_graph
