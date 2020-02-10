@@ -104,3 +104,15 @@ class RawRuleMapper(Mapper):
                 if not has_matched_rule:
                     raise OpMappingError(new_graph, op)
         return new_graph
+
+
+def register_tensor_rule(
+    src_namespace: Namespace, dst_namespace: Namespace, src_tensor, dst_tensor,
+):
+    pass
+
+
+def register_op_rule(
+    src_namespace: Namespace, dst_namespace: Namespace, src_op, dst_op,
+):
+    pass

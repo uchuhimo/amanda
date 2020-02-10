@@ -7,7 +7,7 @@ from tensorflow.python.framework import load_library
 import amanda
 from amanda.tests.test_tf_import_export import run_model
 from amanda.tests.utils import root_dir
-from amanda.tools.debugging.insert_debug_op_adhoc import modify_graph
+from amanda.tools.debugging.insert_debug_op_adhoc_v2 import modify_graph
 
 store_tensor_to_file_ops = load_library.load_op_library(
     str(
@@ -49,8 +49,8 @@ def main():
     output = run_original_model()
 
     graph = amanda.tensorflow.import_from_checkpoint(original_checkpoint_dir)
-    modify_graph(graph)
-    amanda.tensorflow.export_to_checkpoint(graph, modified_checkpoint_dir)
+    new_graph = modify_graph(graph)
+    amanda.tensorflow.export_to_checkpoint(new_graph, modified_checkpoint_dir)
 
     new_output = run_modified_model()
     verify_output(output, new_output)

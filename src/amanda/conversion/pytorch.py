@@ -1,4 +1,6 @@
 import types
+from collections import Counter
+from dataclasses import dataclass
 from typing import Any, Dict, Set
 
 import torch
@@ -8,7 +10,7 @@ from torch._C import Graph as TorchGraph
 from torch._C import Node as TorchNode
 from torch._C import Value as TorchValue
 
-from amanda.graph import Graph, Op, OpAttrKey, Tensor
+from amanda.graph import Graph, Op, OpAttrKey
 from amanda.namespace import (
     Namespace,
     default_namespace,
@@ -80,11 +82,21 @@ def import_from_module(module: torch.nn.Module) -> Graph:
     return graph
 
 
+@dataclass(frozen=True)
+class TorchTensor:
+    op_name: str
+    output_index: int
+
+
+def get_name(op: Op) -> str:
+    return op.attrs.get(default_namespace().qualified("name"), default="")
+
+
 def import_from_graph(torch_graph: TorchGraph) -> Graph:
     graph = Graph()
     node_to_op: Dict[TorchNode, Op] = {}
     node: TorchNode
-    op_type_counter: Dict[str, int] = {}
+    op_type_counter: Counter = Counter()
 
     torch._C._jit_pass_inline(torch_graph)
 
@@ -114,8 +126,8 @@ def import_from_graph(torch_graph: TorchGraph) -> Graph:
         op.attrs["sourceRange"] = node.sourceRange()
         op.attrs[OpAttrKey.has_name] = False
         op.attrs[pytorch_internal_namespace().qualified("attr_kinds")] = attr_kinds
-        count = op_type_counter.get(op.type, 0)
-        op_type_counter[op.type] = count + 1
+        count = op_type_counter[op.type]
+        op_type_counter[op.type] += 1
         op.attrs[default_namespace().qualified("name")] = f"{op.type}_{count}"
         for output_tensor, output_value in zip(op.output_tensors, node.outputs()):
             output_tensor.attrs["type"] = output_value.type()
@@ -128,11 +140,17 @@ def import_from_graph(torch_graph: TorchGraph) -> Graph:
         add_op(node)
 
     graph.attrs["inputs"] = [
-        node_to_op[input_value.node()].output_tensor(input_value.offset())
+        TorchTensor(
+            op_name=get_name(node_to_op[input_value.node()]),
+            output_index=input_value.offset(),
+        )
         for input_value in torch_graph.inputs()
     ]
     graph.attrs["outputs"] = [
-        node_to_op[output_value.node()].output_tensor(output_value.offset())
+        TorchTensor(
+            op_name=get_name(node_to_op[output_value.node()]),
+            output_index=output_value.offset(),
+        )
         for output_value in torch_graph.outputs()
     ]
     graph.namespace = pytorch_namespace()
@@ -143,22 +161,28 @@ def export_to_graph(graph: Graph) -> TorchGraph:
     if graph.namespace != pytorch_namespace():
         graph = graph.to_default_namespace().to_namespace(pytorch_namespace())
     torch_graph = TorchGraph()
-    op_to_node: Dict[Op, TorchNode] = {}
-    input_ops: Set[Op] = set()
-    input_tensors: Dict[Tensor, TorchValue] = {}
+    op_to_node: Dict[str, TorchNode] = {}
+    input_ops: Set[str] = set()
+    input_tensors: Dict[TorchTensor, TorchValue] = {}
     for input_tensor in graph.attrs["inputs"]:
-        input_ops.add(input_tensor.op)
+        input_ops.add(input_tensor.op_name)
         input_tensors[input_tensor] = torch_graph.addInput()
     for op in graph.sorted_ops:
-        if op in input_ops:
+        if get_name(op) in input_ops:
             continue
+        op_input_tensors = [
+            TorchTensor(get_name(input_tensor.op), input_tensor.output_index)
+            for input_tensor in op.input_tensors
+        ]
         node: TorchNode = torch_graph.create(
             op.type,
             [
                 input_tensors[input_tensor]
                 if input_tensor in graph.attrs["inputs"]
-                else op_to_node[input_tensor.op].outputsAt(input_tensor.output_index)
-                for input_tensor in op.input_tensors
+                else op_to_node[input_tensor.op_name].outputsAt(
+                    input_tensor.output_index
+                )
+                for input_tensor in op_input_tensors
             ],
             op.output_num,
         )
@@ -167,14 +191,16 @@ def export_to_graph(graph: Graph) -> TorchGraph:
             set_ir_attr(node, attr_name, attr_value, op)
         for output_tensor, output_value in zip(op.output_tensors, node.outputs()):
             output_value.setType(output_tensor.attrs["type"])
-        op_to_node[op] = node
+        op_to_node[get_name(op)] = node
         torch_graph.appendNode(node)
-    for output_tensor in graph.attrs["outputs"]:
-        if output_tensor in graph.attrs["inputs"]:
-            torch_graph.registerOutput(input_tensors[output_tensor])
+    for output_torch_tensor in graph.attrs["outputs"]:
+        if output_torch_tensor in graph.attrs["inputs"]:
+            torch_graph.registerOutput(input_tensors[output_torch_tensor])
         else:
             torch_graph.registerOutput(
-                op_to_node[output_tensor.op].outputsAt(output_tensor.output_index)
+                op_to_node[output_torch_tensor.op_name].outputsAt(
+                    output_torch_tensor.output_index
+                )
             )
     return torch_graph
 

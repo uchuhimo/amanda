@@ -200,7 +200,7 @@ def from_tf_tensor(tensor: Union[tf.Tensor, RefVariable], graph: Graph) -> Tenso
         return op.output_tensor(tensor.value_index)
 
 
-@dataclass
+@dataclass(frozen=True)
 class TFTensor:
     op: str
     output_index: int

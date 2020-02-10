@@ -75,7 +75,7 @@ def without_internal_attrs(attrs):
     }
 
 
-@dataclass
+@dataclass(frozen=True)
 class MmdnnTensor:
     op: str
     output_index: int
@@ -179,7 +179,7 @@ class DataType(Enum):
     DT_STRING = 15
 
 
-@dataclass
+@dataclass(frozen=True)
 class Dim:
     size: int
     name: str

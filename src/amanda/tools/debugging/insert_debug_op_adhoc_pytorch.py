@@ -7,7 +7,7 @@ import torchvision.models as models
 
 import amanda
 from amanda.tests.utils import root_dir
-from amanda.tools.debugging.insert_debug_op_adhoc import modify_graph
+from amanda.tools.debugging.insert_debug_op_adhoc_v2 import modify_graph
 
 op_source = """
 #include <torch/script.h>
@@ -74,8 +74,8 @@ def main():
     output = run_original_model()
 
     graph = amanda.pytorch.import_from_module(traced_model)
-    modify_graph(graph)
-    new_model = amanda.pytorch.export_to_module(graph)
+    new_graph = modify_graph(graph)
+    new_model = amanda.pytorch.export_to_module(new_graph)
 
     new_output = run_modified_model()
     verify_output(output, new_output)

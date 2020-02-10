@@ -345,16 +345,13 @@ class Tensor:
         return hash((self.op, self.output_index))
 
 
-@dataclass
+@dataclass(frozen=True)
 class InputPort:
     op: Op
     input_index: int
 
     def is_control(self) -> bool:
         return self.input_index == ControlEdge.CONTROL_EDGE_INDEX
-
-    def __hash__(self):
-        return hash((self.op, self.input_index))
 
 
 class Edge(ABC):
