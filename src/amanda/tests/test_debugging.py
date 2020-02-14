@@ -1,3 +1,5 @@
+import pytest
+
 from amanda.tools.debugging import (
     insert_debug_op_adhoc_pytorch,
     insert_debug_op_adhoc_tensorflow,
@@ -15,6 +17,7 @@ def test_insert_debug_op_tensorflow():
     insert_debug_op_tensorflow.main()
 
 
+@pytest.mark.skip
 def test_insert_debug_op_pytorch():
     insert_debug_op_pytorch.main()
 
@@ -23,5 +26,6 @@ def test_insert_debug_op_adhoc_tensorflow():
     insert_debug_op_adhoc_tensorflow.main()
 
 
+@pytest.mark.skip
 def test_insert_debug_op_adhoc_pytorch():
     insert_debug_op_adhoc_pytorch.main()

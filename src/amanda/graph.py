@@ -188,6 +188,21 @@ class Op(NamespaceMixin):
             raise IndexError
         return self.input_edges[index]
 
+    @property
+    def output_edges(self) -> List["Edge"]:
+        return [
+            edge
+            for output_tensor in self.output_tensors
+            for edge in output_tensor.output_edges
+        ]
+
+    @property
+    def out_edges(self) -> List["Edge"]:
+        ...
+
+    def add_output_edge(self, output_index: int, dst_op: "Op", input_index: int):
+        ...
+
     def input_index(self, input_op: "Op") -> int:
         for index, input in enumerate(self.input_tensors):
             if input.op == input_op:
@@ -299,7 +314,11 @@ class Op(NamespaceMixin):
 
 
 def create_op(
-    attrs=None, input_tensors=None, control_dependencies=None, output_num: int = 1,
+    type=None,
+    attrs=None,
+    input_tensors=None,
+    control_dependencies=None,
+    output_num: int = 1,
 ) -> Op:
     return Op(
         attrs=attrs,
@@ -341,6 +360,16 @@ class Tensor:
     def output_edges(self) -> List["Edge"]:
         return list(self._output_edges)
 
+    @property
+    def output_ops(self) -> List[Op]:
+        return list(map(lambda edge: edge.dst_op, self.output_edges))
+
+    @property
+    def outputs(self) -> List[typing.Tuple[Op, int]]:
+        return list(
+            map(lambda edge: (edge.dst_op, edge.dst_input_index), self.output_edges)
+        )
+
     def __hash__(self) -> int:
         return hash((self.op, self.output_index))
 
@@ -362,10 +391,30 @@ class Edge(ABC):
         self.dst_op = dst_port.op
         self.dst_input_index = dst_port.input_index
         self.dst_port: InputPort = dst_port
+        self._attrs: Attributes = Attributes()
 
     @abstractmethod
     def is_control_edge(self) -> bool:
         ...
+
+    @property
+    def attrs(self) -> Attributes:
+        return self._attrs
+
+    def remove(self):
+        ...
+
+    def replace_src(self, src: Op):
+        ...
+
+    def insert_op(self, op: Op):
+        new_edge1 = create_edge(self.src_op, op)
+        new_edge1.src_output_index = self.src_output_index
+        new_edge1.dst_input_index = 0
+        new_edge2 = create_edge(op, self.dst_op)
+        new_edge2.src_output_index = 0
+        new_edge2.dst_input_index = self.dst_input_index
+        self.remove()
 
 
 class DataEdge(Edge):
@@ -404,6 +453,16 @@ class ControlEdge(Edge):
 
     def __hash__(self):
         return hash((self.src_op, self.dst_op))
+
+
+def create_edge(
+    src_op: Op, dst_op: Op, src_output_index: int = 0, dst_input_index: int = 0,
+) -> Edge:
+    ...
+
+
+def connect(src: Op, dst: Op) -> Edge:
+    ...
 
 
 class Graph(NamespaceMixin):
@@ -600,7 +659,11 @@ class Graph(NamespaceMixin):
     def invalidate_cache(self):
         self._cached_post_order_ops = None
 
-    def to_namespace(self, namespace: Namespace, registry: Registry = None) -> "Graph":
+    def to_namespace(
+        self, namespace: typing.Union[Namespace, str], registry: Registry = None
+    ) -> "Graph":
+        if isinstance(namespace, str):
+            namespace = Namespace(namespace)
         if namespace == self.namespace:
             return self
         else:

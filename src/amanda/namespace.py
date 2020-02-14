@@ -73,9 +73,30 @@ def internal_namespace() -> Namespace:
     return _internal_namespace
 
 
+def exp(expression: str):
+    ...
+
+
 class Mapper(ABC):
     @abstractmethod
     def map(self, graph, namespace: Namespace):
+        ...
+
+
+class DumpMapper:
+    def add_rule(self, src_op_list, dst_op_list, map_func, variant=None):
+        ...
+
+    def insert_rule(
+        self,
+        src_op,
+        src_attr_name,
+        src_attr_value,
+        dst_op,
+        dst_attr_name,
+        dst_value,
+        tag=None,
+    ):
         ...
 
 
@@ -107,3 +128,7 @@ _global_registry = Registry()
 
 def get_global_registry() -> Registry:
     return _global_registry
+
+
+def get_mapper(source: Namespace, target: Namespace) -> DumpMapper:
+    return DumpMapper()
