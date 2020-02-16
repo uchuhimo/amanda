@@ -17,10 +17,14 @@ def modify_graph(graph: amanda.Graph):
                     # change the connections from op->dst_op to op->debug_op->dst_op
 
                     # connect op->debug_op
-                    amanda.connect(src=op, dst=debug_op)
+                    new_edge = amanda.connect(src=op, dst=debug_op)
+                    # assign the tensor on op->dst_op to op->debug_op
+                    new_edge.attrs["tensor"] = edge.attrs["tensor"]
 
                     # replace op->dst_op with debug_op->dst_op
                     edge.replace_src(debug_op)
+                    # assign the only output tensor of the debug op to debug_op->dst_op
+                    edge.attrs["tensor"] = debug_op.attrs["output_tensors"][0]
 
                     # add the debug op into the graph
                     graph.add_op(debug_op)
