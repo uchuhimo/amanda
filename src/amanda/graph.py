@@ -407,6 +407,22 @@ class Edge(ABC):
     def replace_src(self, src: Op):
         ...
 
+    @property
+    def tensor(self) -> Tensor:
+        ...
+
+    @tensor.setter
+    def tensor(self, tensor: Tensor):
+        ...
+
+    @property
+    def src(self) -> Op:
+        ...
+
+    @property
+    def dst(self) -> Op:
+        ...
+
     def insert_op(self, op: Op):
         new_edge1 = create_edge(self.src_op, op)
         new_edge1.src_output_index = self.src_output_index
@@ -462,6 +478,10 @@ def create_edge(
 
 
 def connect(src: Op, dst: Op) -> Edge:
+    ...
+
+
+def disconnect(src: Op, dst: Op) -> Edge:
     ...
 
 

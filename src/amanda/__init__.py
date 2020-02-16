@@ -9,6 +9,7 @@ from .graph import Tensor  # noqa: F401
 from .graph import connect  # noqa: F401
 from .graph import create_edge  # noqa: F401
 from .graph import create_op  # noqa: F401
+from .graph import disconnect  # noqa: F401
 
 from .namespace import (  # noqa: F401; noqa: F401
     Namespace,
