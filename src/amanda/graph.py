@@ -408,11 +408,11 @@ class Edge(ABC):
         ...
 
     @property
-    def tensor(self) -> Tensor:
+    def tensor_binding(self) -> Tensor:
         ...
 
-    @tensor.setter
-    def tensor(self, tensor: Tensor):
+    @tensor_binding.setter
+    def tensor_binding(self, tensor: Tensor):
         ...
 
     @property
@@ -471,9 +471,11 @@ class ControlEdge(Edge):
         return hash((self.src_op, self.dst_op))
 
 
-def create_edge(
-    src_op: Op, dst_op: Op, src_output_index: int = 0, dst_input_index: int = 0,
-) -> Edge:
+def create_edge(src: Op, dst: Op) -> Edge:
+    ...
+
+
+def remove_edge(src: Op, dst: Op):
     ...
 
 
@@ -481,7 +483,7 @@ def connect(src: Op, dst: Op) -> Edge:
     ...
 
 
-def disconnect(src: Op, dst: Op) -> Edge:
+def disconnect(src: Op, dst: Op):
     ...
 
 

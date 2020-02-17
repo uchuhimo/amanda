@@ -10,6 +10,7 @@ from .graph import connect  # noqa: F401
 from .graph import create_edge  # noqa: F401
 from .graph import create_op  # noqa: F401
 from .graph import disconnect  # noqa: F401
+from .graph import remove_edge  # noqa: F401
 
 from .namespace import (  # noqa: F401; noqa: F401
     Namespace,
@@ -17,6 +18,7 @@ from .namespace import (  # noqa: F401; noqa: F401
     exp,
     get_global_registry,
     get_mapper,
+    get_mapping_table,
 )
 
 __version__ = "0.1.0"

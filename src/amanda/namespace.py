@@ -94,7 +94,7 @@ class DumpMapper:
         src_attr_value,
         dst_op,
         dst_attr_name,
-        dst_value,
+        dst_attr_value,
         tag=None,
     ):
         ...
@@ -131,4 +131,8 @@ def get_global_registry() -> Registry:
 
 
 def get_mapper(source: Namespace, target: Namespace) -> DumpMapper:
+    return DumpMapper()
+
+
+def get_mapping_table(src: str, dst: str) -> DumpMapper:
     return DumpMapper()
