@@ -240,6 +240,9 @@
         "_rule": {
             "type": "object",
             "properties": {
+                "rule_name": {
+                    "type": "string"
+                },
                 "ops": {
                     "$ref": "#/definitions/ops_or_rule"
                 },
@@ -251,6 +254,9 @@
         "_rule_with_tags": {
             "type": "object",
             "properties": {
+                "rule_name": {
+                    "type": "string"
+                },
                 "ops": {
                     "$ref": "#/definitions/ops_or_rule"
                 },

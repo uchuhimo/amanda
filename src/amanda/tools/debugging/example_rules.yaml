@@ -1,0 +1,22 @@
+- src: "source_namespace"
+  dst: "destination_namespace"
+  rules:
+    - rule_name: "update_all_op_type"
+      ops:
+        - type:
+            dst: "conv"
+    - rule_name: "update_conv_op_type"
+      ops:
+        - type:
+            src: "conv_v1"
+            dst: "conv_v2"
+    - rule_name: "update_conv_op_name"
+      ops:
+        - type: "conv"
+          name:
+            dst: "new_conv_name"
+    - rule_name: "update_single_op_name"
+      ops:
+        - name:
+            src: "conv_3"
+            dst: "new_conv_3"

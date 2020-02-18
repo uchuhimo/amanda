@@ -1,3 +1,4 @@
+rule_name: str
 ops:
   - type: str
     name: str
