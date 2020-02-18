@@ -1,0 +1,31 @@
+- src: "debugging"
+  dst: "debugging"
+  rules:
+    - src:
+        ops:
+          - ref: "src_op"
+            output_ports:
+              - tensor:
+                  attrs:
+                    - key: "is_valid"
+                      value: true
+          - ref: "dst_op"
+        edges:
+          - src_op: "src_op"
+            dst_op: "dst_op"
+            ref: "original_edge"
+      dst:
+        ops:
+          - ref: "src_op"
+          - ref: "dst_op"
+          - ref: "debug_op"
+            type: "store_tensor_to_file"
+        edges:
+          - src_op: "src_op"
+            src_index: "{original_edge.src.index}"
+            dst_op: "debug_op"
+            dst_index: 0
+          - src_op: "debug_op"
+            src_index: 0
+            dst_op: "{original_edge.dst.op}"
+            dst_index: "{original_edge.dst.index}"

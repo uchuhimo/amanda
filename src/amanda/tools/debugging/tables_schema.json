@@ -1,0 +1,321 @@
+{
+    "definitions": {
+        "string_or_rule": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "src": {
+                            "type": "string"
+                        },
+                        "dst": {
+                            "type": "string"
+                        }
+                    }
+                }
+            ]
+        },
+        "integer_or_rule": {
+            "anyOf": [
+                {
+                    "type": [
+                        "integer",
+                        "string"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "src": {
+                            "type": [
+                                "integer",
+                                "string"
+                            ]
+                        },
+                        "dst": {
+                            "type": [
+                                "integer",
+                                "string"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        "input_port": {
+            "type": "object",
+            "properties": {
+                "index": {
+                    "$ref": "#/definitions/integer_or_rule"
+                },
+                "ref": {
+                    "type": "string"
+                }
+            }
+        },
+        "input_ports": {
+            "type": "array",
+            "items": {
+                "$ref": "#/definitions/input_port"
+            }
+        },
+        "input_ports_or_rule": {
+            "anyOf": [
+                {
+                    "$ref": "#/definitions/input_ports"
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "src": {
+                            "$ref": "#/definitions/input_ports"
+                        },
+                        "dst": {
+                            "$ref": "#/definitions/input_ports"
+                        }
+                    }
+                }
+            ]
+        },
+        "output_port": {
+            "type": "object",
+            "properties": {
+                "index": {
+                    "$ref": "#/definitions/integer_or_rule"
+                },
+                "ref": {
+                    "type": "string"
+                },
+                "tensor": {
+                    "type": "object",
+                    "properties": {
+                        "attrs": {
+                            "$ref": "#/definitions/attrs_or_rule"
+                        }
+                    }
+                }
+            }
+        },
+        "output_ports": {
+            "type": "array",
+            "items": {
+                "$ref": "#/definitions/output_port"
+            }
+        },
+        "output_ports_or_rule": {
+            "anyOf": [
+                {
+                    "$ref": "#/definitions/output_ports"
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "src": {
+                            "$ref": "#/definitions/output_ports"
+                        },
+                        "dst": {
+                            "$ref": "#/definitions/output_ports"
+                        }
+                    }
+                }
+            ]
+        },
+        "attr": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "$ref": "#/definitions/string_or_rule"
+                },
+                "ref": {
+                    "type": "string"
+                },
+                "value": {
+                    "$ref": "#/definitions/attr_value"
+                }
+            }
+        },
+        "attrs": {
+            "type": "array",
+            "items": {
+                "$ref": "#/definitions/attr"
+            }
+        },
+        "attrs_or_rule": {
+            "anyOf": [
+                {
+                    "$ref": "#/definitions/attrs"
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "src": {
+                            "$ref": "#/definitions/attrs"
+                        },
+                        "dst": {
+                            "$ref": "#/definitions/attrs"
+                        }
+                    }
+                }
+            ]
+        },
+        "op": {
+            "type": "object",
+            "properties": {
+                "type": {
+                    "$ref": "#/definitions/string_or_rule"
+                },
+                "name": {
+                    "$ref": "#/definitions/string_or_rule"
+                },
+                "ref": {
+                    "type": "string"
+                },
+                "attrs": {
+                    "$ref": "#/definitions/attrs_or_rule"
+                },
+                "input_ports": {
+                    "$ref": "#/definitions/input_ports_or_rule"
+                },
+                "output_ports": {
+                    "$ref": "#/definitions/output_ports_or_rule"
+                }
+            }
+        },
+        "ops": {
+            "type": "array",
+            "items": {
+                "$ref": "#/definitions/op"
+            }
+        },
+        "ops_or_rule": {
+            "anyOf": [
+                {
+                    "$ref": "#/definitions/ops"
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "src": {
+                            "$ref": "#/definitions/ops"
+                        },
+                        "dst": {
+                            "$ref": "#/definitions/ops"
+                        }
+                    }
+                }
+            ]
+        },
+        "edge": {
+            "type": "object",
+            "properties": {
+                "src_op": {
+                    "$ref": "#/definitions/integer_or_rule"
+                },
+                "src_index": {
+                    "$ref": "#/definitions/integer_or_rule"
+                },
+                "dst_op": {
+                    "$ref": "#/definitions/integer_or_rule"
+                },
+                "dst_index": {
+                    "$ref": "#/definitions/integer_or_rule"
+                },
+                "ref": {
+                    "type": "string"
+                },
+                "attrs": {
+                    "$ref": "#/definitions/attrs_or_rule"
+                }
+            }
+        },
+        "edges": {
+            "type": "array",
+            "items": {
+                "$ref": "#/definitions/edge"
+            }
+        },
+        "_rule": {
+            "type": "object",
+            "properties": {
+                "ops": {
+                    "$ref": "#/definitions/ops_or_rule"
+                },
+                "edges": {
+                    "$ref": "#/definitions/edges"
+                }
+            }
+        },
+        "_rule_with_tags": {
+            "type": "object",
+            "properties": {
+                "ops": {
+                    "$ref": "#/definitions/ops_or_rule"
+                },
+                "edges": {
+                    "$ref": "#/definitions/edges"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "rule": {
+            "anyOf": [
+                {
+                    "$ref": "#/definitions/_rule_with_tags"
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "src": {
+                            "$ref": "#/definitions/_rule"
+                        },
+                        "dst": {
+                            "$ref": "#/definitions/_rule"
+                        },
+                        "tags": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        "attr_value": {
+            "type": [
+                "array",
+                "object",
+                "boolean",
+                "number",
+                "null",
+                "string"
+            ]
+        }
+    },
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "src": {
+                "type": "string"
+            },
+            "dst": {
+                "type": "string"
+            },
+            "rules": {
+                "type": "array",
+                "items": {
+                    "$ref": "#/definitions/rule"
+                }
+            }
+        }
+    }
+}

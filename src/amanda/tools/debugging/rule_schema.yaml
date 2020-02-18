@@ -1,0 +1,30 @@
+ops:
+  - type: str
+    name: str
+    ref: str
+    attrs:
+      - key: str
+        value: any
+        ref: str
+    input_ports:
+      - index: int
+        ref: str
+    output_ports:
+      - index: int
+        ref: str
+        tensor:
+          attrs:
+            - key: str
+              value: any
+              ref: str
+edges:
+  - src_op: int | str
+    src_index: int | str
+    dst_op: int | str
+    dst_index: int | str
+    ref: str
+    attrs:
+      - key: str
+        value: any
+        ref: str
+tags: [str]

@@ -1,6 +1,9 @@
 # type: ignore
 import amanda.tools.debugging.graph as amanda
 
+# load all mapping tables
+amanda.load_mapping_tables("tables.yaml")
+
 
 def modify_graph(graph: amanda.Graph):
     namespace = graph.namespace
@@ -10,7 +13,7 @@ def modify_graph(graph: amanda.Graph):
         for output_port in op.output_ports:
             # check whether the edge contains a valid tensor or not
             tensor = output_port.tensor
-            if tensor is not None and tensor.attrs["is_valid"]:
+            if tensor.attrs["is_valid"]:
                 for edge in output_port.out_edges:
                     # create the debug op
                     debug_op = amanda.create_op(type="store_tensor_to_file")
