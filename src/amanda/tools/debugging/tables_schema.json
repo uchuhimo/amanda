@@ -56,10 +56,28 @@
                 }
             }
         },
+        "input_port_or_rule": {
+            "anyOf": [
+                {
+                    "$ref": "#/definitions/input_port"
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "src": {
+                            "$ref": "#/definitions/input_port"
+                        },
+                        "dst": {
+                            "$ref": "#/definitions/input_port"
+                        }
+                    }
+                }
+            ]
+        },
         "input_ports": {
             "type": "array",
             "items": {
-                "$ref": "#/definitions/input_port"
+                "$ref": "#/definitions/input_port_or_rule"
             }
         },
         "input_ports_or_rule": {
@@ -99,10 +117,28 @@
                 }
             }
         },
+        "output_port_or_rule": {
+            "anyOf": [
+                {
+                    "$ref": "#/definitions/output_port"
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "src": {
+                            "$ref": "#/definitions/output_port"
+                        },
+                        "dst": {
+                            "$ref": "#/definitions/output_port"
+                        }
+                    }
+                }
+            ]
+        },
         "output_ports": {
             "type": "array",
             "items": {
-                "$ref": "#/definitions/output_port"
+                "$ref": "#/definitions/output_port_or_rule"
             }
         },
         "output_ports_or_rule": {
@@ -137,10 +173,28 @@
                 }
             }
         },
+        "attr_or_rule": {
+            "anyOf": [
+                {
+                    "$ref": "#/definitions/attr"
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "src": {
+                            "$ref": "#/definitions/attr"
+                        },
+                        "dst": {
+                            "$ref": "#/definitions/attr"
+                        }
+                    }
+                }
+            ]
+        },
         "attrs": {
             "type": "array",
             "items": {
-                "$ref": "#/definitions/attr"
+                "$ref": "#/definitions/attr_or_rule"
             }
         },
         "attrs_or_rule": {
@@ -184,10 +238,28 @@
                 }
             }
         },
+        "op_or_rule": {
+            "anyOf": [
+                {
+                    "$ref": "#/definitions/op"
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "src": {
+                            "$ref": "#/definitions/op"
+                        },
+                        "dst": {
+                            "$ref": "#/definitions/op"
+                        }
+                    }
+                }
+            ]
+        },
         "ops": {
             "type": "array",
             "items": {
-                "$ref": "#/definitions/op"
+                "$ref": "#/definitions/op_or_rule"
             }
         },
         "ops_or_rule": {
@@ -237,12 +309,9 @@
                 "$ref": "#/definitions/edge"
             }
         },
-        "_rule": {
+        "raw_rule": {
             "type": "object",
             "properties": {
-                "rule_name": {
-                    "type": "string"
-                },
                 "ops": {
                     "$ref": "#/definitions/ops_or_rule"
                 },
@@ -251,9 +320,12 @@
                 }
             }
         },
-        "_rule_with_tags": {
+        "_rule": {
             "type": "object",
             "properties": {
+                "description": {
+                    "type": "string"
+                },
                 "rule_name": {
                     "type": "string"
                 },
@@ -274,16 +346,22 @@
         "rule": {
             "anyOf": [
                 {
-                    "$ref": "#/definitions/_rule_with_tags"
+                    "$ref": "#/definitions/_rule"
                 },
                 {
                     "type": "object",
                     "properties": {
+                        "description": {
+                            "type": "string"
+                        },
+                        "rule_name": {
+                            "type": "string"
+                        },
                         "src": {
-                            "$ref": "#/definitions/_rule"
+                            "$ref": "#/definitions/raw_rule"
                         },
                         "dst": {
-                            "$ref": "#/definitions/_rule"
+                            "$ref": "#/definitions/raw_rule"
                         },
                         "tags": {
                             "type": "array",
@@ -310,6 +388,9 @@
     "items": {
         "type": "object",
         "properties": {
+            "description": {
+                "type": "string"
+            },
             "src": {
                 "type": "string"
             },

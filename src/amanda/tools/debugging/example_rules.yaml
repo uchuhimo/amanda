@@ -1,22 +1,303 @@
-- src: "source_namespace"
+- description: |
+    ## Mapping Table
+
+    A mapping table converts a graph from a namespace to another namespace.
+    The definition contains the following parts:
+
+    - `src`: the source namespace
+    - `dst`: the destination namespace
+    - `rules`: a list of rules. Each rule is applied to the graph in the order of declaration.
+    - `description`(optional): the table's description
+
+  src: "source_namespace"
   dst: "destination_namespace"
   rules:
-    - rule_name: "update_all_op_type"
+    - description: |
+        ## Mapping Rule
+
+        A mapping rule matches and transforms the graph.
+        The definition contains the following parts:
+
+        - `src`: the rule's matcher to match a part of the graph
+        - `dst`: the rule's mapper to transform the matcher part of the graph
+        - `tags`(optional): a list of tags. A rule will be applied
+          only when its tags match with `graph.to_namespace`'s `tags` argument.
+        - `rule_name`(optional): the rule's name
+        - `description`(optional): the rule's description
+
+        The matcher in this rule matches an op with type `FusedBatchNormV2`.
+        The mapper in this rule transforms the matched FusedBatchNormV2 op to a FusedBatchNorm op.
+        Noting that the matcher and the mapper share the same "matching structure".
+        We can use this matching structure to match and transform any op/edge/attribute/port/tensor.
+        The full matching structure is shown as follows:
+
+        ```yaml
+        ops:
+          - type: str
+            name: str
+            attrs:
+              - key: str
+                value: any
+            input_ports:
+              - index: int
+            output_ports:
+              - index: int
+                tensor:
+                  attrs:
+                    - key: str
+                      value: any
+        edges:
+          - src_op: int
+            src_index: int
+            dst_op: int
+            dst_index: int
+            attrs:
+              - key: str
+                value: any
+        ```
+
+      rule_name: "downgrade_batch_norm_op"
+      src:
+        ops:
+          - type: "FusedBatchNormV2"
+      dst:
+        ops:
+          - type: "FusedBatchNorm"
+
+    - description: |
+        ## Pushdown
+
+        The matcher-mapper pair can be pushed down into the matching structure to:
+
+        - Narrow the match/transform scope
+        - Reduce repeated matching structure between the matcher and the mapper
+
+        You can declare the matcher-mapper pair at any level of the matching structure.
+        Here is an equivalent form of the `downgrade_batch_norm_op` rule.
+
+      rule_name: "downgrade_batch_norm_op"
       ops:
         - type:
-            dst: "conv"
-    - rule_name: "update_conv_op_type"
+            src: "FusedBatchNormV2"
+            dst: "FusedBatchNorm"
+    - description: |
+        Another equivalent form of the `downgrade_batch_norm_op` rule.
       ops:
-        - type:
-            src: "conv_v1"
-            dst: "conv_v2"
-    - rule_name: "update_conv_op_name"
+        src:
+          - type: "FusedBatchNormV2"
+        dst:
+          - type: "FusedBatchNorm"
+    - description: |
+        Another equivalent form of the `downgrade_batch_norm_op` rule.
       ops:
-        - type: "conv"
-          name:
-            dst: "new_conv_name"
-    - rule_name: "update_single_op_name"
+        - src:
+            type: "FusedBatchNormV2"
+          dst:
+            type: "FusedBatchNorm"
+
+    - description: |
+        ## Expression
+
+        We use the value "FusedBatchNormV2" in the matcher to match the type of the FusedBatchNormV2 op and
+        use the value "FusedBatchNorm" in the mapper to update the type of it in the example above.
+        Besides the exact value, the matcher/mapper can also accept an expression.
+
+        An expression is in the form of "{exp}", the `exp` part will be evaluated in Python.
+        The evaluation result is:
+
+        - For matcher: a boolean value indicated whether the structure matches or not
+        - For mapper: the updated value for the structure
+
+        Some context variables are available in the expression according to the context.
+        For example, in an op's matching structure, a variable `op` is available,
+        so you can use "{op.type}" as expression.
+        We mark all the available context variables as followed (noting that from the inner context
+        you can still access variables in the outer context):
+
+        ```yaml
+        ops:
+          # variable: `ops`
+          - # variable: `op`
+            type: str
+            name: str
+            attrs:
+              - # variable: `attr`
+                key: str
+                value: any
+            input_ports:
+              - # variable: `input_port`
+                index: int
+            output_ports:
+              - # variable: `output_port`
+                index: int
+                tensor:
+                  # variable: `tensor`
+                  attrs:
+                    - # variable: `attr`
+                      key: str
+                      value: any
+        # variable: `ops`
+        edges:
+          # variable: `edges`
+          - # variable: `edge`
+            src_op: int
+            src_index: int
+            dst_op: int
+            dst_index: int
+            attrs:
+              - # variable: `attr`
+                key: str
+                value: any
+        ```
+
+        The matcher in this rule matches all output port of all ops, and the mapper
+        adds a new attribute "name" for the tensor on every output port.
+        The expression in the mapper uses two context variables `op` and `output_port`.
+
+      rule_name: "assign_tensor_name"
       ops:
-        - name:
-            src: "conv_3"
-            dst: "new_conv_3"
+        - output_ports:
+            - src: {}
+              dst:
+                tensor:
+                  attrs:
+                    - key: "name"
+                      value: "{op.name + ':' + str(output_port.index)}"
+
+    - description: |
+        ## Reference
+
+        Reference is a unique name for a graph component in a rule.
+        You can declare a reference for op, edge, input port, output port and attribute using the `ref` field.
+        A reference has three usages:
+
+        - As a context variable in an expression
+        - As the value for an edge's `src_op`/`src_index`/`dst_op`/`dst_index`.
+          `src_op`/`dst_op` accepts an op reference while `src_index`/`dst_index` accepts an output/input port reference.
+          We will discuss this usage further in the subgraph matching section.
+        - Match a graph component between the matcher and the mapper.
+          We will discuss this usage further in the subgraph matching section.
+
+        We can use references instead of builtin context variables in the `assign_tensor_name` rule.
+        Here is an equivalent form of the `assign_tensor_name` rule.
+        We declare a reference `matched_op` for the op and a reference `matched_port` for the output port.
+        We use them instead of `op` and `output_port` in the expression.
+
+      rule_name: "assign_tensor_name"
+      ops:
+        - ref: "matched_op"
+          output_ports:
+            - ref: "matched_port"
+              src: {}
+              dst:
+                tensor:
+                  attrs:
+                    - key: "name"
+                      value: "{matched_op.name + ':' + str(matched_port.index)}"
+
+    - description: |
+        ## Subgraph matching
+
+        We use constant folding as an example to show how to match and transform a subgraph.
+        In this example, if an Add op has two Const ops as input ops,
+        we can replace these three ops with a Const op whose value is the sum of the two input Const ops' value.
+        The matcher should match a subgraph containing:
+
+        - an Add op (refer as `add`)
+        - two Const ops (refer as `const1` and `const2`)
+        - an edge from `const1`'s first output port to `add`'s first input port
+        - an edge from `const2`'s first output port to `add`'s second input port
+        - all edges from `add`'s output port (refer as `out_edges`)
+
+        And the mapper should transform it into a subgraph containing:
+
+        - a Const op (refer as `new_const`), whose value is the sum of `const1`'s value and `const2`'s value
+        - all edges from `new_const`'s output port. These edges are transformed from `out_edges`.
+          `out_edges`'s source op changes from `add` to `new_const`.
+
+        The `constant_folding` rule as follows shows exactly what we describe above.
+
+        Noting the usage of references:
+
+        - We use references instead of indices in `src_op` and `dst_op`.
+          For example, we can also use `src_op: 0` in `out_edges` to refer to the first op in `ops`.
+        - We use references in `dst/edges[0]` to match edges between the matcher and the mapper.
+          There are three kinds of edges in the matcher, we use the reference `out_edges`
+          to indicate that we are transforming the edges from `add`.
+
+        Noting how the transformation works:
+
+        - All new graph components will be created (e.g. `new_const`)
+        - All matched components between the matcher and the mapper will be updated (e.g. `out_edges`)
+        - All unmentioned components in the mapper will be removed (e.g. `add`/`const1`/`const2`)
+
+      rule_name: "constant_folding"
+      src:
+        ops:
+          - type: "Add"
+            ref: "add"
+          - type: "Const"
+            ref: "const1"
+          - type: "Const"
+            ref: "const2"
+        edges:
+          - src_op: "const1"
+            src_index: 0
+            dst_op: "add"
+            dst_index: 0
+          - src_op: "const2"
+            src_index: 0
+            dst_op: "add"
+            dst_index: 1
+          - src_op: "add"
+            ref: "out_edges"
+      dst:
+        ops:
+          - type: "Const"
+            ref: "new_const"
+            attrs:
+              - key: "value"
+                value: "{const1.attrs['value'] + const2.attrs['value']}"
+        edges:
+          - ref: "out_edges"
+            src_op: "new_const"
+
+    - description: |
+        ## Other common transformations
+
+        We provide examples of other common transformations here.
+
+        ### Update attribute
+
+        In `upgrade_op_version`, we upgrade a v7 op to a v10 op by updating its `version` attribute.
+
+      rule_name: "upgrade_op_version"
+      ops:
+        - attrs:
+            - key: "version"
+              value:
+                src: "v7"
+                dst: "v10"
+    - description: |
+        ### Add attribute
+
+        In `mark_fused_op`, we mark all fused ops by adding an attribute `is_fused` and set it to true.
+
+      rule_name: "mark_fused_op"
+      ops:
+        - attrs:
+            src: []
+            dst:
+              - key: "is_fused"
+                value: "{op.type.startswith('Fused')}"
+    - description: |
+        ### Remove attribute
+
+        In `unmark_fused_op`, we remove the marks by removing the attribute `is_fused`.
+
+      rule_name: "unmark_fused_op"
+      ops:
+        - attrs:
+            src:
+              - key: "is_fused"
+            dst: []

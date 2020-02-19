@@ -1,5 +1,5 @@
 # type: ignore
-from typing import Any, Callable, Dict, List, Tuple, Union
+from typing import Any, Callable, Dict, List, Set, Tuple, Union
 
 
 class Tensor:
@@ -112,8 +112,14 @@ class Graph:
     def remove_op(self, op: Op) -> None:
         self.ops.remove(op)
 
-    def to_namespace(self, namespace: str, tags: List[str] = None) -> "Graph":
-        ...
+    def to_namespace(self, namespace: str, tags: Set[str] = None) -> "Graph":
+        table = get_mapping_table(self.namespace, namespace)
+        graph = self
+        tags = tags or set()
+        for rule in table.rules:
+            if len(tags) == 0 or len(tags.intersection(rule.tags)) != 0:
+                graph = rule.apply(graph)
+        return graph
 
 
 edges: Dict[Tuple[OutputPort, InputPort], Edge] = {}
@@ -147,6 +153,10 @@ MapperType = Union[
 
 class Rule:
     rule: Dict[str, Any]
+    tags: List[str]
+
+    def apply(self, graph: Graph) -> Graph:
+        ...
 
 
 def create_rule(rule: Dict[str, Any]) -> Rule:
@@ -163,7 +173,8 @@ class MappingTable:
     def get_rule(self, index: int) -> Rule:
         ...
 
-    def get_rules(self) -> List[Rule]:
+    @property
+    def rules(self) -> List[Rule]:
         ...
 
     def save(self, file):
