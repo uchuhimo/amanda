@@ -33,26 +33,26 @@
 
         ```yaml
         ops:
-          - type: str
-            name: str
+          - type: string
+            name: string
             attrs:
-              - key: str
+              - key: string
                 value: any
             input_ports:
-              - index: int
+              - index: integer
             output_ports:
-              - index: int
+              - index: integer
                 tensor:
                   attrs:
-                    - key: str
+                    - key: string
                       value: any
         edges:
-          - src_op: int
-            src_index: int
-            dst_op: int
-            dst_index: int
+          - src_op: integer
+            src_index: integer
+            dst_op: integer
+            dst_index: integer
             attrs:
-              - key: str
+              - key: string
                 value: any
         ```
 
@@ -118,35 +118,35 @@
         ops:
           # variable: `ops`
           - # variable: `op`
-            type: str
-            name: str
+            type: string
+            name: string
             attrs:
               - # variable: `attr`
-                key: str
+                key: string
                 value: any
             input_ports:
               - # variable: `input_port`
-                index: int
+                index: integer
             output_ports:
               - # variable: `output_port`
-                index: int
+                index: integer
                 tensor:
                   # variable: `tensor`
                   attrs:
                     - # variable: `attr`
-                      key: str
+                      key: string
                       value: any
         # variable: `ops`
         edges:
           # variable: `edges`
           - # variable: `edge`
-            src_op: int
-            src_index: int
-            dst_op: int
-            dst_index: int
+            src_op: integer
+            src_index: integer
+            dst_op: integer
+            dst_index: integer
             attrs:
               - # variable: `attr`
-                key: str
+                key: string
                 value: any
         ```
 

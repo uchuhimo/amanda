@@ -1,6 +1,7 @@
 # type: ignore
 import amanda.tools.debugging.graph as amanda
 
+# load ..
 # load all mapping tables
 amanda.load_mapping_tables("tables.yaml")
 
