@@ -98,9 +98,9 @@ For example, a computation `hk = h(hx, hy)` is implemented as a graph:
 
 ```python
 hk = h(hx, hy):
-    (m, n) = f(x=hx, y=hy)
-    k = g(z=m)
-    hk = k
+  (m, n) = f(x=hx, y=hy)
+  k = g(z=m)
+  hk = k
 ```
 
 Then we can define `k = h(x, y)` as a subgraph as follows:
@@ -137,6 +137,9 @@ subgraph:
       input_port: { op: h, port: hk }
 ```
 
+Noting that the subgraph's input ports are used as output ports inside the subgraph, while its output ports are used as input ports inside it.
+The reason is that while its input ports consume values from outside, in the inside view they produces values to be consumed by inner input ports. So do its output ports.
+
 ### Attribute
 
 **An attribute is a key-value pair that characterizes an entity including an op, an input port, an output port, an edge and a graph.**
@@ -170,6 +173,7 @@ op:
   output_ports: [ output_port ]
   attrs: { string : any }
 subgraph:
+  namespace: string
   type: string
   name: string
   input_ports: [ input_port ]
@@ -196,9 +200,9 @@ The `name | index` in the specification of the `edge` means the op/port's name o
 
 ### A realistic example
 
-Let's use a TensorFlow graph as an example to illustrate how to represent a graph of a mainstream framework in our graph abstraction.
+Let's use a single layer neural network as an example to illustrate how to represent a graph of a mainstream framework in our graph abstraction.
 
-The following TensorFlow code is a single layer DNN:
+The following TensorFlow code is a single layer neural network:
 
 ```python
 input = tf.placeholder(dtype=tf.float32, shape=(1, 28 * 28))
@@ -349,6 +353,81 @@ subgraph:
       input_port: { op: dense/Relu, port: features }
     - output_port: { op: dense/Relu, port: activations }
       input_port: { op: fc, port: logits }
+```
+
+The following PyTorch code is an equivalent single layer neural network:
+
+```python
+input = torch.randn(1, 28 * 28)
+model = torch.nn.Sequential(
+    torch.nn.Linear(28 * 28, 100, bias=False),
+    torch.nn.ReLU(),
+)
+traced_model = torch.jit.trace(model, (input,))
+logits = traced_model(input)
+```
+
+After `torch.jit.trace`, the model is translated into the following TorchScript graph:
+
+```python
+graph(%input.1 : Float(1, 784), %10 : Float(100, 784)):
+  %7 : Float(784, 100) = aten::t(%10)
+  %input : Float(1, 100) = aten::matmul(%input.1, %7)
+  %9 : Float(1, 100) = aten::relu(%input)
+  return (%9)
+```
+
+Since `%10` is the weight parameter in the FC layer, this PyTorch model can be represented as a single-input, single-output subgraph:
+
+```yaml
+subgraph:
+  namespace: amanda/pytorch/1.4.0
+  name: graph
+  input_ports:
+    - name: input.1
+      attrs:
+        type: Float(1, 784)
+  output_ports:
+    - {}
+  ops:
+    - type: prim::Param
+      output_ports:
+        - name: "10"
+          attrs:
+            type: Float(100, 784)
+    - type: aten::t
+      input_ports:
+        - {}
+      output_ports:
+        - name: "7"
+          attrs:
+            type: Float(784, 100)
+    - type: aten::matmul
+      input_ports:
+        - {}
+        - {}
+      output_ports:
+        - name: input
+          attrs:
+            type: Float(1, 100)
+    - type: aten::relu
+      input_ports:
+        - {}
+      output_ports:
+        - name: "9"
+          attrs:
+            type: Float(1, 100)
+  edges:
+    - output_port: { op: graph, port: input.1 }
+      input_ports: { op: 2, port: 0 }
+    - output_port: { op: 0, port: "10" }
+      input_ports: { op: 1, port: 0 }
+    - output_port: { op: 1, port: "7" }
+      input_ports: { op: 2, port: 1 }
+    - output_port: { op: 2, port: input }
+      input_ports: { op: 3, port: 0 }
+    - output_port: { op: 3, port: "9" }
+      input_ports: { op: graph, port: 0 }
 ```
 
 ## Namespace
