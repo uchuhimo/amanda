@@ -432,4 +432,157 @@ subgraph:
 
 ## Namespace
 
+Our graph abstraction can represent many kinds of graphs:
+
+- graphs from different frameworks, e.g., TensorFlow, PyTorch, ONNX
+- graphs from different versions of the same framework, e.g., TensorFlow v1.x and TensorFlow v2.x
+- graphs defined on demand for some adhoc usages
+
+Namespace is used to distinguish between all these different graphs.
+**Namespace is a name to represent a specific kind of graph, containing a dictionary to describe a valid collection of ops called namespace schema.**
+A graph with a `namespace` attribute can be validated by the namespace schema.
+To describe a valid op of a specific type, we provide an op schema in the namespace schema to provide information about the name, type and default value of attributes on ops, input ports and output ports.
+The full specification of the namespace schema is as follows:
+
+```yaml
+namespace:
+  name: string
+  op_schemas: [ op_schema | subgraph_schema ]
+op_schema:
+  type: string
+  input_ports: [ input_port_schema ]
+  output_ports: [ output_port_schema ]
+  attrs: { string : type | attr_schema }
+subgraph_schema:
+  type: string
+  input_ports: [ input_port_schema ]
+  output_ports: [ output_port_schema ]
+  ops: [ op | subgraph ]
+  edges: [ edge ]
+  attrs: { string : type | attr_schema }
+input_port_schema:
+  attrs: { string : type | attr_schema }
+output_port_schema:
+  attrs: { string : type | attr_schema }
+attr_schema:
+  type: type
+  default: any
+```
+
+For example, a minimal namespace schema for the TensorFlow graph mentioned in the previous section is as follows:
+
+```yaml
+namespace:
+  name: amanda/tensorflow/1.13.1
+  op_schemas:
+    - type: Placeholder
+      attrs:
+        name: str
+        shape: Shape
+        dtype: DType
+      output_ports:
+        - attrs:
+            name:
+              type: str
+              default: output
+            type_attr:
+              type:
+                constant: dtype
+    - type: VariableV2
+      attrs:
+        name: str
+        shape: Shape
+        dtype: DType
+        container:
+          type: str
+          default: ""
+        shared_name:
+          type: str
+          default: ""
+      output_ports:
+        - attrs:
+            name:
+              type: str
+              default: ref
+            type_attr:
+              type:
+                constant: dtype
+            is_ref:
+              type:
+                constant: true
+    - type: MatMul
+      attrs:
+        name: str
+        T:
+          type:
+            enum: DType
+            items: [bfloat16, half, float, double, int32, int64, complex64, complex128]
+        transpose_a:
+          type: bool
+          default: false
+        transpose_b:
+          type: bool
+          default: false
+      input_ports:
+        - attrs:
+            name:
+              type: str
+              default: a
+            type_attr:
+              type:
+                constant: T
+        - attrs:
+            name:
+              type: str
+              default: b
+            type_attr:
+              type:
+                constant: T
+      output_ports:
+        - attrs:
+            name:
+              type: str
+              default: product
+            type_attr:
+              type:
+                constant: T
+    - type: Relu
+      attrs:
+        name: str
+        T: float32
+      input_ports:
+        - attrs:
+            name:
+              type: str
+              default: features
+            type_attr:
+              type:
+                constant: T
+      output_ports:
+        - attrs:
+            name:
+              type: str
+              default: activations
+            type_attr:
+              type:
+                constant: T
+```
+
+This namespace schema provides the op schemas for all four types of ops in the TensorFlow graph.
+
 ## Mapping Mechanism
+
+When converting between different kinds of graphs, manual manipulation is inefficient and error prone.
+We can provide a mapping mechanism to automatically convert graphs between two namespaces.
+**A mapping table is a series of mapping rules for conversion from one namespace to another.**
+**A mapping rule matches and transform an op or a subgraph.**
+A mapping rule contains the following parts:
+
+- a matcher to match an op or a subgraph
+- a mapper to transform the matched op or subgraph
+- an optional list of tags to describe in which situations it will be applied
+
+For example, a mapping table containing a rule to convert a matmul op from PyTorch to TensorFlow is as follows:
+
+
+
