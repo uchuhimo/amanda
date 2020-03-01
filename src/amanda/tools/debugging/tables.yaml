@@ -1,63 +1,56 @@
 - src: "amanda/pytorch"
   dst: "debugging"
   rules:
-    - ops:
-        - output_ports:
-            - tensor:
-                attrs:
-                  src:
-                    - key: "type"
-                      ref: "tensor_type"
-                  dst:
-                    - ref: "tensor_type"
-                    - key: "is_valid"
-                      value: "{tensor_type.value.kind() == 'TensorType'}"
+    - output_ports:
+        - attrs:
+            src:
+              type:
+                ref: "tensor_type"
+            dst:
+              type:
+                ref: "tensor_type"
+              is_valid: "{tensor_type.value.kind() == 'TensorType'}"
 
 - src: "debugging"
   dst: "amanda/pytorch"
   rules:
-    - ops:
-        - type: "store_tensor_to_file"
-          output_ports:
-            - src:
-                index: 0
-              dst:
-                tensor:
-                  attrs:
-                    - key: "type"
-                      value: "{op.input_tensors[0].attrs['type']}"
-    - ops:
-        - type:
-            src: "store_tensor_to_file"
-            dst: "amanda::store_tensor_to_file"
+    - rule_name: assign_tensor_type
+      type: "store_tensor_to_file"
+      output_ports:
+        - src:
+            index: 0
+          dst:
+            attrs:
+              type: "{op.input_ports[0].in_edges[0].src.attrs['type']}"
+    - apply_after: [assign_tensor_type]
+      type:
+        src: "store_tensor_to_file"
+        dst: "amanda::store_tensor_to_file"
 
 - src: "amanda/tensorflow"
   dst: "debugging"
   rules:
-    - ops:
-        - output_ports:
-            - tensor:
-                attrs:
-                  src:
-                    - key: "dtype"
-                      ref: "dtype"
-                  dst:
-                    - ref: "dtype"
-                    - key: "is_valid"
-                      value: "{dtype.value._is_ref_dtype}"
+    - output_ports:
+        - attrs:
+            src:
+              dtype:
+                ref: "dtype"
+            dst:
+              dtype:
+                ref: "dtype"
+              is_valid: "{dtype.value._is_ref_dtype}"
 
 - src: "debugging"
   dst: "amanda/tensorflow"
   rules:
-    - ops:
-        - src:
-            type: "store_tensor_to_file"
-          dst:
-            name: "{op.input_ops[0].name + op.output_ops[0].name}"
-            attrs:
-              - key: "T"
-                value: "{op.input_tensors[0].attrs['dtype']}"
-    - ops:
-        - type:
-            src: "store_tensor_to_file"
-            dst: "StoreTensorToFile"
+    - rule_name: assign_dtype
+      src:
+        type: "store_tensor_to_file"
+      dst:
+        name: "{op.input_ops[0].name + op.output_ops[0].name}"
+        attrs:
+          T: "{op.input_ports[0].in_edges[0].src.attrs['dtype']}"
+    - apply_after: [assign_dtype]
+      type:
+        src: "store_tensor_to_file"
+        dst: "StoreTensorToFile"

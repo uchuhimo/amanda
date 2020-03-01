@@ -9,22 +9,29 @@ class Tensor:
 class InputPort:
     op: "Op"
     index: int
+    attrs: Dict[str, Any]
+
+    # builtin attributes
+    name: str  # is attrs["name"]
 
     # additional APIs for convenience
     @property
     def in_edges(self) -> List["Edge"]:
-        return [edge for edge in edges.values() if edge.dst == self]
+        return [edge for edge in self.op.graph.edges.values() if edge.dst == self]
 
 
 class OutputPort:
     op: "Op"
     index: int
-    tensor: Tensor
+    attrs: Dict[str, Any]
+
+    # builtin attributes
+    name: str  # is attrs["name"]
 
     # additional APIs for convenience
     @property
     def out_edges(self) -> List["Edge"]:
-        return [edge for edge in edges.values() if edge.src == self]
+        return [edge for edge in self.op.graph.edges.values() if edge.src == self]
 
 
 class Op:
@@ -33,6 +40,9 @@ class Op:
     output_ports: List[OutputPort]
     control_input_port: InputPort
     control_output_port: OutputPort
+
+    # cached fields
+    graph: "Graph"
 
     # builtin attributes
     name: str  # is attrs["name"]
@@ -55,35 +65,23 @@ class Op:
             for edge in output_port.out_edges
         ]
 
-    @property
-    def input_tensors(self) -> List[Tensor]:
-        return [
-            edge.src.tensor
-            for input_port in self.input_ports
-            for edge in input_port.in_edges
-        ]
-
-    @property
-    def output_tensors(self) -> List[Tensor]:
-        return [output_port.tensor for output_port in self.output_ports]
-
     def insert_op_before(self, op: "Op"):
         assert len(self.input_ports) == len(op.input_ports) == len(op.output_ports)
         for input_port in self.input_ports:
             index = input_port.index
             for edge in input_port.in_edges:
-                create_edge(src=edge.src, dst=op.input_ports[index])
-                remove_edge(edge)
-            create_edge(src=op.output_ports[index], dst=input_port)
+                self.graph.create_edge(src=edge.src, dst=op.input_ports[index])
+                self.graph.remove_edge(edge)
+            self.graph.create_edge(src=op.output_ports[index], dst=input_port)
 
     def insert_op_after(self, op: "Op"):
         assert len(self.output_ports) == len(op.input_ports) == len(op.output_ports)
         for output_port in self.output_ports:
             index = output_port.index
             for edge in output_port.out_edges:
-                create_edge(src=op.output_ports[index], dst=edge.dst)
-                remove_edge(edge)
-            create_edge(src=output_port, dst=op.input_ports[index])
+                self.graph.create_edge(src=op.output_ports[index], dst=edge.dst)
+                self.graph.remove_edge(edge)
+            self.graph.create_edge(src=output_port, dst=op.input_ports[index])
 
 
 class Edge:
@@ -91,16 +89,20 @@ class Edge:
     dst: InputPort
     attrs: Dict[str, Any]
 
+    # cached fields
+    graph: "Graph"
+
     # additional APIs for convenience
     def insert_op(self, op: Op):
         assert len(op.input_ports) == 1 and len(op.output_ports) == 1
-        create_edge(src=self.src, dst=op.input_ports[0])
-        create_edge(src=op.output_ports[0], dst=self.dst)
-        remove_edge(self)
+        self.graph.create_edge(src=self.src, dst=op.input_ports[0])
+        self.graph.create_edge(src=op.output_ports[0], dst=self.dst)
+        self.graph.remove_edge(self)
 
 
 class Graph:
     ops: List[Op]
+    edges: Dict[Tuple[OutputPort, InputPort], Edge]
     attrs: Dict[str, Any]
 
     # builtin attributes
@@ -112,6 +114,17 @@ class Graph:
     def remove_op(self, op: Op) -> None:
         self.ops.remove(op)
 
+    def get_edge(self, src: OutputPort, dst: InputPort) -> Edge:
+        return self.edges[(src, dst)]
+
+    def create_edge(self, src: OutputPort, dst: InputPort) -> Edge:
+        edge = Edge(src=src, dst=dst)
+        self.edges[(src, dst)] = edge
+        return edge
+
+    def remove_edge(self, edge: Edge):
+        del self.edges[(edge.src, edge.dst)]
+
     def to_namespace(self, namespace: str, tags: Set[str] = None) -> "Graph":
         table = get_mapping_table(self.namespace, namespace)
         graph = self
@@ -122,25 +135,8 @@ class Graph:
         return graph
 
 
-edges: Dict[Tuple[OutputPort, InputPort], Edge] = {}
-
-
 def create_op(type: str) -> Op:
     return Op(attrs={"type": type})
-
-
-def get_edge(src: OutputPort, dst: InputPort) -> Edge:
-    return edges[(src, dst)]
-
-
-def create_edge(src: OutputPort, dst: InputPort) -> Edge:
-    edge = Edge(src=src, dst=dst)
-    edges[(src, dst)] = edge
-    return edge
-
-
-def remove_edge(edge: Edge):
-    del edges[(edge.src, edge.dst)]
 
 
 MatcherType = Union[

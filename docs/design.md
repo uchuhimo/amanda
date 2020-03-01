@@ -549,7 +549,10 @@ namespace:
     - type: Relu
       attrs:
         name: str
-        T: float32
+        T:
+          type:
+            enum: DType
+            items: [bfloat16, half, float, double, qint8, uint8, int8, uint16, int16, uint32, int32, uint64, int64]
       input_ports:
         - attrs:
             name:
@@ -584,5 +587,29 @@ A mapping rule contains the following parts:
 
 For example, a mapping table containing a rule to convert a matmul op from PyTorch to TensorFlow is as follows:
 
-
-
+```yaml
+table:
+  src: amanda/pytorch/1.4.0
+  dst: amanda/tensorflow/1.13.1
+  rules:
+    - src:
+        type: aten::t
+      dst:
+        type: MatMul
+        name: dense/MatMul
+        attrs:
+          T: float32
+          transpose_a: false
+          transpose_b: false
+        input_ports:
+          - name: a
+            attrs:
+              type_attr: T
+          - name: b
+            attrs:
+              type_attr: T
+        output_ports:
+          - name: product
+            attrs:
+              type_attr: T
+```
