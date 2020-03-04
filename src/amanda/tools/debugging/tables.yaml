@@ -1,56 +1,91 @@
 - src: "amanda/pytorch"
   dst: "debugging"
   rules:
-    - output_ports:
-        - attrs:
-            src:
-              type:
-                ref: "tensor_type"
-            dst:
-              type:
-                ref: "tensor_type"
-              is_valid: "{tensor_type.value.kind() == 'TensorType'}"
+    convert_dtype:
+      src:
+        ops:
+          $op:
+            output_ports:
+              - $port
+      dst:
+        ops:
+          $op:
+            output_ports:
+              - $port: |
+                  ${
+                    from amanda.tools.debugging.dtype import WrappedDType
+                    return WrappedDType(port.dtype)
+                  }
 
 - src: "debugging"
   dst: "amanda/pytorch"
   rules:
-    - rule_name: assign_tensor_type
-      type: "store_tensor_to_file"
-      output_ports:
-        - src:
-            index: 0
-          dst:
-            attrs:
-              type: "{op.input_ports[0].in_edges[0].src.attrs['type']}"
-    - apply_after: [assign_tensor_type]
-      type:
-        src: "store_tensor_to_file"
-        dst: "amanda::store_tensor_to_file"
+    convert_debug_op:
+      src:
+        ops:
+          $debug_op:
+            type: "store_tensor_to_file"
+      dst:
+        ops:
+          $debug_op:
+            type: "amanda::store_tensor_to_file"
+            output_ports:
+              - out0: ${debug_op.input_ports["in0"].in_edges[0].src.dtype}
+    convert_dtype:
+      apply_after: [convert_debug_op]
+      src:
+        ops:
+          $op:
+            output_ports:
+              - $port
+      dst:
+        ops:
+          $op:
+            output_ports:
+              - $port: ${port.dtype.value}
 
 - src: "amanda/tensorflow"
   dst: "debugging"
   rules:
-    - output_ports:
-        - attrs:
-            src:
-              dtype:
-                ref: "dtype"
-            dst:
-              dtype:
-                ref: "dtype"
-              is_valid: "{dtype.value._is_ref_dtype}"
+    convert_dtype:
+      src:
+        ops:
+          $op:
+            output_ports:
+              - $port
+      dst:
+        ops:
+          $op:
+            output_ports:
+              - $port: |
+                  ${
+                    from amanda.tools.debugging.dtype import WrappedDType
+                    return WrappedDType(port.dtype)
+                  }
 
 - src: "debugging"
   dst: "amanda/tensorflow"
   rules:
-    - rule_name: assign_dtype
+    convert_dtype:
       src:
-        type: "store_tensor_to_file"
+        ops:
+          $op:
+            output_ports:
+              - $port
       dst:
-        name: "{op.input_ops[0].name + op.output_ops[0].name}"
-        attrs:
-          T: "{op.input_ports[0].in_edges[0].src.attrs['dtype']}"
-    - apply_after: [assign_dtype]
-      type:
-        src: "store_tensor_to_file"
-        dst: "StoreTensorToFile"
+        ops:
+          $op:
+            output_ports:
+              - $port: ${port.dtype.value}
+    convert_debug_op:
+      apply_after: [convert_dtype]
+      src:
+        ops:
+          $debug_op:
+            type: "store_tensor_to_file"
+      dst:
+        ops:
+          $debug_op:
+            type: "StoreTensorToFile"
+            attrs:
+              T: ${debug_op.input_ports["in"].in_edges[0].src.dtype}

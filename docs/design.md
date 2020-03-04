@@ -23,14 +23,9 @@ An op has several input ports and output ports.
 For example, a computation `(m, n) = f(x, y)` that consumes `x` and `y` and produces `m` and `n` can be represented as an op as followed:
 
 ```yaml
-op:
-  name: f
-  input_ports:
-    - name: x
-    - name: y
-  output_ports:
-    - name: m
-    - name: n
+f:
+  input_ports: [x, y]
+  output_ports: [m, n]
 ```
 
 An op can contain other ops, which makes it suitable to represent a subgraph. We will discuss this case after we introduce the graph concept.
@@ -41,9 +36,7 @@ An op can contain other ops, which makes it suitable to represent a subgraph. We
 For example, if the output port `m` in `(m, n) = f(x, y)` is consumed by a computation `k = g(z)`, the edge `m->z` between `m` and `z` can be represented as:
 
 ```yaml
-edge:
-  output_port: { op: f, port: m }
-  input_port: { op: g, port: z }
+f.m -> g.z
 ```
 
 A special kind of edges is the control edges.
@@ -55,9 +48,7 @@ We can use a special name `^control` to address them.
 For example, a control edge between `f`'s control output port and `m`'s control input port can be represented as:
 
 ```yaml
-edge:
-  output_port: { op: f, port: ^control }
-  input_port: { op: g, port: ^control }
+f.^control -> g.^control
 ```
 
 ### Graph
@@ -75,21 +66,14 @@ This computation can be represented as a graph:
 ```yaml
 graph:
   ops:
-    - name: f
-      input_ports:
-        - name: x
-        - name: y
-      output_ports:
-        - name: m
-        - name: n
-    - name: g
-      input_ports:
-        - name: z
-      output_ports:
-        - name: k
+    f:
+      input_ports: [x, y]
+      output_ports: [m, n]
+    g:
+      input_ports: [z]
+      output_ports: [k]
   edges:
-    - output_port: { op: f, port: m }
-      input_port: { op: g, port: z }
+    - f.m -> g.z
 ```
 
 A graph can optionally contain input ports and output ports like an op.
@@ -109,35 +93,21 @@ hk = h(hx, hy):
 Then we can define `k = h(x, y)` as an op as follows:
 
 ```yaml
-op:
-  name: h
-  input_ports:
-    - name: hx
-    - name: hy
-  output_ports:
-    - name: hk
+h:
+  input_ports: [hx, hy]
+  output_ports: [hk]
   ops:
-    - name: f
-      input_ports:
-        - name: x
-        - name: y
-      output_ports:
-        - name: m
-        - name: n
-    - name: g
-      input_ports:
-        - name: z
-      output_ports:
-        - name: k
+    f:
+      input_ports: [x, y]
+      output_ports: [m, n]
+    g:
+      input_ports: [z]
+      output_ports: [k]
   edges:
-    - output_port: { op: f, port: m }
-      input_port: { op: g, port: z }
-    - output_port: { op: h, port: hx }
-      input_port: { op: f, port: x }
-    - output_port: { op: h, port: hy }
-      input_port: { op: f, port: y }
-    - output_port: { op: g, port: k }
-      input_port: { op: h, port: hk }
+    - h.hx -> f.x
+    - h.hy -> f.y
+    - f.m -> g.z
+    - g.k -> h.hk
 ```
 
 Noting that the op's input ports are used as output ports inside the internal graph, while its output ports are used as input ports inside it.
@@ -146,57 +116,61 @@ The reason is that while its input ports consume values from outside, in the ins
 ### Attribute
 
 **An attribute is a key-value pair that characterizes an entity including an op, an input port, an output port, an edge and a graph.**
-For example, op `k = g(z)` has an attribute `name`, whose value is `g`. it can be represented as follows:
+For example, if op `k = g(z)` is a Relu op, it will have an attribute `type`, whose value is `Relu`. it can be represented as follows:
 
 ```yaml
-op:
+g:
   attrs:
-    name: g
+    type: Relu
 ```
 
 Some kind of entities have some builtin attributes.
-The op has builtin attributes `name` and `type`; both the input port and the output port has a builtin attribute `name`; the graph has a builtin attribute `namespace`.
-All builtin attributes are optional by default.
-The functions of `type` and `namespace` will be introduced in the next section.
+The op has a builtin attribute `type`; the graph has a builtin attribute `namespace`.
+The functions of `type` and `namespace` will be introduced in the section for namespace.
 
 ### Full Specification
 
 The full specification of our graph abstraction is as follows:
 
 ```yaml
-graph:
-  ops: [ op ]
-  edges: [ edge ]
+graph ::=
+  ops:
+    $name: $op
+  edges:
+    - $op_name.$output_port_name -> $op_name.$input_port_name
   namespace: string  # optional
   input_ports:  # optional
-    - name: string
-      attrs: { string : any }
+    - $name | $name: $dtype
   output_ports:  # optional
-    - name: string
-      attrs: { string : any }
-  attrs: { string : any }  # optional
-op:
+    - $name | $name: $dtype
+  attrs:  # optional
+    $name: $value
+op ::=
   type: string
-  name: string
-  input_ports:
-    - name: string
-      attrs: { string : any }  # optional
-  output_ports:
-    - name: string
-      attrs: { string : any }  # optional
-  ops: [ op ]  # optional
-  edges: [ edge ]  # optional
-  attrs: { string : any }  # optional
-edge:
-  output_port:
-    op: name
-    port: name
-  input_port:
-    op: name
-    port: name
+  input_ports:  # optional
+    - $name | $name: $dtype
+  output_ports:  # optional
+    - $name | $name: $dtype
+  ops:  # optional
+    $name: $op
+  edges: # optional
+    - $op_name.$output_port_name -> $op_name.$input_port_name
+  attrs:  # optional
+    $name: $value
+name ::= string
+dtype ::= string
+value ::= any
+op_name ::= string
+output_port_name ::= string
+input_port_name ::= string
 ```
 
-The `name` in the specification of the `edge` means the op/port's name.
+There are some assumptions for our graph abstraction:
+
+- Every op has a unique name among all ops in the same graph.
+- Every input port has a unique name among all input ports in the same op. So does every output port.
+
+For anonymous ops and ports in some kinds of graphs (e.g. graphs from PyTorch), we will assign a unique name for them based on ops' type or ports' order.
 
 ### A realistic example
 
@@ -229,130 +203,92 @@ graph:
   attrs:
     versions: { producer: 27 }
   ops:
-    - type: Placeholder
-      name: Placeholder
+    Placeholder:
+      type: Placeholder
       attrs:
         shape: [1, 784]
         dtype: float32
       output_ports:
-        - name: output
-          attrs:
-            type_attr: dtype
-    - type: VariableV2
-      name: dense/kernel
+        - output: float32
+    dense/kernel:
+      type: VariableV2
       attrs:
         shape: [784, 10]
         dtype: float32
         container: ""
         shared_name: ""
       output_ports:
-        - name: ref
-          attrs:
-            type_attr: dtype
-            is_ref: true
-    - type: MatMul
-      name: dense/MatMul
+        - ref: float32_ref
+    dense/MatMul:
+      type: MatMul
       attrs:
         T: float32
         transpose_a: false
         transpose_b: false
       input_ports:
-        - name: a
-          attrs:
-            type_attr: T
-        - name: b
-          attrs:
-            type_attr: T
+        - a: float32
+        - b: float32
       output_ports:
-        - name: product
-          attrs:
-            type_attr: T
-    - type: Relu
-      name: dense/Relu
+        - product: float32
+    dense/Relu:
+      type: Relu
       attrs:
         T: float32
       input_ports:
-        - name: features
-          attrs:
-            type_attr: T
+        - features: float32
       output_ports:
-        - name: activations
-          attrs:
-            type_attr: T
+        - activations: float32
   edges:
-    - output_port: { op: Placeholder, port: output }
-      input_port: { op: dense/MatMul, port: a }
-    - output_port: { op: dense/kernel, port: ref }
-      input_port: { op: dense/MatMul, port: b }
-    - output_port: { op: dense/MatMul, port: product }
-      input_port: { op: dense/Relu, port: features }
+    - Placeholder.output -> dense/MatMul.a
+    - dense/kernel.ref -> dense/MatMul.b
+    - dense/MatMul.product -> dense/Relu.features
 ```
 
 The `fc` layer can also be represented as a subgraph in our graph abstraction:
 
 ```yaml
-op:
+fc:
   type: Dense
-  name: fc
   attrs:
     units: 10
     activation: tf.nn.relu
     use_bias: false
-  input_ports:
-    - name: input
-  output_ports:
-    - name: logits
+  input_ports: [input]
+  output_ports: [logits]
   ops:
-    - type: VariableV2
-      name: dense/kernel
+    dense/kernel:
+      type: VariableV2
       attrs:
         shape: [784, 10]
         dtype: float32
         container: ""
         shared_name: ""
       output_ports:
-        - name: ref
-          attrs:
-            type_attr: dtype
-            is_ref: true
-    - type: MatMul
-      name: dense/MatMul
+        - ref: float32_ref
+    dense/MatMul:
+      type: MatMul
       attrs:
         T: float32
         transpose_a: false
         transpose_b: false
       input_ports:
-        - name: a
-          attrs:
-            type_attr: T
-        - name: b
-          attrs:
-            type_attr: T
+        - a: float32
+        - b: float32
       output_ports:
-        - name: product
-          attrs:
-            type_attr: T
-    - type: Relu
-      name: dense/Relu
+        - product: float32
+    dense/Relu:
+      type: Relu
       attrs:
         T: float32
       input_ports:
-        - name: features
-          attrs:
-            type_attr: T
+        - features: float32
       output_ports:
-        - name: activations
-          attrs:
-            type_attr: T
+        - activations: float32
   edges:
-    - output_port: { op: fc, port: input }
-      input_port: { op: dense/MatMul, port: a }
-    - output_port: { op: dense/kernel, port: ref }
-      input_port: { op: dense/MatMul, port: b }
-    - output_port: { op: dense/MatMul, port: product }
-      input_port: { op: dense/Relu, port: features }
-    - output_port: { op: dense/Relu, port: activations }
-      input_port: { op: fc, port: logits }
+    - fc.input -> dense/MatMul.a
+    - dense/kernel.ref -> dense/MatMul.b
+    - dense/MatMul.product -> dense/Relu.features
+    - dense/Relu.features -> fc.logits
 ```
 
 The following PyTorch code is an equivalent single layer neural network:
@@ -382,60 +318,43 @@ Since `%10` is the weight parameter in the FC layer, this PyTorch model can be r
 ```yaml
 graph:
   namespace: amanda/pytorch/1.4.0
-  name: graph
   input_ports:
-    - name: input.1
-      attrs:
-        type: Float(1, 784)
+    - in0: Float(1, 784)
   output_ports:
-    - name: _0
+    - out0
   ops:
-    - type: prim::Param
-      name: _0
+    param:
+      type: prim::Param
       output_ports:
-        - name: "10"
-          attrs:
-            type: Float(100, 784)
-    - type: aten::t
-      name: _1
+        out0: Float(100, 784)
+    t:
+      type: aten::t
       input_ports:
-        - name: _0
+        - in0
       output_ports:
-        - name: "7"
-          attrs:
-            type: Float(784, 100)
-    - type: aten::matmul
-      name: _2
+        - out0: Float(784, 100)
+    matmul:
+      type: aten::matmul
       input_ports:
-        - name: _0
-        - name: _1
+        - in0
+        - in1
       output_ports:
-        - name: input
-          attrs:
-            type: Float(1, 100)
-    - type: aten::relu
-      name: _3
+        - out0: Float(1, 100)
+    relu:
+      type: aten::relu
       input_ports:
-        - name: _0
+        - in0
       output_ports:
-        - name: "9"
-          attrs:
-            type: Float(1, 100)
+        - out0: Float(1, 100)
   edges:
-    - output_port: { op: graph, port: input.1 }
-      input_ports: { op: _2, port: _0 }
-    - output_port: { op: _0, port: "10" }
-      input_ports: { op: _1, port: _0 }
-    - output_port: { op: _1, port: "7" }
-      input_ports: { op: _2, port: _1 }
-    - output_port: { op: _2, port: input }
-      input_ports: { op: _3, port: _0 }
-    - output_port: { op: _3, port: "9" }
-      input_ports: { op: graph, port: _0 }
+    - graph.in0 -> matmul.in0
+    - param.out0 -> t.in0
+    - t.out0 -> matmul.in1
+    - matmul.out0 -> relu.in0
+    - relu.out0 -> graph.out0
 ```
 
 Noting that all the anonymous ops and ports are automatically assigned with a unique name, which enables them to be referred in edges.
-Variable like `%10` in the TorchScript will get names without the prefixed `%` like `10`, since `%` is a marker for variable, not a part of its name.
 
 ## Namespace
 
@@ -456,179 +375,100 @@ To describe a valid op of a specific type, we provide an op schema in the namesp
 The full specification of the namespace schema is as follows:
 
 ```yaml
-namespace:
-  name: string
-  type_system: string
+namespace_schema ::=
+  namespace: string
+  default_type_system: string  # optional
   op_schemas:
     - type: string
       input_ports:  # optional
-        - attrs: { string : attr_type }
+        - $name | $name: $type | $name: $type = $default_dtype
       output_ports:  # optional
-        - attrs: { string : attr_type }
-      ops: [ op ]  # optional
-      edges: [ edge ]  # optional
-      attrs: { string : attr_type }  # optional
-attr_type: type | optional_attr_type | constant_attr_type | attr_types
-optional_attr_type:
-  type: type
-  default: any
-constant_attr_type:
-  type: type
-  constant: any
-attr_types:
-  one_of: [ attr_type ]
-  default: any  # optional
+        - $name | $name: $type | $name: $type = $default_dtype
+      ops:  # optional
+        $name: $op
+      edges:  # optional
+        - $op_name.$output_port_name -> $op_name.$input_port_name
+      attrs:  # optional
+        $name: $type | $type = $default_value
+op ::=
+  type: string
+  input_ports:  # optional
+    - $name | $name: $dtype
+  output_ports:  # optional
+    - $name | $name: $dtype
+  ops:  # optional
+    $name: $op
+  edges: # optional
+    - $op_name.$output_port_name -> $op_name.$input_port_name
+  attrs:  # optional
+    $name: $value
+name ::= string
+type ::= $type_name | $type_system.$type_name
+dtype ::= string
+default_dtype ::= string
+default_value ::= any
+op_name ::= string
+output_port_name ::= string
+input_port_name ::= string
 ```
+
+There are some assumptions for our namespace schema:
+
+- Same kind of ops have the same number of input ports and output ports.
+- Same kind of ops have the same list of attributes. Optional attributes are not supported. You can use an attribute with null as default value instead.
+- Same kind of ops contain the same list of ops and edges if they are subgraphs.
 
 We use a pluggable type system in the namespace schema.
 It means that we don't make any assumptions about the available types for attributes and users can choose a pre-defined type system or customize their own type system.
-A series of type systems are pre-defined:
+Some of the pre-defined type systems are listed below:
 
-- `python`: Python
-- `cpp`: C++
-- `protobuf`: Protocol buffers (users should specify the URLs for schema files)
-- `flatbuffers`: FlatBuffers (users should specify the URLs for schema files)
-- `torchscript`: TorchScript
+- `python`: Python's `int`, `str`, `List[float]`, `Union[int, str]`, etc.
+- `cpp`: C++'s `int`, `std::string`, `std::vector<float>`, etc.
+- `tf`: TensorFlow's `Tensor`, `TensorShape`, `DType`, etc.
+- `torch`: PyTorch's `Tensor`, `Type`, etc.
+
+We can use a type with its full qualified name like `python.int`, `tf.Tensor`, etc.
+If we specify the default type system for a namespace schema using `default_type_system`, we can use a type without the type system prefix.
+For example, if `default_type_system` is `python`, we can use `str` instead of `python.str`.
 
 For example, a minimal namespace schema for the TensorFlow graph mentioned in the previous section is as follows:
 
 ```yaml
-namespace:
-  name: amanda/tensorflow/1.13.1
-  type_system: python
+namespace_schema:
+  namespace: amanda/tensorflow/1.13.1
+  default_type_system: python
   op_schemas:
     - type: Placeholder
       attrs:
-        name: str
-        shape: tensorflow.TensorShape
-        dtype: tensorflow.DType
+        shape: tf.TensorShape
+        dtype: tf.DType
       output_ports:
-        - attrs:
-            name:
-              type: str
-              default: output
-            type_attr:
-              type: str
-              constant: dtype
+        - output: tf.DType
     - type: VariableV2
       attrs:
-        name: str
-        shape: tensorflow.TensorShape
-        dtype: tensorflow.DType
-        container:
-          type: str
-          default: ""
-        shared_name:
-          type: str
-          default: ""
+        shape: tf.TensorShape
+        dtype: tf.DType
+        container: str = ""
+        shared_name: str = ""
       output_ports:
-        - attrs:
-            name:
-              type: str
-              default: ref
-            type_attr:
-              type: str
-              constant: dtype
-            is_ref:
-              type: bool
-              constant: true
+        - ref: tf.DType
     - type: MatMul
       attrs:
-        name: str
-        T:
-          one_of:
-            - type: tensorflow.DType
-              constant: bfloat16
-            - type: tensorflow.DType
-              constant: half
-            - type: tensorflow.DType
-              constant: float
-            - type: tensorflow.DType
-              constant: double
-            - type: tensorflow.DType
-              constant: int32
-            - type: tensorflow.DType
-              constant: int64
-            - type: tensorflow.DType
-              constant: complex64
-            - type: tensorflow.DType
-              constant: complex64
-        transpose_a:
-          type: bool
-          default: false
-        transpose_b:
-          type: bool
-          default: false
+        T: tf.DType
+        transpose_a: bool = false
+        transpose_b: bool = false
       input_ports:
-        - attrs:
-            name:
-              type: str
-              default: a
-            type_attr:
-              type: str
-              constant: T
-        - attrs:
-            name:
-              type: str
-              default: b
-            type_attr:
-              type: str
-              constant: T
+        - a: tf.DType
+        - b: tf.DType
       output_ports:
-        - attrs:
-            name:
-              type: str
-              default: product
-            type_attr:
-              type: str
-              constant: T
+        - product: tf.DType
     - type: Relu
       attrs:
-        name: str
-        T:
-          one_of:
-            - type: tensorflow.DType
-              constant: bfloat16
-            - type: tensorflow.DType
-              constant: half
-            - type: tensorflow.DType
-              constant: float
-            - type: tensorflow.DType
-              constant: double
-            - type: tensorflow.DType
-              constant: qint8
-            - type: tensorflow.DType
-              constant: uint8
-            - type: tensorflow.DType
-              constant: int8
-            - type: tensorflow.DType
-              constant: uint16
-            - type: tensorflow.DType
-              constant: int16
-            - type: tensorflow.DType
-              constant: uint32
-            - type: tensorflow.DType
-              constant: int32
-            - type: tensorflow.DType
-              constant: uint64
-            - type: tensorflow.DType
-              constant: int64
+        T: tf.DType
       input_ports:
-        - attrs:
-            name:
-              type: str
-              default: features
-            type_attr:
-              type: str
-              constant: T
+        - features: tf.DType
       output_ports:
-        - attrs:
-            name:
-              type: str
-              default: activations
-            type_attr:
-              type: str
-              constant: T
+        - activations: tf.DType
 ```
 
 This namespace schema provides the op schemas for all four types of ops in the TensorFlow graph.
@@ -636,44 +476,29 @@ This namespace schema provides the op schemas for all four types of ops in the T
 A minimal namespace schema for the PyTorch graph mentioned in the previous section is as follows:
 
 ```yaml
-namespace:
-  name: amanda/pytorch/1.4.0
-  type_system: torchscript
+namespace_schema:
+  namespace: amanda/pytorch/1.4.0
+  default_type_system: python
   op_schemas:
     - type: prim::Param
-      input_ports:
-        - attrs:
-            name: str
       output_ports:
-        - attrs:
-            name: str
-            type: type
+        - out0: torch.Type
     - type: aten::t
       input_ports:
-        - attrs:
-            name: str
+        - in0
       output_ports:
-        - attrs:
-            name: str
-            type: type
+        - out0: torch.Type
     - type: aten::matmul
       input_ports:
-        - attrs:
-            name: str
-        - attrs:
-            name: str
+        - in0
+        - in1
       output_ports:
-        - attrs:
-            name: str
-            type: type
+        - out0: torch.Type
     - type: aten::relu
       input_ports:
-        - attrs:
-            name: str
+        - in0
       output_ports:
-        - attrs:
-            name: str
-            type: type
+        - out0: torch.Type
 ```
 
 ## Mapping Mechanism
@@ -688,6 +513,75 @@ A mapping rule contains the following parts:
 - a mapper to transform the matched op (the `dst` part)
 - an optional list of tags to describe in which situations it will be applied
 
+The full specification of a mapping table is as follows:
+
+```yaml
+table ::=
+  src: string
+  dst: string
+  rules:
+    $rule_name:
+      apply_after: [$rule_name]
+      src: $matcher
+      dst: $mapper
+  tags: [string]  # optional
+
+matcher ::=
+  ops:
+    $op_name: $op_matcher
+  edges:  # optional
+    - $op_name.$output_port_name -> $op_name.$input_port_name
+op_matcher ::=
+  type: $value_matcher
+  input_ports:  # optional
+    - $port_name | $port_name: $value_matcher
+  output_ports:  # optional
+    - $port_name | $port_name: $value_matcher
+  ops:  # optional
+    $op_name: $op_matcher
+  edges: # optional
+    - $op_name.$output_port_name -> $op_name.$input_port_name
+  attrs:  # optional
+    $name: $value_matcher
+value_matcher ::= $value | $expression
+
+mapper ::=
+  ops:
+    $op_name: $op_mapper
+  edges:  # optional
+    - $op_name.$output_port_name -> $op_name.$input_port_name
+op_mapper ::=
+  type: $value_mapper
+  input_ports:  # optional
+    - $port_name | $port_name: $value_mapper
+  output_ports:  # optional
+    - $port_name | $port_name: $value_mapper
+  ops:  # optional
+    $op_name: $op_mapper
+  edges: # optional
+    - $op_name.$port_name -> $op_name.$port_name
+  attrs:  # optional
+    $name: $value_mapper
+value_mapper ::= $value | $expression
+
+expression ::= "${" + string + "}"
+variable_name ::= "$" + string
+rule_name ::= string
+op_name ::= $variable_name | $name
+port_name ::= $variable_name | $name
+name ::= string
+value ::= any
+```
+
+There are some assumptions for the mapping rules:
+
+- Expression is a valid Python expression, which can access declared variables.
+- Expression in a matcher returns a boolean value, which indicates whether it matches or not.
+- Expression in a mapper returns a value to assign.
+- Variable name is a unique name among all variables in the same matcher/mapper.
+- If the same variable is used in both a matcher and a mapper, the mapper will update the matched op/port.
+- If a variable only appears in the matcher, the corresponding op/port will be deleted.
+
 For example, a mapping table containing a rule to convert the matmul op in the PyTorch graph to the TensorFlow graph in the previous section is as follows:
 
 ```yaml
@@ -695,21 +589,29 @@ table:
   src: amanda/pytorch/1.4.0
   dst: amanda/tensorflow/1.13.1
   rules:
-    - rule_name: convert_matmul
+    convert_matmul:
       src:
-        type: aten::matmul
-        output_ports:
-          - attrs:
-              type: Float
+        ops:
+          $matmul:
+            type: aten::matmul
       dst:
-        type: MatMul
-        name: dense/MatMul
-        attrs:
-          T: float32
+        ops:
+          dense/MatMul:
+            type: MatMul
+            attrs:
+              T: |
+                {
+                    dtype = op.output_ports["_out0"].dtype.scalarType()
+                    if dtype == "Float":
+                      return "float32"
+                    elif dtype == "Double":
+                      return "float64"
+                    ...
+                }
 ```
 
 The mapping table maps from namespace `amanda/pytorch/1.4.0` to `amanda/tensorflow/1.13.1`.
-The rule `convert_matmul` uses a matcher in `src` to match an `aten::matmul` op with `Float` output type, and uses a mapper in `dst` to transform it into a `MatMul` op with name `dense/MatMul` and attribute `T: float32`.
+The rule `convert_matmul` uses a matcher in `src` to match an `aten::matmul` op, and uses a mapper in `dst` to transform it into a `MatMul` op with name `dense/MatMul`.
 
 ### Subgraph matching
 
@@ -720,66 +622,28 @@ table:
   src: amanda/pytorch/1.4.0
   dst: amanda/tensorflow/1.13.1
   rules:
-    - rule_name: convert_matmul
+    convert_matmul:
       src:
         ops:
-          - type: aten::t
-            name:
-              ref: t_name
-            output_ports:
-              - name:
-                  ref: t_output_name
-          - type: aten::matmul
-            name:
-              ref: matmul_name
-            input_ports:
-              - name: _0
-            output_ports:
-              - attrs:
-                  type: Float
+          $t:
+            type: aten::t
+          $matmul:
+            type: aten::matmul
         edges:
-          - output_port: { op: "{t_name}", port: "{t_output_name}" }
-            input_ports: { op: "{matmul_name}", port: _0 }
+          - $t.out0 -> $matmul.in0
       dst:
-        type: MatMul
-        name: dense/MatMul
-        attrs:
-          T: float32
-          transpose_a: true
+        ops:
+          dense/MatMul:
+            type: MatMul
+            attrs:
+              transpose_a: true
+              T: |
+                {
+                    dtype = op.output_ports["_out0"].dtype.scalarType()
+                    if dtype == "Float":
+                      return "float32"
+                    elif dtype == "Double":
+                      return "float64"
+                    ...
+                }
 ```
-
-### Pushdown
-
-The matcher-mapper pair can be pushed down into the op structure to:
-
-- Narrow the match/transform scope
-- Reduce repeated matching structure between the matcher and the mapper
-
-You can declare the matcher-mapper pair at any level of the op structure.
-Here is an equivalent form of the `convert_matmul` rule:
-
-
-```yaml
-table:
-  src: amanda/pytorch/1.4.0
-  dst: amanda/tensorflow/1.13.1
-  rules:
-    - rule_name: convert_matmul
-      type:
-        src: aten::matmul
-        dst: MatMul
-      output_ports:
-          - attrs:
-              src:
-                type: Float
-      name:
-        dst: dense/MatMul
-      attrs:
-        dst:
-          T: float32
-```
-
-
-
-
-
