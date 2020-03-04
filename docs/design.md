@@ -115,7 +115,7 @@ The reason is that while its input ports consume values from outside, in the ins
 
 ### Attribute
 
-**An attribute is a key-value pair that characterizes an entity including an op, an input port, an output port, an edge and a graph.**
+**An attribute is a key-value pair that characterizes an op or a graph.**
 For example, if op `k = g(z)` is a Relu op, it will have an attribute `type`, whose value is `Relu`. it can be represented as follows:
 
 ```yaml
@@ -169,8 +169,7 @@ There are some assumptions for our graph abstraction:
 
 - Every op has a unique name among all ops in the same graph.
 - Every input port has a unique name among all input ports in the same op. So does every output port.
-
-For anonymous ops and ports in some kinds of graphs (e.g. graphs from PyTorch), we will assign a unique name for them based on ops' type or ports' order.
+- For anonymous ops and ports in some kinds of graphs (e.g. graphs from PyTorch), we will automatically assign a unique name for them based on ops' type or ports' order.
 
 ### A realistic example
 
