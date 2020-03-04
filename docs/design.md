@@ -530,7 +530,7 @@ matcher ::=
   ops:
     $op_name: $op_matcher
   edges:  # optional
-    - $op_name.$output_port_name -> $op_name.$input_port_name
+    - $op_name.$port_name -> $op_name.$port_name
 op_matcher ::=
   type: $value_matcher
   input_ports:  # optional
@@ -540,7 +540,7 @@ op_matcher ::=
   ops:  # optional
     $op_name: $op_matcher
   edges: # optional
-    - $op_name.$output_port_name -> $op_name.$input_port_name
+    - $op_name.$port_name -> $op_name.$port_name
   attrs:  # optional
     $name: $value_matcher
 value_matcher ::= $value | $expression
@@ -549,7 +549,7 @@ mapper ::=
   ops:
     $op_name: $op_mapper
   edges:  # optional
-    - $op_name.$output_port_name -> $op_name.$input_port_name
+    - $op_name.$port_name -> $op_name.$port_name
 op_mapper ::=
   type: $value_mapper
   input_ports:  # optional
@@ -577,10 +577,11 @@ There are some assumptions for the mapping rules:
 
 - Expression is a valid Python expression, which can access declared variables.
 - Expression in a matcher returns a boolean value, which indicates whether it matches or not.
-- Expression in a mapper returns a value to assign.
+- Expression in a mapper returns a value for assignment.
 - Variable name is a unique name among all variables in the same matcher/mapper.
-- If the same variable is used in both a matcher and a mapper, the mapper will update the matched op/port.
-- If a variable only appears in the matcher, the corresponding op/port will be deleted.
+- If the same variable/name is used in both a matcher and a mapper, the mapper will update the matched op/port.
+- If a variable/name only appears in the matcher, the corresponding op/port will be removed.
+- All edges in the matcher will be replaced by the edges in the mapper. An edge only appears in the matcher will be removed; an edge only appears in the mapper will be added.
 
 For example, a mapping table containing a rule to convert the matmul op in the PyTorch graph to the TensorFlow graph in the previous section is as follows:
 
@@ -600,8 +601,8 @@ table:
             type: MatMul
             attrs:
               T: |
-                {
-                    dtype = op.output_ports["_out0"].dtype.scalarType()
+                ${
+                    dtype = op.output_ports["out0"].dtype.scalarType()
                     if dtype == "Float":
                       return "float32"
                     elif dtype == "Double":
@@ -638,8 +639,8 @@ table:
             attrs:
               transpose_a: true
               T: |
-                {
-                    dtype = op.output_ports["_out0"].dtype.scalarType()
+                ${
+                    dtype = op.output_ports["out0"].dtype.scalarType()
                     if dtype == "Float":
                       return "float32"
                     elif dtype == "Double":

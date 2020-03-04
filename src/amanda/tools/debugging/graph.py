@@ -2,17 +2,10 @@
 from typing import Any, Callable, Dict, List, Set, Tuple, Union
 
 
-class Tensor:
-    attrs: Dict[str, Any]
-
-
 class InputPort:
     op: "Op"
-    index: int
-    attrs: Dict[str, Any]
-
-    # builtin attributes
-    name: str  # is attrs["name"]
+    name: str
+    dtype: Any
 
     # additional APIs for convenience
     @property
@@ -22,11 +15,8 @@ class InputPort:
 
 class OutputPort:
     op: "Op"
-    index: int
-    attrs: Dict[str, Any]
-
-    # builtin attributes
-    name: str  # is attrs["name"]
+    name: str
+    dtype: Any
 
     # additional APIs for convenience
     @property
@@ -36,8 +26,8 @@ class OutputPort:
 
 class Op:
     attrs: Dict[str, Any]
-    input_ports: List[InputPort]
-    output_ports: List[OutputPort]
+    input_ports: Dict[str, InputPort]
+    output_ports: Dict[str, OutputPort]
     control_input_port: InputPort
     control_output_port: OutputPort
 
@@ -53,7 +43,7 @@ class Op:
     def input_ops(self) -> List["Op"]:
         return [
             edge.src.op
-            for input_port in self.input_ports
+            for input_port in self.input_ports.values()
             for edge in input_port.in_edges
         ]
 
@@ -61,27 +51,25 @@ class Op:
     def output_ops(self) -> List["Op"]:
         return [
             edge.dst.op
-            for output_port in self.output_ports
+            for output_port in self.output_ports.values()
             for edge in output_port.out_edges
         ]
 
     def insert_op_before(self, op: "Op"):
         assert len(self.input_ports) == len(op.input_ports) == len(op.output_ports)
-        for input_port in self.input_ports:
-            index = input_port.index
+        for name, input_port in self.input_ports.items():
             for edge in input_port.in_edges:
-                self.graph.create_edge(src=edge.src, dst=op.input_ports[index])
+                self.graph.create_edge(src=edge.src, dst=op.input_ports[name])
                 self.graph.remove_edge(edge)
-            self.graph.create_edge(src=op.output_ports[index], dst=input_port)
+            self.graph.create_edge(src=op.output_ports[name], dst=input_port)
 
     def insert_op_after(self, op: "Op"):
         assert len(self.output_ports) == len(op.input_ports) == len(op.output_ports)
-        for output_port in self.output_ports:
-            index = output_port.index
+        for name, output_port in self.output_ports.items():
             for edge in output_port.out_edges:
-                self.graph.create_edge(src=op.output_ports[index], dst=edge.dst)
+                self.graph.create_edge(src=op.output_ports[name], dst=edge.dst)
                 self.graph.remove_edge(edge)
-            self.graph.create_edge(src=output_port, dst=op.input_ports[index])
+            self.graph.create_edge(src=output_port, dst=op.input_ports[name])
 
 
 class Edge:
