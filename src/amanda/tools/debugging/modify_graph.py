@@ -12,6 +12,7 @@ def modify_graph(graph: amanda.Graph):
     for op in graph.ops:
         for output_port in op.output_ports.values():
             # check whether the output port produces a valid tensor or not
+            isinstance(output_port.dtype,)
             if output_port.dtype.is_valid():
                 for edge in output_port.out_edges:
                     # create the debug op

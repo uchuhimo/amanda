@@ -89,12 +89,13 @@ class DumpMapper:
 
     def insert_rule(
         self,
-        src_op,
-        src_attr_name,
-        src_attr_value,
-        dst_op,
-        dst_attr_name,
-        dst_attr_value,
+        src_op=None,
+        src_attr_name=None,
+        src_attr_value=None,
+        dst_op=None,
+        dst_attr_name=None,
+        dst_attr_value=None,
+        dst_value=None,
         tag=None,
     ):
         ...

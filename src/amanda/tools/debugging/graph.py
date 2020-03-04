@@ -128,10 +128,10 @@ def create_op(type: str) -> Op:
 
 
 MatcherType = Union[
-    str, List, Callable[[...], bool], None,
+    str, List, Callable[..., bool], None,
 ]
 MapperType = Union[
-    str, List, Callable[[...], Any], None,
+    str, List, Callable[..., Any], None,
 ]
 
 

@@ -1,5 +1,3 @@
-from functools import partial
-
 import numpy as np
 import pytest
 import torch
@@ -14,17 +12,17 @@ from amanda.conversion.pytorch import export_to_module, import_from_module
     scope="module",
     params=[
         models.resnet18,
-        models.resnet50,
-        models.inception_v3,
-        models.alexnet,
-        models.vgg11,
-        models.vgg11_bn,
-        models.squeezenet1_1,
-        models.shufflenet_v2_x0_5,
-        models.mobilenet_v2,
-        models.mnasnet0_5,
-        partial(models.detection.maskrcnn_resnet50_fpn, pretrained_backbone=False),
-        # partial(models.quantization.mobilenet_v2, quantize=True),
+        # models.resnet50,
+        # models.inception_v3,
+        # models.alexnet,
+        # models.vgg11,
+        # models.vgg11_bn,
+        # models.squeezenet1_1,
+        # models.shufflenet_v2_x0_5,
+        # models.mobilenet_v2,
+        # models.mnasnet0_5,
+        # partial(models.detection.maskrcnn_resnet50_fpn, pretrained_backbone=False),
+        # # partial(models.quantization.mobilenet_v2, quantize=True),
     ],
 )
 def model_and_input(request):
@@ -67,9 +65,11 @@ def test_pytorch_import_export_script(model_and_input):
 
 def test_pytorch_import_export_trace(model_and_input):
     model, x = model_and_input
+    # torch.save(model, "model.pth")
     if isinstance(model, GeneralizedRCNN):
         return
     traced_model = torch.jit.trace(model, (x,))
+    # torch.jit.save(traced_model, "traced_model.pth")
     output = traced_model(x)
     graph = import_from_module(traced_model)
     new_model = export_to_module(graph)
