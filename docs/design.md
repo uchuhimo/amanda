@@ -139,18 +139,19 @@ graph ::=
   edges:
     - $op_name.$output_port_name -> $op_name.$input_port_name
   namespace: string  # optional
+  default_type_system: string  # optional
   input_ports:  # optional
-    - $name | $name: $dtype
+    - $name | $name: $type
   output_ports:  # optional
-    - $name | $name: $dtype
+    - $name | $name: $type
   attrs:  # optional
     $name: $value
 op ::=
   type: string
   input_ports:  # optional
-    - $name | $name: $dtype
+    - $name | $name: $type
   output_ports:  # optional
-    - $name | $name: $dtype
+    - $name | $name: $type
   ops:  # optional
     $name: $op
   edges: # optional
@@ -158,7 +159,9 @@ op ::=
   attrs:  # optional
     $name: $value
 name ::= string
-dtype ::= string
+type ::= $type_name | $type_system.$type_name
+type_system ::= string
+type_name ::= string
 value ::= any
 op_name ::= string
 output_port_name ::= string
@@ -170,6 +173,19 @@ There are some assumptions for our graph abstraction:
 - Every op has a unique name among all ops in the same graph.
 - Every input port has a unique name among all input ports in the same op. So does every output port.
 - For anonymous ops and ports in some kinds of graphs (e.g. graphs from PyTorch), we will automatically assign a unique name for them based on ops' type or ports' order.
+
+We use a pluggable type system in the graph abstraction.
+It means that we don't make any assumptions about the available types for ports/attributes and users can choose a pre-defined type system or customize their own type system.
+Some of the pre-defined type systems are listed below:
+
+- `python`: Python's `int`, `str`, `List[float]`, `Union[int, str]`, etc.
+- `cpp`: C++'s `int`, `std::string`, `std::vector<float>`, etc.
+- `tf`: TensorFlow's `Tensor`, `TensorShape`, `DType`, etc.
+- `pytorch`: PyTorch's `Tensor`, `Type`, etc.
+
+We can use a type with its full qualified name like `python.int`, `tf.Tensor`, etc.
+If we specify the default type system for a graph using `default_type_system`, we can use a type without the type system prefix.
+For example, if `default_type_system` is `python`, we can use `str` instead of `python.str`.
 
 ### A realistic example
 
@@ -208,7 +224,7 @@ graph:
         shape: [1, 784]
         dtype: float32
       output_ports:
-        - output: float32
+        - output: tf.Tensor<float32>
     dense/kernel:
       type: VariableV2
       attrs:
@@ -217,7 +233,7 @@ graph:
         container: ""
         shared_name: ""
       output_ports:
-        - ref: float32_ref
+        - ref: tf.Tensor<float32_ref>
     dense/MatMul:
       type: MatMul
       attrs:
@@ -225,18 +241,18 @@ graph:
         transpose_a: false
         transpose_b: false
       input_ports:
-        - a: float32
-        - b: float32
+        - a: tf.Tensor<float32>
+        - b: tf.Tensor<float32>
       output_ports:
-        - product: float32
+        - product: tf.Tensor<float32>
     dense/Relu:
       type: Relu
       attrs:
         T: float32
       input_ports:
-        - features: float32
+        - features: tf.Tensor<float32>
       output_ports:
-        - activations: float32
+        - activations: tf.Tensor<float32>
   edges:
     - Placeholder.output -> dense/MatMul.a
     - dense/kernel.ref -> dense/MatMul.b
@@ -263,7 +279,7 @@ fc:
         container: ""
         shared_name: ""
       output_ports:
-        - ref: float32_ref
+        - ref: tf.Tensor<float32_ref>
     dense/MatMul:
       type: MatMul
       attrs:
@@ -271,18 +287,18 @@ fc:
         transpose_a: false
         transpose_b: false
       input_ports:
-        - a: float32
-        - b: float32
+        - a: tf.Tensor<float32>
+        - b: tf.Tensor<float32>
       output_ports:
-        - product: float32
+        - product: tf.Tensor<float32>
     dense/Relu:
       type: Relu
       attrs:
         T: float32
       input_ports:
-        - features: float32
+        - features: tf.Tensor<float32>
       output_ports:
-        - activations: float32
+        - activations: tf.Tensor<float32>
   edges:
     - fc.input -> dense/MatMul.a
     - dense/kernel.ref -> dense/MatMul.b
@@ -318,33 +334,33 @@ Since `%10` is the weight parameter in the FC layer, this PyTorch model can be r
 graph:
   namespace: amanda/pytorch/1.4.0
   input_ports:
-    - in0: Float(1, 784)
+    - in0: torch.Tensor<float32>(1, 784)
   output_ports:
     - out0
   ops:
     param:
       type: prim::Param
       output_ports:
-        out0: Float(100, 784)
+        out0: torch.Tensor<float32>(100, 784)
     t:
       type: aten::t
       input_ports:
         - in0
       output_ports:
-        - out0: Float(784, 100)
+        - out0: torch.Tensor<float32>(784, 100)
     matmul:
       type: aten::matmul
       input_ports:
         - in0
         - in1
       output_ports:
-        - out0: Float(1, 100)
+        - out0: torch.Tensor<float32>(1, 100)
     relu:
       type: aten::relu
       input_ports:
         - in0
       output_ports:
-        - out0: Float(1, 100)
+        - out0: torch.Tensor<float32>(1, 100)
   edges:
     - graph.in0 -> matmul.in0
     - param.out0 -> t.in0
@@ -380,9 +396,9 @@ namespace_schema ::=
   op_schemas:
     - type: string
       input_ports:  # optional
-        - $name | $name: $type | $name: $type = $default_dtype
+        - $name | $name: $type
       output_ports:  # optional
-        - $name | $name: $type | $name: $type = $default_dtype
+        - $name | $name: $type
       ops:  # optional
         $name: $op
       edges:  # optional
@@ -392,9 +408,9 @@ namespace_schema ::=
 op ::=
   type: string
   input_ports:  # optional
-    - $name | $name: $dtype
+    - $name | $name: $type
   output_ports:  # optional
-    - $name | $name: $dtype
+    - $name | $name: $type
   ops:  # optional
     $name: $op
   edges: # optional
@@ -403,8 +419,8 @@ op ::=
     $name: $value
 name ::= string
 type ::= $type_name | $type_system.$type_name
-dtype ::= string
-default_dtype ::= string
+type_system ::= string
+type_name ::= string
 default_value ::= any
 op_name ::= string
 output_port_name ::= string
@@ -416,19 +432,6 @@ There are some assumptions for our namespace schema:
 - Same kind of ops have the same number of input ports and output ports.
 - Same kind of ops have the same list of attributes. Optional attributes are not supported. You can use an attribute with null as default value instead.
 - Same kind of ops contain the same list of ops and edges if they are subgraphs.
-
-We use a pluggable type system in the namespace schema.
-It means that we don't make any assumptions about the available types for attributes and users can choose a pre-defined type system or customize their own type system.
-Some of the pre-defined type systems are listed below:
-
-- `python`: Python's `int`, `str`, `List[float]`, `Union[int, str]`, etc.
-- `cpp`: C++'s `int`, `std::string`, `std::vector<float>`, etc.
-- `tf`: TensorFlow's `Tensor`, `TensorShape`, `DType`, etc.
-- `torch`: PyTorch's `Tensor`, `Type`, etc.
-
-We can use a type with its full qualified name like `python.int`, `tf.Tensor`, etc.
-If we specify the default type system for a namespace schema using `default_type_system`, we can use a type without the type system prefix.
-For example, if `default_type_system` is `python`, we can use `str` instead of `python.str`.
 
 For example, a minimal namespace schema for the TensorFlow graph mentioned in the previous section is as follows:
 
@@ -442,7 +445,7 @@ namespace_schema:
         shape: tf.TensorShape
         dtype: tf.DType
       output_ports:
-        - output: tf.DType
+        - output
     - type: VariableV2
       attrs:
         shape: tf.TensorShape
@@ -450,24 +453,24 @@ namespace_schema:
         container: str = ""
         shared_name: str = ""
       output_ports:
-        - ref: tf.DType
+        - ref
     - type: MatMul
       attrs:
         T: tf.DType
         transpose_a: bool = false
         transpose_b: bool = false
       input_ports:
-        - a: tf.DType
-        - b: tf.DType
+        - a
+        - b
       output_ports:
-        - product: tf.DType
+        - product
     - type: Relu
       attrs:
         T: tf.DType
       input_ports:
-        - features: tf.DType
+        - features
       output_ports:
-        - activations: tf.DType
+        - activations
 ```
 
 This namespace schema provides the op schemas for all four types of ops in the TensorFlow graph.
@@ -481,23 +484,23 @@ namespace_schema:
   op_schemas:
     - type: prim::Param
       output_ports:
-        - out0: torch.Type
+        - out0
     - type: aten::t
       input_ports:
         - in0
       output_ports:
-        - out0: torch.Type
+        - out0
     - type: aten::matmul
       input_ports:
         - in0
         - in1
       output_ports:
-        - out0: torch.Type
+        - out0
     - type: aten::relu
       input_ports:
         - in0
       output_ports:
-        - out0: torch.Type
+        - out0
 ```
 
 ## Mapping Mechanism
@@ -516,13 +519,13 @@ The full specification of a mapping table is as follows:
 
 ```yaml
 table ::=
-  src: string
-  dst: string
+  src_namespace: string
+  dst_namespace: string
   rules:
     $rule_name:
       apply_after: [$rule_name]
-      src: $matcher
-      dst: $mapper
+      src_matcher: $matcher
+      dst_mapper: $mapper
   tags: [string]  # optional
 
 matcher ::=
@@ -586,28 +589,32 @@ For example, a mapping table containing a rule to convert the matmul op in the P
 
 ```yaml
 table:
-  src: amanda/pytorch/1.4.0
-  dst: amanda/tensorflow/1.13.1
+  src_namespace: amanda/pytorch/1.4.0
+  dst_namespace: amanda/tensorflow/1.13.1
   rules:
+    convert_output_port_type:
+      src_matcher:
+        ops:
+          $op:
+            output_ports:
+              - $port: $port_type
+      dst_mapper:
+        ops:
+          $op:
+            output_ports:
+              - $port: ${port_type[:port_type.index("(")].replace("torch", "tf")}
     convert_matmul:
-      src:
+      apply_after: [convert_output_port_type]
+      src_matcher:
         ops:
           $matmul:
             type: aten::matmul
-      dst:
+      dst_mapper:
         ops:
           dense/MatMul:
             type: MatMul
             attrs:
-              T: |
-                ${
-                    dtype = op.output_ports["out0"].dtype.scalarType()
-                    if dtype == "Float":
-                      return "float32"
-                    elif dtype == "Double":
-                      return "float64"
-                    ...
-                }
+              T: ${matmul.output_ports["out0"].type}
 ```
 
 The mapping table maps from namespace `amanda/pytorch/1.4.0` to `amanda/tensorflow/1.13.1`.
@@ -619,11 +626,23 @@ We can also convert the transpose op and the matmul op in the PyTorch graph to t
 
 ```yaml
 table:
-  src: amanda/pytorch/1.4.0
-  dst: amanda/tensorflow/1.13.1
+  src_namespace: amanda/pytorch/1.4.0
+  dst_namespace: amanda/tensorflow/1.13.1
   rules:
+    convert_output_port_type:
+      src_matcher:
+        ops:
+          $op:
+            output_ports:
+              - $port: $port_type
+      dst_mapper:
+        ops:
+          $op:
+            output_ports:
+              - $port: ${port_type[:port_type.index("(")].replace("torch", "tf")}
     convert_matmul:
-      src:
+      apply_after: [convert_output_port_type]
+      src_matcher:
         ops:
           $t:
             type: aten::t
@@ -631,19 +650,11 @@ table:
             type: aten::matmul
         edges:
           - $t.out0 -> $matmul.in0
-      dst:
+      dst_mapper:
         ops:
           dense/MatMul:
             type: MatMul
             attrs:
               transpose_a: true
-              T: |
-                ${
-                    dtype = op.output_ports["out0"].dtype.scalarType()
-                    if dtype == "Float":
-                      return "float32"
-                    elif dtype == "Double":
-                      return "float64"
-                    ...
-                }
+              T: ${matmul.output_ports["out0"].type}
 ```

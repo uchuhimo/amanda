@@ -1,0 +1,78 @@
+- src_namespace: "amanda/tensorflow"
+  dst_namespace: "debugging"
+  rules:
+    fuse_batchnorm:
+      src_matcher:
+        ops:
+          $add/y:
+            type: Const
+            value: $epsilon
+          $add:
+            type: Add
+          $Rsqrt:
+            type: Rsqrt
+          $moving_mean:
+            type: VariableV2
+          $beta:
+            type: VariableV2
+          $gamma:
+            type: VariableV2
+          $Reshape/shape:
+            type: Const
+          $Reshape:
+            type: Reshape
+          $Reshape_1/shape:
+            type: Const
+          $Reshape_1:
+            type: Reshape
+          $Reshape_2/shape:
+            type: Const
+          $Reshape_2:
+            type: Reshape
+          $Reshape_3/shape:
+            type: Const
+          $Reshape_3:
+            type: Reshape
+          $sub:
+            type: Sub
+          $mul:
+            type: Mul
+          $mul_1:
+            type: Mul
+          $mul_2:
+            type: Mul
+          $add_1:
+            type: Add
+            attrs:
+              T: $dtype
+        edges:
+          - $gamma.ref -> $Reshape.tensor
+          - $Reshape/shape.output -> $Reshape.shape
+          - $Reshape.output -> $Reshape_3.tensor
+          - $Reshape_3/shape.output -> $Reshape_3.shape
+          - $Reshape_3.output -> $add.x
+          - $add/y.output -> $add.y
+          - $add.z -> $Rsqrt.x
+          - $Reshape.output -> $mul.x
+          - $Rsqrt.y -> $mul.y
+          - $mul.z -> $mul_2.x
+          - $moving_mean.ref -> $Reshape_2.tensor
+          - $Reshape_2/shape.output -> $Reshape_2.shape
+          - $Reshape_2.output -> $mul_2.y
+          - $beta.ref -> $Reshape_1.tensor
+          - $Reshape_1/shape.output -> $Reshape_1.shape
+          - $Reshape_1.output -> $sub.x
+          - $mul_2.z -> $sub.y
+          - $sub.z -> $add_1.x
+          - $mul.z -> $mul_1.y
+          - $mul_1.z -> $add_1.y
+      dst_mapper:
+      dst_mapper:
+        ops:
+          FusedBatchNorm:
+            type: FusedBatchNorm
+            attrs:
+              T: ${dtype}
+              is_training: false
+              epsilon: ${epsilon}
+              data_format: NCHW

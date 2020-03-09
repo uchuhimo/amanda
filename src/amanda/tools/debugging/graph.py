@@ -5,7 +5,7 @@ from typing import Any, Callable, Dict, List, Set, Tuple, Union
 class InputPort:
     op: "Op"
     name: str
-    dtype: Any
+    type: str
 
     # additional APIs for convenience
     @property
@@ -16,7 +16,7 @@ class InputPort:
 class OutputPort:
     op: "Op"
     name: str
-    dtype: Any
+    type: str
 
     # additional APIs for convenience
     @property

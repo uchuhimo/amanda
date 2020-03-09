@@ -278,5 +278,15 @@ def test_tf_import_export_partitioned_graph(partitioned_graph_file):
     assert diff_graph_def(graph_def, new_graph_def) == {}
 
 
+# def test_batchnorm():
+#     with tf.Graph().as_default() as tf_graph:
+#         input = tf.placeholder(dtype=tf.float32, shape=(1, 3, 28, 28))
+#         output = tf.layers.batch_normalization(input, axis=1, fused=False)
+#         graph_def = tf_graph.as_graph_def()
+#         meta_graph = tf.train.export_meta_graph(graph=tf_graph)
+#         graph = import_from_graph_def(graph_def)
+#         print("end")
+
+
 if __name__ == "__main__":
     test_tf_modify_graph(arch_name="vgg16")

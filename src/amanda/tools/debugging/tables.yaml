@@ -1,91 +1,29 @@
-- src: "amanda/pytorch"
-  dst: "debugging"
-  rules:
-    convert_dtype:
-      src:
-        ops:
-          $op:
-            output_ports:
-              - $port
-      dst:
-        ops:
-          $op:
-            output_ports:
-              - $port: |
-                  ${
-                    from amanda.tools.debugging.dtype import WrappedDType
-                    return WrappedDType(port.dtype)
-                  }
-
-- src: "debugging"
-  dst: "amanda/pytorch"
+- src_namespace: "debugging"
+  dst_namespace: "amanda/pytorch"
   rules:
     convert_debug_op:
-      src:
+      src_matcher:
         ops:
           $debug_op:
             type: "store_tensor_to_file"
-      dst:
+      dst_mapper:
         ops:
           $debug_op:
             type: "amanda::store_tensor_to_file"
             output_ports:
-              - out0: ${debug_op.input_ports["in0"].in_edges[0].src.dtype}
-    convert_dtype:
-      apply_after: [convert_debug_op]
-      src:
-        ops:
-          $op:
-            output_ports:
-              - $port
-      dst:
-        ops:
-          $op:
-            output_ports:
-              - $port: ${port.dtype.value}
+              - out0: ${debug_op.input_ports["in0"].in_edges[0].src.type}
 
-- src: "amanda/tensorflow"
-  dst: "debugging"
+- src_namespace: "debugging"
+  dst_namespace: "amanda/tensorflow"
   rules:
-    convert_dtype:
-      src:
-        ops:
-          $op:
-            output_ports:
-              - $port
-      dst:
-        ops:
-          $op:
-            output_ports:
-              - $port: |
-                  ${
-                    from amanda.tools.debugging.dtype import WrappedDType
-                    return WrappedDType(port.dtype)
-                  }
-
-- src: "debugging"
-  dst: "amanda/tensorflow"
-  rules:
-    convert_dtype:
-      src:
-        ops:
-          $op:
-            output_ports:
-              - $port
-      dst:
-        ops:
-          $op:
-            output_ports:
-              - $port: ${port.dtype.value}
     convert_debug_op:
-      apply_after: [convert_dtype]
-      src:
+      src_matcher:
         ops:
           $debug_op:
             type: "store_tensor_to_file"
-      dst:
+      dst_mapper:
         ops:
           $debug_op:
             type: "StoreTensorToFile"
             attrs:
-              T: ${debug_op.input_ports["in"].in_edges[0].src.dtype}
+              T: ${debug_op.input_ports["in"].in_edges[0].src.type}

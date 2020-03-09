@@ -24,6 +24,6 @@ REGISTER_OP("StoreTensorToFile")
   .Attr("T: type")
   .Attr("store_dir: string = '/tmp'")
   .Attr("file_name: string = 'tensor_data'")
-  .Input("in: T")
-  .Output("out: T")
+  .Input("in0: T")
+  .Output("out0: T")
   .SetShapeFn(::tensorflow::shape_inference::UnchangedShape);
