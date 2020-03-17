@@ -96,11 +96,18 @@ class Graph:
     # builtin attributes
     namespace: str  # is attrs["namespace"]
 
+    @property
+    def sorted_ops(self) -> List[Op]:
+        ...
+
     def add_op(self, op: Op) -> None:
         self.ops.append(op)
 
     def remove_op(self, op: Op) -> None:
         self.ops.remove(op)
+
+    def get_op(self, name: str) -> Op:
+        ...
 
     def get_edge(self, src: OutputPort, dst: InputPort) -> Edge:
         return self.edges[(src, dst)]
@@ -109,6 +116,9 @@ class Graph:
         edge = Edge(src=src, dst=dst)
         self.edges[(src, dst)] = edge
         return edge
+
+    def add_edge(self, edge: Edge):
+        self.edges[(edge.src, edge.dst)] = edge
 
     def remove_edge(self, edge: Edge):
         del self.edges[(edge.src, edge.dst)]
@@ -125,6 +135,10 @@ class Graph:
 
 def create_op(type: str) -> Op:
     return Op(attrs={"type": type})
+
+
+def create_graph() -> Graph:
+    return Graph()
 
 
 MatcherType = Union[

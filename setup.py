@@ -44,7 +44,7 @@ setup(
     packages=[
         'amanda', 'amanda.conversion', 'amanda.core', 'amanda.tests',
         'amanda.tools', 'amanda.tools.byteps', 'amanda.tools.byteps.tensorflow',
-        'amanda.tools.debugging'
+        'amanda.tools.debugging', 'amanda.tools.path'
     ],
     package_dir={"": "src"},
     package_data={
