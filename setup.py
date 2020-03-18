@@ -49,7 +49,8 @@ setup(
     package_dir={"": "src"},
     package_data={
         "amanda.tests": ["*.pbtxt"],
-        "amanda.tools.debugging": ["*.json", "*.yaml"]
+        "amanda.tools.debugging": ["*.json", "*.yaml"],
+        "amanda.tools.path": ["*.yaml"]
     },
     install_requires=[
         'click', 'contextvars; python_version < "3.7"',

@@ -1,0 +1,25 @@
+- src_namespace: "debugging"
+  dst_namespace: "amanda/tensorflow"
+  rules:
+    convert_path_op:
+      src_matcher:
+        ops:
+          $extract_op: {}
+          $path_op:
+            type: "Path"
+        edges:
+          - $path_op.ref -> $extract_op.read_path
+          - $extract_op.path -> $path_op.value
+      dst_mapper:
+        ops:
+          $path_op:
+            type: "VariableV2"
+          ${"read_" + path_op.name}:
+            type: Identity
+          ${"update_" + path_op.name}:
+            type: Assign
+        edges:
+          - $path_op.ref -> ${"read_" + path_op.name}.input
+          - ${"read_" + path_op.name}.input -> $extract_op.read_path
+          - $path_op.ref -> ${"update_" + path_op.name}.ref
+          - $extract_op.path -> ${"update_" + path_op.name}.value

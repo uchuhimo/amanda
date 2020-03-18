@@ -13,25 +13,14 @@ def modify_graph(graph: amanda.Graph):
     for op in reversed(graph.sorted_ops):
         extract_op = amanda.create_op(type="Extract" + op.type)
         extract_op.name = "extract_" + op.name
-        read_path_op = amanda.create_op(type="Identity")
-        read_path_op.name = "read_" + op.name + "_path"
-        update_path_op = amanda.create_op(type="Assign")
-        update_path_op.name = "update_" + op.name + "_path"
-        path_op = amanda.create_op(type="VariableV2")
+        path_op = amanda.create_op(type="Path")
         path_op.name = op.name + "_path"
 
         graph.create_edge(
-            src=path_op.output_ports["ref"], dst=read_path_op.input_ports["input"]
+            src=path_op.output_ports["ref"], dst=extract_op.input_ports["read_path"],
         )
         graph.create_edge(
-            src=read_path_op.output_ports["output"],
-            dst=extract_op.input_ports["read_path"],
-        )
-        graph.create_edge(
-            src=path_op.output_ports["ref"], dst=update_path_op.input_ports["ref"]
-        )
-        graph.create_edge(
-            src=extract_op.output_ports["path"], dst=update_path_op.input_ports["value"]
+            src=extract_op.output_ports["path"], dst=path_op.input_ports["value"]
         )
 
         for name, input_port in op.input_ports.items():
