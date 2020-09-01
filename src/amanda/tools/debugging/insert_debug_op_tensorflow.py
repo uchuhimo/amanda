@@ -44,7 +44,7 @@ def verify_output(output, new_output):
     np.testing.assert_allclose(output, new_output, atol=1.0e-5)
 
 
-def modify_graph(graph: amanda.Graph):
+def modify_graph(graph: amanda.Graph) -> amanda.Graph:
     for op in graph.ops:
         for tensor in op.output_tensors:
             if not tensor.attrs["dtype"]._is_ref_dtype:
@@ -67,6 +67,7 @@ def modify_graph(graph: amanda.Graph):
                                 index, debug_op.output_tensors[0]
                             )
                 graph.add_op(debug_op)
+    return graph
 
 
 def main():

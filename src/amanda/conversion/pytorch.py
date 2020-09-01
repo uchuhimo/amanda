@@ -1,7 +1,8 @@
 import types
 from collections import Counter
 from dataclasses import dataclass
-from typing import Any, Dict, Set
+from pathlib import Path
+from typing import Any, Dict, Set, Union
 
 import torch
 import torch._C
@@ -71,7 +72,9 @@ def import_from_func(func: torch.jit.ScriptFunction) -> Graph:
     return import_from_graph(func.graph)
 
 
-def import_from_module(module: torch.nn.Module) -> Graph:
+def import_from_module(module: Union[torch.nn.Module, str, Path]) -> Graph:
+    if isinstance(module, (str, Path)):
+        module = torch.jit.load(module)
     if not isinstance(module, torch.jit.ScriptModule):
         module = torch.jit.script(module)
     torch_graph = module.graph
@@ -205,7 +208,7 @@ def export_to_graph(graph: Graph) -> TorchGraph:
     return torch_graph
 
 
-def export_to_module(graph: Graph) -> torch.nn.Module:
+def export_to_module(graph: Graph, file: Union[str, Path] = None) -> torch.nn.Module:
     torch_graph = export_to_graph(graph)
     forward_func = torch._C._create_function_from_graph("forward", torch_graph)
     module = torch.nn.Module()
@@ -214,6 +217,8 @@ def export_to_module(graph: Graph) -> torch.nn.Module:
     )
     if "training" in graph.attrs:
         module.train(graph.attrs["training"])
+    if file is not None:
+        torch.jit.save(module, file)
     return module
 
 
@@ -302,3 +307,12 @@ def set_ir_attr(node: TorchNode, attr_name: str, attr_value: Any, op: Op) -> Non
         raise RuntimeError(
             f"cannot export {attr_value} to attr {attr_name} in node {node}"
         )
+
+
+import_types = {
+    "torchscript": import_from_module,
+}
+
+export_types = {
+    "torchscript": export_to_module,
+}

@@ -41,6 +41,39 @@ Run an example
 Usage
 -----
 
+CLI
+^^^
+
+The usage of ``amanda``\ :
+
+.. code-block::
+
+   Usage: amanda [OPTIONS] [TOOL_ARGS]...
+
+   Options:
+     -i, --import [tensorflow_pbtxt|tensorflow_checkpoint|tensorflow_saved_model|onnx_model|onnx_graph|torchscript|mmdnn]
+                                     Type of the imported model.  [required]
+     -f, --from PATH                 Path of the imported model.  [required]
+     -e, --export [tensorflow_pbtxt|tensorflow_checkpoint|tensorflow_saved_model|onnx_model|onnx_graph|torchscript|mmdnn]
+                                     Type of the exported model.  [required]
+     -t, --to PATH                   Path of the exported model.  [required]
+     -ns, --namespace TEXT           Namespace of the graph instrumented by the
+                                     tool.
+     -T, --tool TEXT                 Fully qualified name of the tool.
+                                     [required]
+     --help                          Show this message and exit.
+
+E.g. use a tool to insert debugging ops into a TensorFlow graph from a checkpoint:
+
+.. code-block:: bash
+
+   amanda --import tensorflow_checkpoint --from downloads/model/vgg16/imagenet_vgg16.ckpt \
+          --export tensorflow_checkpoint --to tmp/modified_model/vgg16/imagenet_vgg16.ckpt \
+          --namespace amanda/tensorflow \
+          --tool amanda.tools.debugging.insert_debug_op_tensorflow.modify_graph
+
+The updated graph will be saved into ``tmp/modified_model/vgg16``.
+
 Import a model (from TensorFlow/ONNX/...)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -73,6 +106,8 @@ All supported import/export modules
      - Module
    * - TensorFlow
      - `amanda.tensorflow <src/amanda/conversion/tensorflow.py>`_
+   * - PyTorch
+     - `amanda.pytorch <src/amanda/conversion/pytorch.py>`_
    * - ONNX
      - `amanda.onnx <src/amanda/conversion/onnx.py>`_
    * - MMdnn
@@ -160,7 +195,7 @@ run tests
 
    python src/amanda/tests/download_model.py
    make build_cc
-   pytest -n auto
+   KMP_AFFINITY=disabled pytest -n 2
 
 Show information about installed packages
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

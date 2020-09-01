@@ -35,14 +35,6 @@ static auto registry = torch::RegisterOperators(
   );
 """
 
-torch.utils.cpp_extension.load_inline(
-    name="store_tensor_to_file",
-    cpp_sources=op_source,
-    is_python_module=False,
-    verbose=True,
-)
-print(torch.ops.amanda.store_tensor_to_file)
-
 arch_name = "vgg11"
 store_dir = root_dir() / "tmp" / "debug_info_pytorch" / arch_name
 
@@ -52,8 +44,20 @@ if not Path(store_dir).exists():
 input = torch.randn(1, 3, 224, 224)
 model = models.vgg11(pretrained=False, progress=False)
 model.eval()
-traced_model = torch.jit.trace(model, (input,))
+global traced_model
 global new_model
+
+
+def init():
+    torch.utils.cpp_extension.load_inline(
+        name="store_tensor_to_file",
+        cpp_sources=op_source,
+        is_python_module=False,
+        verbose=True,
+    )
+    print(torch.ops.amanda.store_tensor_to_file)
+    global traced_model
+    traced_model = torch.jit.trace(model, (input,))
 
 
 def run_original_model():
@@ -70,6 +74,8 @@ def verify_output(output, new_output):
 
 def main():
     global new_model
+
+    init()
 
     output = run_original_model()
 

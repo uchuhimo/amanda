@@ -315,3 +315,14 @@ def to_attr_proto(value: Any, attr_value: onnx.AttributeProto) -> None:
         attr_value.sparse_tensors.extend(value)
     else:
         raise RuntimeError(f"cannot export to AttributeProto from {value}")
+
+
+import_types = {
+    "onnx_model": import_from_model_def,
+    "onnx_graph": import_from_graph_def,
+}
+
+export_types = {
+    "onnx_model": export_to_model_def,
+    "onnx_graph": export_to_graph_def,
+}

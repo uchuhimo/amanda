@@ -4,7 +4,7 @@ from filelock import FileLock
 from amanda.tests.download_model import download_all_models
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="session", autouse=True)
 def download_models(tmp_path_factory, worker_id):
     if not worker_id:
         # not executing in with multiple workers, just produce the data and let

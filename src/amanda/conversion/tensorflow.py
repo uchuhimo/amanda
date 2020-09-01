@@ -767,3 +767,16 @@ def import_from_tf_func(tf_func):
         return func
 
     return amanda_func
+
+
+import_types = {
+    "tensorflow_pbtxt": import_from_pbtxt,
+    "tensorflow_checkpoint": import_from_checkpoint,
+    "tensorflow_saved_model": import_from_saved_model,
+}
+
+export_types = {
+    "tensorflow_pbtxt": export_to_pbtxt,
+    "tensorflow_checkpoint": export_to_checkpoint,
+    "tensorflow_saved_model": export_to_saved_model,
+}

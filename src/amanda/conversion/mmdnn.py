@@ -265,3 +265,12 @@ class LiteralTensor:
         ir_tensor_content = switch[self.data_type]
         for element in self.tensor_content:
             ir_tensor_content.append(element)
+
+
+import_types = {
+    "mmdnn": import_from_graph_def,
+}
+
+export_types = {
+    "mmdnn": export_to_graph_def,
+}
