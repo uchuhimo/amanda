@@ -27,7 +27,8 @@ There are two options:
 
 ```bash
 make build_cc
-python src/amanda/tools/debugging/insert_debug_op.py
+amanda-download tf --model vgg16
+python src/amanda/tools/debugging/insert_debug_op_tensorflow.py
 ```
 
 ## Usage
@@ -56,6 +57,7 @@ Options:
 E.g. use a tool to insert debugging ops into a TensorFlow graph from a checkpoint:
 
 ```bash
+amanda-download tf --model vgg16 # download the checkpoint
 amanda --import tensorflow_checkpoint --from downloads/model/vgg16/imagenet_vgg16.ckpt \
        --export tensorflow_checkpoint --to tmp/modified_model/vgg16/imagenet_vgg16.ckpt \
        --namespace amanda/tensorflow \
@@ -167,7 +169,7 @@ pre-commit install
 ### run tests
 
 ```bash
-python src/amanda/tests/download_model.py
+amanda-download all
 make build_cc
 KMP_AFFINITY=disabled pytest -n 2
 ```

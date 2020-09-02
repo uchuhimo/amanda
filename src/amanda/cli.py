@@ -12,6 +12,18 @@ from amanda.conversion.pytorch import export_types as pytorch_export_types
 from amanda.conversion.pytorch import import_types as pytorch_import_types
 from amanda.conversion.tensorflow import export_types as tf_export_types
 from amanda.conversion.tensorflow import import_types as tf_import_types
+from amanda.tests.download_model import (
+    download_all_models,
+    download_all_onnx_models,
+    download_all_tf_models,
+    download_all_tflite_models,
+    download_onnx_model,
+    download_tf_model,
+    download_tflite_model,
+    onnx_arch_map,
+    tf_arch_names,
+    tflite_arch_map,
+)
 
 import_types = {
     **tf_import_types,
@@ -120,3 +132,58 @@ def cli(
     finally:
         if tool is not None:
             tool.finish()
+
+
+@click.group()
+def download_cli():
+    pass
+
+
+@download_cli.command(name="tf")
+@click.option(
+    "--model",
+    "-m",
+    required=True,
+    type=click.Choice(["all"] + list(tf_arch_names)),
+    help="Name of the model.",
+)
+def download_tf(model):
+    if model == "all":
+        download_all_tf_models()
+    else:
+        download_tf_model(model, model_dir="model")
+
+
+@download_cli.command(name="onnx")
+@click.option(
+    "--model",
+    "-m",
+    required=True,
+    type=click.Choice(["all"] + list(onnx_arch_map.keys())),
+    help="Name of the model.",
+)
+def download_onnx(model):
+    if model == "all":
+        download_all_onnx_models()
+    else:
+        download_onnx_model(model, model_dir="onnx_model")
+
+
+@download_cli.command(name="all")
+def download_all():
+    download_all_models()
+
+
+@download_cli.command(name="tflite")
+@click.option(
+    "--model",
+    "-m",
+    required=True,
+    type=click.Choice(["all"] + list(tflite_arch_map.keys())),
+    help="Name of the model.",
+)
+def download_tflite(model):
+    if model == "all":
+        download_all_tflite_models()
+    else:
+        download_tflite_model(model, model_dir="tflite_model")

@@ -15,31 +15,33 @@ def download_tf_model(arch_name, model_dir):
         download_arch(arch_name, str(full_model_dir / arch_name) + "/")
 
 
+# for a complete list of architecture name supported, see
+# mmdnn/conversion/examples/tensorflow/extractor.py
+tf_arch_names = [
+    "vgg16",
+    # "vgg19",
+    "inception_v1",
+    # "inception_v3",
+    # "resnet_v1_50",
+    # # "resnet_v1_152",
+    "resnet_v2_50",
+    # "resnet_v2_101",
+    # # "resnet_v2_152",
+    # # "resnet_v2_200",
+    # "mobilenet_v1_1.0",
+    "mobilenet_v2_1.0_224",
+    # "inception_resnet_v2",
+    # "nasnet-a_large",
+    # "facenet",
+    # "rnn_lstm_gru_stacked",
+]
+
+
 def download_all_tf_models():
     with ProcessPoolExecutor() as executor:
         list(
             executor.map(
-                partial(download_tf_model, model_dir="model"),
-                # for a complete list of architecture name supported, see
-                # mmdnn/conversion/examples/tensorflow/extractor.py
-                [
-                    "vgg16",
-                    # "vgg19",
-                    "inception_v1",
-                    # "inception_v3",
-                    # "resnet_v1_50",
-                    # # "resnet_v1_152",
-                    "resnet_v2_50",
-                    # "resnet_v2_101",
-                    # # "resnet_v2_152",
-                    # # "resnet_v2_200",
-                    # "mobilenet_v1_1.0",
-                    "mobilenet_v2_1.0_224",
-                    # "inception_resnet_v2",
-                    # "nasnet-a_large",
-                    # "facenet",
-                    # "rnn_lstm_gru_stacked",
-                ],
+                partial(download_tf_model, model_dir="model"), list(tf_arch_names),
             )
         )
 
@@ -48,6 +50,8 @@ def onnx_model_zoo(path: str) -> str:
     return f"https://s3.amazonaws.com/onnx-model-zoo/{path}"
 
 
+# for a complete list of architecture name supported, see
+# https://github.com/onnx/models
 onnx_arch_map = {
     "mobilenetv2-1.0": {
         "url": onnx_model_zoo("mobilenet/mobilenetv2-1.0/mobilenetv2-1.0.tar.gz")
@@ -72,9 +76,7 @@ def download_all_onnx_models():
         list(
             executor.map(
                 partial(download_onnx_model, model_dir="onnx_model"),
-                # for a complete list of architecture name supported, see
-                # https://github.com/onnx/models
-                ["mobilenetv2-1.0", "resnet18v2"],
+                list(onnx_arch_map.keys()),
             )
         )
 
@@ -83,6 +85,8 @@ def tflite_model_zoo(path: str) -> str:
     return f"https://storage.googleapis.com/download.tensorflow.org/models/{path}"
 
 
+# for a complete list of architecture name supported, see
+# https://www.tensorflow.org/lite/guide/hosted_models
 tflite_arch_map = {
     "mobilenet_v2_1.0_224_quant": {
         "url": tflite_model_zoo("tflite_11_05_08/mobilenet_v2_1.0_224_quant.tgz"),
@@ -114,9 +118,7 @@ def download_all_tflite_models():
         list(
             executor.map(
                 partial(download_tflite_model, model_dir="tflite_model"),
-                # for a complete list of architecture name supported, see
-                # https://www.tensorflow.org/lite/guide/hosted_models
-                ["mobilenet_v2_1.0_224_quant", "mobilenet_v2_1.0_224", "nasnet_mobile"],
+                list(tflite_arch_map.keys()),
             )
         )
 

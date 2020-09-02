@@ -40,7 +40,12 @@ setup(
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8'
     ],
-    entry_points={"console_scripts": ["amanda = amanda.cli:cli"]},
+    entry_points={
+        "console_scripts": [
+            "amanda = amanda.cli:cli",
+            "amanda-download = amanda.cli:download_cli"
+        ]
+    },
     packages=[
         'amanda', 'amanda.conversion', 'amanda.core', 'amanda.tests',
         'amanda.tools', 'amanda.tools.byteps', 'amanda.tools.byteps.tensorflow',

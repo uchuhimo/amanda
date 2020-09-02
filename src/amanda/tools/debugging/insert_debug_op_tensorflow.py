@@ -5,6 +5,7 @@ import tensorflow as tf
 from tensorflow.python.framework import load_library
 
 import amanda
+from amanda.tests.download_model import download_tf_model
 from amanda.tests.test_tf_import_export import run_model
 from amanda.tests.utils import root_dir
 from amanda.tool import Tool
@@ -77,6 +78,7 @@ class DebuggingTool(Tool):
 
 
 def main():
+    download_tf_model(arch_name, model_dir="model")
     output = run_original_model()
 
     graph = amanda.tensorflow.import_from_checkpoint(original_checkpoint_dir)

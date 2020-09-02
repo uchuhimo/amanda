@@ -110,3 +110,4 @@ all = ["tensorflow", "torch", "torchvision"]
 
 [tool.poetry.scripts]
 amanda = "amanda.cli:cli"
+amanda-download = "amanda.cli:download_cli"
