@@ -37,6 +37,9 @@ steps:
     versionSpec: '$(python.version)'
   displayName: 'Use Python $(python.version)'
 
+- script: pip install --upgrade pip
+  displayName: 'Upgrade pip'
+
 - script: pip install poetry
   displayName: 'Install poetry'
 
