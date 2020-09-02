@@ -17,7 +17,7 @@ more-itertools
 mypy
 onnx
 onnxruntime
-pip
+pip>=19.3
 pre-commit
 protobuf
 pytest

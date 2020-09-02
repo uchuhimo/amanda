@@ -175,15 +175,17 @@ KMP_AFFINITY=disabled pytest -n 2
 ### Show information about installed packages
 
 ```bash
-poetry show
+poetry show --latest
+# or
+poetry show --outdated
 ```
 
 ### Show dependency tree
 
 ```bash
-dephell deps tree
+poetry show --tree
 # or
-dephell deps tree pytest
+poetry show --tree pytest
 ```
 
 ### Update dependencies

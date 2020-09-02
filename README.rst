@@ -202,16 +202,18 @@ Show information about installed packages
 
 .. code-block:: bash
 
-   poetry show
+   poetry show --latest
+   # or
+   poetry show --outdated
 
 Show dependency tree
 ^^^^^^^^^^^^^^^^^^^^
 
 .. code-block:: bash
 
-   dephell deps tree
+   poetry show --tree
    # or
-   dephell deps tree pytest
+   poetry show --tree pytest
 
 Update dependencies
 ^^^^^^^^^^^^^^^^^^^

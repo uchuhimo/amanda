@@ -81,7 +81,7 @@ torch = { version = "1.6.0", optional = true }
 torchvision = { version = "0.7.0", optional = true }
 
 [tool.poetry.dev-dependencies]
-pip = "*"
+pip = ">=19.3"
 dephell = { version = "*", extras = [ "full" ], allow-prereleases = true }
 fissix = { version = "*", allow-prereleases = true }
 bump2version="*"

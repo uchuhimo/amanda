@@ -2090,7 +2090,7 @@ all = ["tensorflow", "torch", "torchvision"]
 [metadata]
 lock-version = "1.0"
 python-versions = ">= 3.6.1, < 4"
-content-hash = "8c529283719494ea42b61759ae6d4bbcb394bfeecbecd1080a21ec1da98e3174"
+content-hash = "b8eb7bbd5cff7675f04091d105354e0f98b226d6532cd942b7887512c80c0d08"
 
 [metadata.files]
 absl-py = [
