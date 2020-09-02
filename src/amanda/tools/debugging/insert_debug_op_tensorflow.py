@@ -7,6 +7,7 @@ from tensorflow.python.framework import load_library
 import amanda
 from amanda.tests.test_tf_import_export import run_model
 from amanda.tests.utils import root_dir
+from amanda.tool import Tool
 
 store_tensor_to_file_ops = load_library.load_op_library(
     str(
@@ -44,7 +45,7 @@ def verify_output(output, new_output):
     np.testing.assert_allclose(output, new_output, atol=1.0e-5)
 
 
-def modify_graph(graph: amanda.Graph) -> amanda.Graph:
+def modify_graph(graph: amanda.Graph):
     for op in graph.ops:
         for tensor in op.output_tensors:
             if not tensor.attrs["dtype"]._is_ref_dtype:
@@ -67,7 +68,12 @@ def modify_graph(graph: amanda.Graph) -> amanda.Graph:
                                 index, debug_op.output_tensors[0]
                             )
                 graph.add_op(debug_op)
-    return graph
+
+
+class DebuggingTool(Tool):
+    def instrument(self, graph: amanda.Graph) -> amanda.Graph:
+        modify_graph(graph)
+        return graph
 
 
 def main():

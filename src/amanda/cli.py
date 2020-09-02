@@ -78,7 +78,12 @@ def ensure_dir(path: str) -> str:
     help="Namespace of the graph instrumented by the tool.",
 )
 @click.option(
-    "--tool", "-T", required=True, type=str, help="Fully qualified name of the tool."
+    "--tool",
+    "-T",
+    "tool_name",
+    default="",
+    type=str,
+    help="Fully qualified name of the tool.",
 )
 @click.argument("tool_args", nargs=-1)
 def cli(
@@ -87,18 +92,31 @@ def cli(
     export_type: str,
     export_path: str,
     namespace: str,
-    tool: str,
+    tool_name: str,
     tool_args: List[str],
 ):
-    import_func = import_types[import_type]
-    graph = import_func(os.path.abspath(import_path))  # type: ignore
-    graph = graph.to_namespace(namespace)
-    tool_module_name, tool_func_name = tool.rsplit(".", 1)
-    tool_module = importlib.import_module(tool_module_name)
-    tool_func = getattr(tool_module, tool_func_name)
-    if len(tool_args) != 0:
-        updated_graph = tool_func(graph, tool_args)
+    if len(tool_name) != 0:
+        tool_module_name, tool_class_name = tool_name.rsplit(".", 1)
+        tool_module = importlib.import_module(tool_module_name)
+        tool_class = getattr(tool_module, tool_class_name)
+        if len(tool_args) != 0:
+            tool = tool_class(tool_args)
+        else:
+            tool = tool_class()
     else:
-        updated_graph = tool_func(graph)
-    export_func = export_types[export_type]
-    export_func(updated_graph, ensure_dir(os.path.abspath(export_path)))  # type: ignore
+        tool = None
+    try:
+        import_func = import_types[import_type]
+        import_path = os.path.abspath(import_path)
+        graph = import_func(os.path.abspath(import_path))  # type: ignore
+        graph = graph.to_namespace(namespace)
+        if tool is not None:
+            updated_graph = tool.instrument(graph)
+        else:
+            updated_graph = graph
+        export_func = export_types[export_type]
+        export_path = ensure_dir(os.path.abspath(export_path))
+        export_func(updated_graph, export_path)  # type: ignore
+    finally:
+        if tool is not None:
+            tool.finish()

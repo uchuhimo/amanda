@@ -23,7 +23,7 @@ setup(
     name='amanda',
     version='0.1.0',
     description='graph instrumentation',
-    python_requires='<4,>=3.6',
+    python_requires='<4,>=3.6.1',
     project_urls={
         "homepage": "https://github.com/uchuhimo/amanda",
         "repository": "https://github.com/uchuhimo/amanda"
@@ -55,18 +55,18 @@ setup(
     install_requires=[
         'click', 'contextvars; python_version < "3.7"',
         'dataclasses; python_version < "3.7"', 'immutables', 'mmdnn',
-        'more-itertools', 'onnx', 'onnxruntime', 'protobuf', 'scipy', 'six',
+        'more-itertools', 'onnx', 'onnxruntime', 'protobuf', 'scipy',
         'typing; python_version < "3.7"', 'typing-extensions'
     ],
     extras_require={
-        "all": ["tensorflow==1.13.1", "torch==1.4.0", "torchvision==0.5.0"],
+        "all": ["tensorflow==1.13.1", "torch==1.6.0", "torchvision==0.7.0"],
         "dev": [
             "black", "bump2version", "coverage[toml]", "dephell[full]",
             "filelock", "fissix", "flake8", "ipython", "isort[pyproject]",
             "jsondiff", "mypy", "pip", "pre-commit", "pytest", "pytest-xdist",
             "sphinx", "tox", "twine", "watchdog", "wget", "wheel"
         ],
-        "pytorch": ["torch==1.4.0", "torchvision==0.5.0"],
+        "pytorch": ["torch==1.6.0", "torchvision==0.7.0"],
         "tensorflow": ["tensorflow==1.13.1"]
     },
 )

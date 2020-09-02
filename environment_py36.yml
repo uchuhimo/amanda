@@ -1,7 +1,9 @@
-name: amanda
+name: amanda_py36
 dependencies:
-    - python=3.7
+    - python=3.6.1
     - pip>=19.3
+    - six==1.15.0
+    - markdown==3.2.2
     - tensorflow=1.13.1=mkl*
     - pytorch::pytorch=1.6.0
     - pytorch::torchvision=0.7.0

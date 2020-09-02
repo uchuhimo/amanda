@@ -23,11 +23,10 @@ protobuf
 pytest
 pytest-xdist
 scipy
-six
 sphinx
 tensorflow==1.13.1
-torch==1.4.0
-torchvision==0.5.0
+torch==1.6.0
+torchvision==0.7.0
 tox
 twine
 typing; python_version < "3.7"

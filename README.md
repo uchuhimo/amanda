@@ -48,8 +48,8 @@ Options:
   -t, --to PATH                   Path of the exported model.  [required]
   -ns, --namespace TEXT           Namespace of the graph instrumented by the
                                   tool.
+
   -T, --tool TEXT                 Fully qualified name of the tool.
-                                  [required]
   --help                          Show this message and exit.
 ```
 
@@ -59,7 +59,7 @@ E.g. use a tool to insert debugging ops into a TensorFlow graph from a checkpoin
 amanda --import tensorflow_checkpoint --from downloads/model/vgg16/imagenet_vgg16.ckpt \
        --export tensorflow_checkpoint --to tmp/modified_model/vgg16/imagenet_vgg16.ckpt \
        --namespace amanda/tensorflow \
-       --tool amanda.tools.debugging.insert_debug_op_tensorflow.modify_graph
+       --tool amanda.tools.debugging.insert_debug_op_tensorflow.DebuggingTool
 ```
 
 The updated graph will be saved into `tmp/modified_model/vgg16`.
