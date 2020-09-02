@@ -47,8 +47,8 @@ authors = [
 
 readme = "README.md"
 
-repository = "https://github.com/uchuhimo/mmx"
-homepage = "https://github.com/uchuhimo/mmx"
+repository = "https://github.com/uchuhimo/amanda"
+homepage = "https://github.com/uchuhimo/amanda"
 
 keywords = []
 classifiers=[

@@ -25,8 +25,8 @@ setup(
     description='graph instrumentation',
     python_requires='<4,>=3.6',
     project_urls={
-        "homepage": "https://github.com/uchuhimo/mmx",
-        "repository": "https://github.com/uchuhimo/mmx"
+        "homepage": "https://github.com/uchuhimo/amanda",
+        "repository": "https://github.com/uchuhimo/amanda"
     },
     author='uchuhimo',
     author_email='uchuhimo@outlook.com',
