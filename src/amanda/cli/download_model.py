@@ -68,16 +68,20 @@ def download_all_tf_models(root=None):
 
 
 def onnx_model_zoo(path: str) -> str:
-    return f"https://s3.amazonaws.com/onnx-model-zoo/{path}"
+    return f"https://github.com/onnx/models/raw/master/{path}"
 
 
 # for a complete list of architecture name supported, see
 # https://github.com/onnx/models
 onnx_arch_map = {
     "mobilenetv2-1.0": {
-        "url": onnx_model_zoo("mobilenet/mobilenetv2-1.0/mobilenetv2-1.0.tar.gz")
+        "url": onnx_model_zoo(
+            "vision/classification/mobilenet/model/mobilenetv2-7.tar.gz"
+        )
     },
-    "resnet18v2": {"url": onnx_model_zoo("resnet/resnet18v2/resnet18v2.tar.gz")},
+    "resnet18-v1-7": {
+        "url": onnx_model_zoo("vision/classification/resnet/model/resnet18-v1-7.tar.gz")
+    },
 }
 
 

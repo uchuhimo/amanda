@@ -9,7 +9,7 @@ from amanda.conversion.utils import diff_graph_def, diff_proto, to_proto
 from amanda.tests.utils import root_dir
 
 
-@pytest.fixture(params=["mobilenetv2-1.0", "resnet18v2"])
+@pytest.fixture(params=["mobilenetv2-1.0", "resnet18-v1-7"])
 def arch_name(request):
     return request.param
 
