@@ -26,10 +26,10 @@ steps:
 
 - task: Cache@2
   inputs:
-    key: 'downloads | v1'
+    key: 'downloads | v2'
     path: $(System.DefaultWorkingDirectory)/downloads
     restoreKeys: |
-      downloads | v1
+      downloads | v2
   displayName: Cache downloaded models
 
 - task: UsePythonVersion@0
@@ -43,7 +43,7 @@ steps:
 - script: poetry run pip install --upgrade pip
   displayName: 'Upgrade pip'
 
-- script: poetry install -E all
+- script: poetry install
   displayName: 'Install dependencies'
 
 - script: sudo apt install -y ninja-build

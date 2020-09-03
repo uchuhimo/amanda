@@ -38,7 +38,7 @@ def test_mmdnn_import_export(arch_name):
     parser = TensorflowParser(
         tf.train.latest_checkpoint(checkpoint_dir) + ".meta",
         tf.train.latest_checkpoint(checkpoint_dir),
-        ["MMdnn_Output"],
+        ["Output"],
     )
     parser.gen_IR()
     model = parser.IR_graph

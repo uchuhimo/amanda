@@ -28,15 +28,14 @@ from amanda.tests.utils import root_dir
 @pytest.fixture(
     params=[
         "vgg16",
-        # # "vgg19",
+        # "vgg19",
         "inception_v1",
         # "inception_v3",
         # "resnet_v1_50",
-        # # "resnet_v1_152",
+        # "resnet_v1_152",
         "resnet_v2_50",
         # "resnet_v2_101",
-        # # "resnet_v2_152",
-        # # "resnet_v2_200",
+        # "resnet_v2_152",
         # "mobilenet_v1_1.0",
         "mobilenet_v2_1.0_224",
         # "inception_resnet_v2",
@@ -107,7 +106,7 @@ def run_model(arch_name, model_dir, input):
         with tf.Session() as sess:
             saver = tf.train.import_meta_graph(checkpoint_file + ".meta")
             saver.restore(sess, checkpoint_file)
-            output = sess.run("MMdnn_Output:0", {"input:0": input})
+            output = sess.run("Output:0", {"input:0": input})
             return output, graph.as_graph_def()
 
 
@@ -197,7 +196,7 @@ def test_tf_import_export_graph_def_with_saver(arch_name):
         with tf.Session() as session:
             saver = tf.train.import_meta_graph(checkpoint_file + ".meta")
             saver.restore(session, checkpoint_file)
-            output = session.run("MMdnn_Output:0", {"input:0": input})
+            output = session.run("Output:0", {"input:0": input})
             graph_def = tf_graph.as_graph_def()
             graph = import_from_graph_def(graph_def, saver.saver_def)
             graph = graph.to_default_namespace()
@@ -207,7 +206,7 @@ def test_tf_import_export_graph_def_with_saver(arch_name):
     }
     with new_tf_graph.as_default(), session:
         saver.restore(session, checkpoint_file)
-        new_output = session.run("MMdnn_Output:0", {"input:0": input})
+        new_output = session.run("Output:0", {"input:0": input})
     np.testing.assert_allclose(output, new_output)
 
 
@@ -221,7 +220,7 @@ def test_tf_import_export_saved_model(arch_name, tmp_path):
         with tf.Session() as session:
             saver = tf.train.import_meta_graph(checkpoint_file + ".meta")
             saver.restore(session, checkpoint_file)
-            output = session.run("MMdnn_Output:0", {"input:0": input})
+            output = session.run("Output:0", {"input:0": input})
             builder = tf.saved_model.builder.SavedModelBuilder(path)
             builder.add_meta_graph_and_variables(
                 session,
@@ -243,7 +242,7 @@ def test_tf_import_export_saved_model(arch_name, tmp_path):
             assert diff_graph_def(
                 tf_graph.as_graph_def(), new_tf_graph.as_graph_def()
             ) == {jsondiff.update: {"versions": {}}}
-            new_output = session.run("MMdnn_Output:0", {"input:0": input})
+            new_output = session.run("Output:0", {"input:0": input})
     np.testing.assert_allclose(output, new_output)
 
 

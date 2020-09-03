@@ -1,11 +1,14 @@
 import os
 from concurrent.futures.process import ProcessPoolExecutor
 from functools import partial
+from importlib.util import find_spec
 from pathlib import Path
 
-from mmdnn.conversion.examples.tensorflow.extractor import tensorflow_extractor
-
 from amanda.tests.utils import root_dir
+
+
+def tf_model_zoo(path: str) -> str:
+    return f"http://download.tensorflow.org/models/{path}"
 
 
 def download_tf_model(arch_name, model_dir, root=None):
@@ -15,22 +18,36 @@ def download_tf_model(arch_name, model_dir, root=None):
     if not full_model_dir.exists():
         full_model_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
     if not (full_model_dir / arch_name / "checkpoint").exists():
-        download_arch(arch_name, str(full_model_dir / arch_name) + "/")
+        if not find_spec("tensorflow"):
+            raise ImportError(
+                "Please install TensorFlow before processing TensorFlow models."
+            )
+        from amanda.cli import tensorflow_extractor
+
+        path = str(full_model_dir / arch_name) + "/"
+        download_file(
+            tensorflow_extractor.architecture_map[arch_name]["url"],
+            directory=path,
+            auto_unzip=True,
+        )
+        if "ckpt" in tensorflow_extractor.architecture_map[arch_name]["filename"]:
+            tensorflow_extractor.handle_checkpoint(arch_name, path)
 
 
 # for a complete list of architecture name supported, see
-# mmdnn/conversion/examples/tensorflow/extractor.py
+# https://github.com/tensorflow/models/tree/master/research/slim#pre-trained-models
+# or
+# https://github.com/microsoft/MMdnn/blob/master/mmdnn/conversion/examples/tensorflow/extractor.py
 tf_arch_names = [
     "vgg16",
     # "vgg19",
     "inception_v1",
     # "inception_v3",
     # "resnet_v1_50",
-    # # "resnet_v1_152",
+    # "resnet_v1_152",
     "resnet_v2_50",
     # "resnet_v2_101",
-    # # "resnet_v2_152",
-    # # "resnet_v2_200",
+    # "resnet_v2_152",
     # "mobilenet_v1_1.0",
     "mobilenet_v2_1.0_224",
     # "inception_resnet_v2",
@@ -202,37 +219,6 @@ def download_file(
             except Exception:
                 print("Unzip file [{}] failed.".format(ret))
     return ret
-
-
-def download_arch(architecture, path="./"):
-    if tensorflow_extractor.sanity_check(architecture):
-        architecture_file = download_file(
-            tensorflow_extractor.architecture_map[architecture]["url"],
-            directory=path,
-            auto_unzip=True,
-        )
-        if not architecture_file:
-            return None
-
-        if "ckpt" in tensorflow_extractor.architecture_map[architecture]["filename"]:
-            tensorflow_extractor.handle_checkpoint(architecture, path)
-
-        elif tensorflow_extractor.architecture_map[architecture]["filename"].endswith(
-            "pb"
-        ):
-            tensorflow_extractor.handle_frozen_graph(architecture, path)
-
-        else:
-            raise ValueError(
-                "Unknown file name [{}].".format(
-                    tensorflow_extractor.architecture_map[architecture]["filename"]
-                )
-            )
-
-        return architecture_file
-
-    else:
-        return None
 
 
 if __name__ == "__main__":

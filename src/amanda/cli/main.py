@@ -1,30 +1,41 @@
 import os
+from importlib.util import find_spec
 from typing import List
 
 import click
 
 from amanda.cli.utils import import_from_name
-from amanda.conversion.mmdnn import export_types as mmdnn_export_types
-from amanda.conversion.mmdnn import import_types as mmdnn_import_types
-from amanda.conversion.onnx import export_types as onnx_export_types
-from amanda.conversion.onnx import import_types as onnx_import_types
-from amanda.conversion.pytorch import export_types as pytorch_export_types
-from amanda.conversion.pytorch import import_types as pytorch_import_types
-from amanda.conversion.tensorflow import export_types as tf_export_types
-from amanda.conversion.tensorflow import import_types as tf_import_types
 
-import_types = {
-    **tf_import_types,
-    **onnx_import_types,
-    **pytorch_import_types,
-    **mmdnn_import_types,
-}
-export_types = {
-    **tf_export_types,
-    **onnx_export_types,
-    **pytorch_export_types,
-    **mmdnn_export_types,
-}
+import_types = {}
+export_types = {}
+
+if find_spec("tensorflow"):
+    from amanda.conversion.tensorflow import export_types as tf_export_types
+    from amanda.conversion.tensorflow import import_types as tf_import_types
+
+    import_types.update(tf_import_types)
+    export_types.update(tf_export_types)
+
+if find_spec("torch"):
+    from amanda.conversion.pytorch import export_types as pytorch_export_types
+    from amanda.conversion.pytorch import import_types as pytorch_import_types
+
+    import_types.update(pytorch_import_types)
+    export_types.update(pytorch_export_types)
+
+if find_spec("onnx"):
+    from amanda.conversion.onnx import export_types as onnx_export_types
+    from amanda.conversion.onnx import import_types as onnx_import_types
+
+    import_types.update(onnx_import_types)
+    export_types.update(onnx_export_types)
+
+if find_spec("mmdnn"):
+    from amanda.conversion.mmdnn import export_types as mmdnn_export_types
+    from amanda.conversion.mmdnn import import_types as mmdnn_import_types
+
+    import_types.update(mmdnn_import_types)
+    export_types.update(mmdnn_export_types)
 
 
 def ensure_dir(path: str) -> str:
