@@ -149,8 +149,7 @@ def import_from_graph_def(
                     attr_value_list.append(LiteralTensor(value))
                 op.attrs[key] = attr_value_list
             else:
-                print("unknown field met")
-                assert False
+                raise ValueError("unknown field met")
 
         graph.add_op(op)
 

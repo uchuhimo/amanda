@@ -49,7 +49,9 @@ setup(
     },
     packages=[
         'amanda', 'amanda.cli', 'amanda.conversion', 'amanda.tests',
-        'amanda.tools', 'amanda.tools.byteps', 'amanda.tools.byteps.tensorflow',
+        'amanda.tests.tensorflow', 'amanda.tests.tensorflow.models',
+        'amanda.tests.tensorflow.models.mobilenet', 'amanda.tools',
+        'amanda.tools.byteps', 'amanda.tools.byteps.tensorflow',
         'amanda.tools.debugging', 'amanda.tools.path'
     ],
     package_dir={"": "src"},
@@ -60,8 +62,8 @@ setup(
     },
     install_requires=[
         'click', 'contextvars; python_version < "3.7"',
-        'dataclasses; python_version < "3.7"', 'immutables', 'more-itertools',
-        'numpy', 'protobuf', 'typing; python_version < "3.7"',
+        'dataclasses; python_version < "3.7"', 'immutables', 'loguru',
+        'more-itertools', 'numpy', 'protobuf', 'typing; python_version < "3.7"',
         'typing-extensions'
     ],
     extras_require={

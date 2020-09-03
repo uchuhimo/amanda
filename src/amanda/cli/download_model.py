@@ -4,6 +4,8 @@ from functools import partial
 from importlib.util import find_spec
 from pathlib import Path
 
+from loguru import logger
+
 from amanda.tests.utils import root_dir
 
 
@@ -17,19 +19,19 @@ def download_tf_model(arch_name, model_dir, root=None):
     full_model_dir = Path(root) / model_dir
     if not full_model_dir.exists():
         full_model_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
-    if not (full_model_dir / arch_name / "checkpoint").exists():
-        if not find_spec("tensorflow"):
-            raise ImportError(
-                "Please install TensorFlow before processing TensorFlow models."
-            )
-        from amanda.cli import tensorflow_extractor
-
-        path = str(full_model_dir / arch_name) + "/"
-        download_file(
-            tensorflow_extractor.architecture_map[arch_name]["url"],
-            directory=path,
-            auto_unzip=True,
+    path = str(full_model_dir / arch_name) + "/"
+    if not find_spec("tensorflow"):
+        raise ImportError(
+            "Please install TensorFlow before processing TensorFlow models."
         )
+    from amanda.cli import tensorflow_extractor
+
+    download_file(
+        tensorflow_extractor.architecture_map[arch_name]["url"],
+        directory=path,
+        auto_unzip=True,
+    )
+    if not (full_model_dir / arch_name / "checkpoint").exists():
         if "ckpt" in tensorflow_extractor.architecture_map[arch_name]["filename"]:
             tensorflow_extractor.handle_checkpoint(arch_name, path)
 
@@ -189,16 +191,14 @@ def download_file(
     local_fname = os.path.join(directory, local_fname)
 
     if os.path.exists(local_fname) and not force_write:
-        print("File [{}] existed!".format(local_fname))
+        logger.info(f"File [{local_fname}] existed!")
         return local_fname
-
     else:
-        print("Downloading file [{}] from [{}]".format(local_fname, url))
+        logger.info(f"Downloading file [{local_fname}] from [{url}]")
         try:
             import wget
 
             ret = wget.download(url, local_fname, bar=None)
-            print("")
         except Exception:
             ret = _single_thread_download(url, local_fname)
 
@@ -211,7 +211,7 @@ def download_file(
                 tar.extractall(directory)
                 tar.close()
             except Exception:
-                print("Unzip file [{}] failed.".format(ret))
+                logger.exception(f"Unzip file [{ret}] failed.")
 
         elif ret.endswith(".zip"):
             try:
@@ -221,7 +221,7 @@ def download_file(
                 zip_ref.extractall(directory)
                 zip_ref.close()
             except Exception:
-                print("Unzip file [{}] failed.".format(ret))
+                logger.exception(f"Unzip file [{ret}] failed.")
     return ret
 
 

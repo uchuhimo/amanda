@@ -12,6 +12,7 @@ immutables
 ipython
 isort[pyproject]
 jsondiff
+loguru
 mmdnn
 more-itertools
 mypy

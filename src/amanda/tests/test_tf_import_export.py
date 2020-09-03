@@ -6,6 +6,7 @@ import jsondiff
 import numpy as np
 import pytest
 import tensorflow as tf
+from loguru import logger
 
 from amanda import Graph, Op
 from amanda.conversion.tensorflow import (
@@ -84,12 +85,12 @@ def modify_model(arch_name, output_model_dir, modify_graph_func):
     original_checkpoint = tf.train.latest_checkpoint(
         root_dir() / "downloads" / "model" / arch_name
     )
-    print(f">>>>>>>>>>>>>>>> import from the original checkpoint {original_checkpoint}")
+    logger.info(f"import from the original checkpoint {original_checkpoint}")
     graph = import_from_checkpoint(original_checkpoint)
     modify_graph_func(graph)
     modified_checkpoint = root_dir() / "tmp" / output_model_dir / arch_name / arch_name
     export_to_checkpoint(graph, modified_checkpoint)
-    print(f">>>>>>>>>>>>>>>> export to the modified checkpoint {modified_checkpoint}")
+    logger.info(f"export to the modified checkpoint {modified_checkpoint}")
 
 
 def run_model(arch_name, model_dir, input):
@@ -284,7 +285,6 @@ def test_tf_import_export_partitioned_graph(partitioned_graph_file):
 #         graph_def = tf_graph.as_graph_def()
 #         meta_graph = tf.train.export_meta_graph(graph=tf_graph)
 #         graph = import_from_graph_def(graph_def)
-#         print("end")
 
 
 if __name__ == "__main__":

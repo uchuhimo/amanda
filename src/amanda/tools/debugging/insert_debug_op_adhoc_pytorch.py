@@ -4,6 +4,7 @@ import numpy as np
 import torch.jit
 import torch.utils.cpp_extension
 import torchvision.models as models
+from loguru import logger
 
 import amanda
 from amanda.tests.utils import root_dir
@@ -55,7 +56,7 @@ def init():
         is_python_module=False,
         verbose=True,
     )
-    print(torch.ops.amanda.store_tensor_to_file)
+    logger.info(f"load {torch.ops.amanda.store_tensor_to_file} successfully")
     global traced_model
     traced_model = torch.jit.trace(model, (input,))
 

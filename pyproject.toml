@@ -15,7 +15,6 @@ use_parentheses = true
 line_length = 88
 known_first_party = "amanda"
 default_section = "THIRDPARTY"
-not_skip = "__init__.py"
 # sections = "FUTURE,STDLIB,FIRSTPARTY,THIRDPARTY,LOCALFOLDER"
 
 [tool.coverage.report]
@@ -70,6 +69,7 @@ typing-extensions = "*"
 protobuf = "*"
 immutables = "*"
 numpy = "*"
+loguru = "*"
 dataclasses = { version = "*", python = "< 3.7" }
 typing = { version = "*", python = "< 3.7" }
 contextvars = { version = "*", python = "< 3.7" }

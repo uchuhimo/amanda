@@ -1,4 +1,5 @@
 import tensorflow as tf
+from loguru import logger
 from tensorflow.contrib.slim.nets import inception, resnet_v1, resnet_v2, vgg
 
 from amanda.tests.tensorflow.models import (
@@ -245,7 +246,7 @@ def handle_checkpoint(architecture, path):
         saver = tf.train.Saver()
         saver.restore(sess, path + architecture_map[architecture]["filename"])
         save_path = saver.save(sess, path + "imagenet_{}.ckpt".format(architecture))
-        print("Model saved in file: %s" % save_path)
+        logger.info(f"Model saved in file: {save_path}")
 
     import tensorflow.contrib.keras as keras
 
