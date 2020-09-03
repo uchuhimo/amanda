@@ -1,9 +1,9 @@
-import importlib
 import os
 from typing import List
 
 import click
 
+from amanda.cli.utils import import_from_name
 from amanda.conversion.mmdnn import export_types as mmdnn_export_types
 from amanda.conversion.mmdnn import import_types as mmdnn_import_types
 from amanda.conversion.onnx import export_types as onnx_export_types
@@ -12,18 +12,6 @@ from amanda.conversion.pytorch import export_types as pytorch_export_types
 from amanda.conversion.pytorch import import_types as pytorch_import_types
 from amanda.conversion.tensorflow import export_types as tf_export_types
 from amanda.conversion.tensorflow import import_types as tf_import_types
-from amanda.tests.download_model import (
-    download_all_models,
-    download_all_onnx_models,
-    download_all_tf_models,
-    download_all_tflite_models,
-    download_onnx_model,
-    download_tf_model,
-    download_tflite_model,
-    onnx_arch_map,
-    tf_arch_names,
-    tflite_arch_map,
-)
 
 import_types = {
     **tf_import_types,
@@ -108,9 +96,7 @@ def cli(
     tool_args: List[str],
 ):
     if len(tool_name) != 0:
-        tool_module_name, tool_class_name = tool_name.rsplit(".", 1)
-        tool_module = importlib.import_module(tool_module_name)
-        tool_class = getattr(tool_module, tool_class_name)
+        tool_class = import_from_name(tool_name)
         if len(tool_args) != 0:
             tool = tool_class(tool_args)
         else:
@@ -120,7 +106,7 @@ def cli(
     try:
         import_func = import_types[import_type]
         import_path = os.path.abspath(import_path)
-        graph = import_func(os.path.abspath(import_path))  # type: ignore
+        graph = import_func(import_path)  # type: ignore
         graph = graph.to_namespace(namespace)
         if tool is not None:
             updated_graph = tool.instrument(graph)
@@ -134,56 +120,5 @@ def cli(
             tool.finish()
 
 
-@click.group()
-def download_cli():
-    pass
-
-
-@download_cli.command(name="tf")
-@click.option(
-    "--model",
-    "-m",
-    required=True,
-    type=click.Choice(["all"] + list(tf_arch_names)),
-    help="Name of the model.",
-)
-def download_tf(model):
-    if model == "all":
-        download_all_tf_models()
-    else:
-        download_tf_model(model, model_dir="model")
-
-
-@download_cli.command(name="onnx")
-@click.option(
-    "--model",
-    "-m",
-    required=True,
-    type=click.Choice(["all"] + list(onnx_arch_map.keys())),
-    help="Name of the model.",
-)
-def download_onnx(model):
-    if model == "all":
-        download_all_onnx_models()
-    else:
-        download_onnx_model(model, model_dir="onnx_model")
-
-
-@download_cli.command(name="all")
-def download_all():
-    download_all_models()
-
-
-@download_cli.command(name="tflite")
-@click.option(
-    "--model",
-    "-m",
-    required=True,
-    type=click.Choice(["all"] + list(tflite_arch_map.keys())),
-    help="Name of the model.",
-)
-def download_tflite(model):
-    if model == "all":
-        download_all_tflite_models()
-    else:
-        download_tflite_model(model, model_dir="tflite_model")
+if __name__ == "__main__":
+    cli()

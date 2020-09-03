@@ -1,12 +1,13 @@
 from pathlib import Path
 
+import click
 import numpy as np
 import tensorflow as tf
 from tensorflow.python.framework import load_library
 
 import amanda
-from amanda.tests.download_model import download_tf_model
-from amanda.tests.test_tf_import_export import run_model
+from amanda.cli.download_model import download_tf_model
+from amanda.tests.test_tf_import_export import run_model as run_model_from
 from amanda.tests.utils import root_dir
 from amanda.tool import Tool
 
@@ -33,12 +34,14 @@ input = np.random.rand(1, 224, 224, 3)
 
 
 def run_original_model():
-    output, _ = run_model(arch_name, model_dir="downloads/model", input=input)
+    output, _ = run_model_from(arch_name, model_dir="downloads/model", input=input)
     return output
 
 
 def run_modified_model():
-    new_output, _ = run_model(arch_name, model_dir="tmp/modified_model", input=input)
+    new_output, _ = run_model_from(
+        arch_name, model_dir="tmp/modified_model", input=input
+    )
     return new_output
 
 
@@ -55,6 +58,10 @@ def modify_graph(graph: amanda.Graph):
                     attrs={
                         "name": f"debug/{op_name}/{tensor.output_index}",
                         "type": "StoreTensorToFile",
+                        "store_dir": str(store_dir),
+                        "file_name": f"{op.name}_{tensor.output_index}".replace(
+                            "/", "_"
+                        ),
                         "T": tensor.attrs["dtype"],
                     },
                     input_tensors=[tensor],
@@ -75,6 +82,19 @@ class DebuggingTool(Tool):
     def instrument(self, graph: amanda.Graph) -> amanda.Graph:
         modify_graph(graph)
         return graph
+
+
+@click.command()
+@click.option(
+    "--model-dir",
+    "-m",
+    required=True,
+    type=click.Path(),
+    help="Directory of the model.",
+)
+def run_model(model_dir):
+    output, _ = run_model_from("", model_dir=model_dir, input=input)
+    return output
 
 
 def main():

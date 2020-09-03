@@ -42,12 +42,13 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "amanda = amanda.cli:cli",
-            "amanda-download = amanda.cli:download_cli"
+            "amanda = amanda.cli.main:cli",
+            "amanda-download = amanda.cli.download:cli",
+            "amanda-run = amanda.cli.run:cli"
         ]
     },
     packages=[
-        'amanda', 'amanda.conversion', 'amanda.core', 'amanda.tests',
+        'amanda', 'amanda.cli', 'amanda.conversion', 'amanda.tests',
         'amanda.tools', 'amanda.tools.byteps', 'amanda.tools.byteps.tensorflow',
         'amanda.tools.debugging', 'amanda.tools.path'
     ],
@@ -59,20 +60,18 @@ setup(
     },
     install_requires=[
         'click', 'contextvars; python_version < "3.7"',
-        'dataclasses; python_version < "3.7"', 'immutables', 'mmdnn',
-        'more-itertools', 'onnx', 'onnxruntime', 'protobuf', 'scipy',
-        'typing; python_version < "3.7"', 'typing-extensions'
+        'dataclasses; python_version < "3.7"', 'immutables', 'more-itertools',
+        'numpy', 'protobuf', 'typing; python_version < "3.7"',
+        'typing-extensions'
     ],
     extras_require={
-        "all": ["tensorflow==1.13.1", "torch==1.6.0", "torchvision==0.7.0"],
         "dev": [
             "black", "bump2version", "coverage[toml]", "dephell[full]",
             "filelock", "fissix", "flake8", "ipython", "isort[pyproject]",
-            "jsondiff", "mypy", "pip>=19.3", "pre-commit", "pytest",
-            "pytest-xdist", "sphinx", "tox", "twine", "watchdog", "wget",
-            "wheel"
-        ],
-        "pytorch": ["torch==1.6.0", "torchvision==0.7.0"],
-        "tensorflow": ["tensorflow==1.13.1"]
+            "jsondiff", "mmdnn", "mypy", "onnx", "onnxruntime", "pip>=19.3",
+            "pre-commit", "pytest", "pytest-xdist", "sphinx",
+            "tensorflow==1.13.1", "torch==1.6.0", "torchvision==0.7.0", "tox",
+            "twine", "watchdog", "wget", "wheel"
+        ]
     },
 )

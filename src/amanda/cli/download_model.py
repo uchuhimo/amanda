@@ -1,14 +1,17 @@
 import os
 from concurrent.futures.process import ProcessPoolExecutor
 from functools import partial
+from pathlib import Path
 
 from mmdnn.conversion.examples.tensorflow.extractor import tensorflow_extractor
 
 from amanda.tests.utils import root_dir
 
 
-def download_tf_model(arch_name, model_dir):
-    full_model_dir = root_dir() / "downloads" / model_dir
+def download_tf_model(arch_name, model_dir, root=None):
+    if root is None:
+        root = root_dir() / "downloads"
+    full_model_dir = Path(root) / model_dir
     if not full_model_dir.exists():
         full_model_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
     if not (full_model_dir / arch_name / "checkpoint").exists():
@@ -37,11 +40,12 @@ tf_arch_names = [
 ]
 
 
-def download_all_tf_models():
+def download_all_tf_models(root=None):
     with ProcessPoolExecutor() as executor:
         list(
             executor.map(
-                partial(download_tf_model, model_dir="model"), list(tf_arch_names),
+                partial(download_tf_model, model_dir="model", root=root),
+                list(tf_arch_names),
             )
         )
 
@@ -60,8 +64,10 @@ onnx_arch_map = {
 }
 
 
-def download_onnx_model(arch_name, model_dir):
-    full_model_dir = root_dir() / "downloads" / model_dir
+def download_onnx_model(arch_name, model_dir, root=None):
+    if root is None:
+        root = root_dir() / "downloads"
+    full_model_dir = Path(root) / model_dir
     if not full_model_dir.exists():
         full_model_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
     download_file(
@@ -71,11 +77,11 @@ def download_onnx_model(arch_name, model_dir):
     )
 
 
-def download_all_onnx_models():
+def download_all_onnx_models(root=None):
     with ProcessPoolExecutor() as executor:
         list(
             executor.map(
-                partial(download_onnx_model, model_dir="onnx_model"),
+                partial(download_onnx_model, model_dir="onnx_model", root=root),
                 list(onnx_arch_map.keys()),
             )
         )
@@ -102,8 +108,10 @@ tflite_arch_map = {
 }
 
 
-def download_tflite_model(arch_name, model_dir):
-    full_model_dir = root_dir() / "downloads" / model_dir
+def download_tflite_model(arch_name, model_dir, root=None):
+    if root is None:
+        root = root_dir() / "downloads"
+    full_model_dir = Path(root) / model_dir
     if not full_model_dir.exists():
         full_model_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
     download_file(
@@ -113,20 +121,20 @@ def download_tflite_model(arch_name, model_dir):
     )
 
 
-def download_all_tflite_models():
+def download_all_tflite_models(root=None):
     with ProcessPoolExecutor() as executor:
         list(
             executor.map(
-                partial(download_tflite_model, model_dir="tflite_model"),
+                partial(download_tflite_model, model_dir="tflite_model", root=root),
                 list(tflite_arch_map.keys()),
             )
         )
 
 
-def download_all_models():
-    download_all_tf_models()
-    download_all_onnx_models()
-    download_all_tflite_models()
+def download_all_models(root=None):
+    download_all_tf_models(root=root)
+    download_all_onnx_models(root=root)
+    download_all_tflite_models(root=root)
 
 
 def _single_thread_download(url, file_name):

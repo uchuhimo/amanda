@@ -1,9 +1,9 @@
 from click.testing import CliRunner
 
-from amanda.cli import cli
+from amanda.cli import download, main
 
 
-def test_cli():
+def test_main():
     args = [
         "--import",
         "tensorflow_checkpoint",
@@ -18,7 +18,7 @@ def test_cli():
         "--tool",
         "amanda.tools.debugging.insert_debug_op_tensorflow.DebuggingTool",
     ]
-    context = cli.make_context("", list(args))
+    context = main.cli.make_context("", list(args))
     assert context.params == {
         "import_type": "tensorflow_checkpoint",
         "import_path": "downloads/model/vgg16/imagenet_vgg16.ckpt",
@@ -29,5 +29,12 @@ def test_cli():
         "tool_args": (),
     }
     runner = CliRunner()
-    result = runner.invoke(cli, list(args))
+    result = runner.invoke(main.cli, list(args))
+    assert result.exit_code == 0
+
+
+def test_download():
+    args = ["tf", "--model", "vgg16", "--root-dir", "downloads"]
+    runner = CliRunner()
+    result = runner.invoke(download.cli, list(args))
     assert result.exit_code == 0

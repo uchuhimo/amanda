@@ -15,6 +15,7 @@ jsondiff
 mmdnn
 more-itertools
 mypy
+numpy
 onnx
 onnxruntime
 pip>=19.3
@@ -22,7 +23,6 @@ pre-commit
 protobuf
 pytest
 pytest-xdist
-scipy
 sphinx
 tensorflow==1.13.1
 torch==1.6.0

@@ -1,3 +1,8 @@
+import os
+import warnings
+
+os.environ["KMP_WARNINGS"] = "FALSE"
+warnings.filterwarnings("ignore", category=FutureWarning)
 from .conversion import mmdnn, onnx, pytorch, tensorflow  # noqa: F401
 from .graph import ControlEdge  # noqa: F401
 from .graph import DataEdge  # noqa: F401

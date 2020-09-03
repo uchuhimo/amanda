@@ -21,14 +21,14 @@ There are two options:
 
   .. code-block:: bash
 
-       pip install -e ".[all]"
+       pip install -e ".[dev]"
 
 * 
   Use poetry:
 
   .. code-block:: bash
 
-       poetry install -E all
+       poetry install
 
 Run an example
 ^^^^^^^^^^^^^^
@@ -36,7 +36,7 @@ Run an example
 .. code-block:: bash
 
    make build_cc
-   amanda-download tf --model vgg16
+   amanda-download tf --model vgg16 --root-dir downloads
    python src/amanda/tools/debugging/insert_debug_op_tensorflow.py
 
 Usage
@@ -68,13 +68,17 @@ E.g. use a tool to insert debugging ops into a TensorFlow graph from a checkpoin
 
 .. code-block:: bash
 
-   amanda-download tf --model vgg16 # download the checkpoint
+   # download the checkpoint
+   amanda-download tf --model vgg16 --root-dir downloads
+   # run the debugging tool
    amanda --import tensorflow_checkpoint --from downloads/model/vgg16/imagenet_vgg16.ckpt \
           --export tensorflow_checkpoint --to tmp/modified_model/vgg16/imagenet_vgg16.ckpt \
           --namespace amanda/tensorflow \
           --tool amanda.tools.debugging.insert_debug_op_tensorflow.DebuggingTool
+   # run the modified model
+   amanda-run amanda.tools.debugging.insert_debug_op_tensorflow.run_model --model-dir tmp/modified_model/vgg16
 
-The updated graph will be saved into ``tmp/modified_model/vgg16``.
+The modified model will be saved into ``tmp/modified_model/vgg16``\ , and the debugging information will be stored into ``tmp/debug_info/vgg16``.
 
 Import a model (from TensorFlow/ONNX/...)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -195,7 +199,7 @@ run tests
 
 .. code-block:: bash
 
-   amanda-download all
+   amanda-download all --root-dir downloads
    make build_cc
    KMP_AFFINITY=disabled pytest -n 2
 

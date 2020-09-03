@@ -2,8 +2,8 @@
 name = "absl-py"
 version = "0.10.0"
 description = "Abseil Python Common Libraries, see https://github.com/abseil/abseil-py."
-category = "main"
-optional = true
+category = "dev"
+optional = false
 python-versions = "*"
 
 [package.dependencies]
@@ -80,8 +80,8 @@ marker = "sys_platform == \"darwin\""
 name = "astor"
 version = "0.8.1"
 description = "Read/rewrite/write Python ASTs"
-category = "main"
-optional = true
+category = "dev"
+optional = false
 python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,>=2.7"
 
 [[package]]
@@ -685,16 +685,16 @@ python = "<3.8"
 name = "future"
 version = "0.18.2"
 description = "Clean single-source support for Python 3 and 2"
-category = "main"
-optional = true
+category = "dev"
+optional = false
 python-versions = ">=2.6, !=3.0.*, !=3.1.*, !=3.2.*"
 
 [[package]]
 name = "gast"
 version = "0.4.0"
 description = "Python AST that abstracts the underlying Python version"
-category = "main"
-optional = true
+category = "dev"
+optional = false
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
 
 [[package]]
@@ -714,8 +714,8 @@ test = ["mock (>=3)", "pytest (>=4)", "pytest-mock (>=2)", "pytest-cov"]
 name = "grpcio"
 version = "1.31.0"
 description = "HTTP/2-based RPC framework"
-category = "main"
-optional = true
+category = "dev"
+optional = false
 python-versions = "*"
 
 [package.extras]
@@ -728,8 +728,8 @@ six = ">=1.5.2"
 name = "h5py"
 version = "2.10.0"
 description = "Read and write HDF5 files from Python"
-category = "main"
-optional = true
+category = "dev"
+optional = false
 python-versions = "*"
 
 [package.dependencies]
@@ -805,7 +805,7 @@ python-versions = ">=3.5"
 name = "importlib-metadata"
 version = "1.7.0"
 description = "Read metadata from Python packages"
-category = "main"
+category = "dev"
 optional = false
 python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,>=2.7"
 marker = "python_version < \"3.8\""
@@ -948,8 +948,8 @@ python-versions = "*"
 name = "keras-applications"
 version = "1.0.8"
 description = "Reference implementations of popular deep learning models"
-category = "main"
-optional = true
+category = "dev"
+optional = false
 python-versions = "*"
 
 [package.extras]
@@ -963,8 +963,8 @@ numpy = ">=1.9.1"
 name = "keras-preprocessing"
 version = "1.1.2"
 description = "Easy data preprocessing and data augmentation for deep learning models"
-category = "main"
-optional = true
+category = "dev"
+optional = false
 python-versions = "*"
 
 [package.extras]
@@ -1013,8 +1013,8 @@ mistune = "*"
 name = "markdown"
 version = "3.2.2"
 description = "Python implementation of Markdown."
-category = "main"
-optional = true
+category = "dev"
+optional = false
 python-versions = ">=3.5"
 
 [package.extras]
@@ -1053,7 +1053,7 @@ python-versions = "*"
 name = "mmdnn"
 version = "0.3.1"
 description = "Deep learning model converter, visualization and editor."
-category = "main"
+category = "dev"
 optional = false
 python-versions = "*"
 
@@ -1067,8 +1067,8 @@ six = ">=1.10.0"
 name = "mock"
 version = "4.0.2"
 description = "Rolling backport of unittest.mock for all Pythons"
-category = "main"
-optional = true
+category = "dev"
+optional = false
 python-versions = ">=3.6"
 
 [package.extras]
@@ -1136,7 +1136,7 @@ python-versions = ">=3.6"
 name = "onnx"
 version = "1.7.0"
 description = "Open Neural Network Exchange"
-category = "main"
+category = "dev"
 optional = false
 python-versions = "*"
 
@@ -1150,7 +1150,7 @@ typing-extensions = ">=3.6.2.1"
 name = "onnxruntime"
 version = "1.4.0"
 description = "ONNX Runtime Python bindings"
-category = "main"
+category = "dev"
 optional = false
 python-versions = "*"
 
@@ -1220,7 +1220,7 @@ python-versions = "*"
 name = "pillow"
 version = "7.2.0"
 description = "Python Imaging Library (Fork)"
-category = "main"
+category = "dev"
 optional = false
 python-versions = ">=3.5"
 
@@ -1546,17 +1546,6 @@ python-versions = "*"
 marker = "platform_python_implementation == \"CPython\" and python_version < \"3.9\""
 
 [[package]]
-name = "scipy"
-version = "1.5.2"
-description = "SciPy: Scientific Library for Python"
-category = "main"
-optional = false
-python-versions = ">=3.6"
-
-[package.dependencies]
-numpy = ">=1.14.5"
-
-[[package]]
 name = "secretstorage"
 version = "3.1.2"
 description = "Python bindings to FreeDesktop.org Secret Service API"
@@ -1719,8 +1708,8 @@ widechars = ["wcwidth"]
 name = "tensorboard"
 version = "1.13.1"
 description = "TensorBoard lets you watch Tensors Flow"
-category = "main"
-optional = true
+category = "dev"
+optional = false
 python-versions = ">= 2.7, != 3.0.*, != 3.1.*"
 
 [package.dependencies]
@@ -1740,8 +1729,8 @@ python = ">=3"
 name = "tensorflow"
 version = "1.13.1"
 description = "TensorFlow is an open source machine learning framework for everyone."
-category = "main"
-optional = true
+category = "dev"
+optional = false
 python-versions = "*"
 
 [package.dependencies]
@@ -1763,8 +1752,8 @@ wheel = ">=0.26"
 name = "tensorflow-estimator"
 version = "1.13.0"
 description = "TensorFlow Estimator."
-category = "main"
-optional = true
+category = "dev"
+optional = false
 python-versions = "*"
 
 [package.dependencies]
@@ -1777,8 +1766,8 @@ six = ">=1.10.0"
 name = "termcolor"
 version = "1.1.0"
 description = "ANSII Color formatting for output in terminal."
-category = "main"
-optional = true
+category = "dev"
+optional = false
 python-versions = "*"
 
 [[package]]
@@ -1801,8 +1790,8 @@ python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
 name = "torch"
 version = "1.6.0"
 description = "Tensors and Dynamic neural networks in Python with strong GPU acceleration"
-category = "main"
-optional = true
+category = "dev"
+optional = false
 python-versions = ">=3.6.1"
 
 [package.dependencies]
@@ -1813,8 +1802,8 @@ numpy = "*"
 name = "torchvision"
 version = "0.7.0"
 description = "image and video datasets and models for torch deep learning"
-category = "main"
-optional = true
+category = "dev"
+optional = false
 python-versions = "*"
 
 [package.extras]
@@ -2010,8 +1999,8 @@ six = "*"
 name = "werkzeug"
 version = "1.0.1"
 description = "The comprehensive WSGI web application library."
-category = "main"
-optional = true
+category = "dev"
+optional = false
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
 
 [package.extras]
@@ -2030,7 +2019,7 @@ python-versions = "*"
 name = "wheel"
 version = "0.35.1"
 description = "A built-package format for Python"
-category = "main"
+category = "dev"
 optional = false
 python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,>=2.7"
 
@@ -2073,7 +2062,7 @@ python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
 name = "zipp"
 version = "3.1.0"
 description = "Backport of pathlib-compatible object wrapper for zip files"
-category = "main"
+category = "dev"
 optional = false
 python-versions = ">=3.6"
 marker = "python_version < \"3.8\""
@@ -2082,15 +2071,10 @@ marker = "python_version < \"3.8\""
 docs = ["sphinx", "jaraco.packaging (>=3.2)", "rst.linker (>=1.9)"]
 testing = ["jaraco.itertools", "func-timeout"]
 
-[extras]
-tensorflow = ["tensorflow"]
-pytorch = ["torch", "torchvision"]
-all = ["tensorflow", "torch", "torchvision"]
-
 [metadata]
 lock-version = "1.0"
 python-versions = ">= 3.6.1, < 4"
-content-hash = "b8eb7bbd5cff7675f04091d105354e0f98b226d6532cd942b7887512c80c0d08"
+content-hash = "dd3aee1e381ac331e2f9beab744462cae71e7504096ab95eda29f31030a3e162"
 
 [metadata.files]
 absl-py = [
@@ -2963,24 +2947,6 @@ rfc3986 = [
     {file = "ruamel.yaml.clib-0.2.0-cp37-cp37m-win_amd64.whl", hash = "sha256:b1b7fcee6aedcdc7e62c3a73f238b3d080c7ba6650cd808bce8d7761ec484070"},
     {file = "ruamel.yaml.clib-0.2.0-cp38-cp38-manylinux1_x86_64.whl", hash = "sha256:be018933c2f4ee7de55e7bd7d0d801b3dfb09d21dad0cce8a97995fd3e44be30"},
     {file = "ruamel.yaml.clib-0.2.0.tar.gz", hash = "sha256:b66832ea8077d9b3f6e311c4a53d06273db5dc2db6e8a908550f3c14d67e718c"},
-]
-scipy = [
-    {file = "scipy-1.5.2-cp36-cp36m-macosx_10_9_x86_64.whl", hash = "sha256:cca9fce15109a36a0a9f9cfc64f870f1c140cb235ddf27fe0328e6afb44dfed0"},
-    {file = "scipy-1.5.2-cp36-cp36m-manylinux1_i686.whl", hash = "sha256:1c7564a4810c1cd77fcdee7fa726d7d39d4e2695ad252d7c86c3ea9d85b7fb8f"},
-    {file = "scipy-1.5.2-cp36-cp36m-manylinux1_x86_64.whl", hash = "sha256:07e52b316b40a4f001667d1ad4eb5f2318738de34597bd91537851365b6c61f1"},
-    {file = "scipy-1.5.2-cp36-cp36m-win32.whl", hash = "sha256:d56b10d8ed72ec1be76bf10508446df60954f08a41c2d40778bc29a3a9ad9bce"},
-    {file = "scipy-1.5.2-cp36-cp36m-win_amd64.whl", hash = "sha256:8e28e74b97fc8d6aa0454989db3b5d36fc27e69cef39a7ee5eaf8174ca1123cb"},
-    {file = "scipy-1.5.2-cp37-cp37m-macosx_10_9_x86_64.whl", hash = "sha256:6e86c873fe1335d88b7a4bfa09d021f27a9e753758fd75f3f92d714aa4093768"},
-    {file = "scipy-1.5.2-cp37-cp37m-manylinux1_i686.whl", hash = "sha256:a0afbb967fd2c98efad5f4c24439a640d39463282040a88e8e928db647d8ac3d"},
-    {file = "scipy-1.5.2-cp37-cp37m-manylinux1_x86_64.whl", hash = "sha256:eecf40fa87eeda53e8e11d265ff2254729d04000cd40bae648e76ff268885d66"},
-    {file = "scipy-1.5.2-cp37-cp37m-win32.whl", hash = "sha256:315aa2165aca31375f4e26c230188db192ed901761390be908c9b21d8b07df62"},
-    {file = "scipy-1.5.2-cp37-cp37m-win_amd64.whl", hash = "sha256:ec5fe57e46828d034775b00cd625c4a7b5c7d2e354c3b258d820c6c72212a6ec"},
-    {file = "scipy-1.5.2-cp38-cp38-macosx_10_9_x86_64.whl", hash = "sha256:fc98f3eac993b9bfdd392e675dfe19850cc8c7246a8fd2b42443e506344be7d9"},
-    {file = "scipy-1.5.2-cp38-cp38-manylinux1_i686.whl", hash = "sha256:a785409c0fa51764766840185a34f96a0a93527a0ff0230484d33a8ed085c8f8"},
-    {file = "scipy-1.5.2-cp38-cp38-manylinux1_x86_64.whl", hash = "sha256:0a0e9a4e58a4734c2eba917f834b25b7e3b6dc333901ce7784fd31aefbd37b2f"},
-    {file = "scipy-1.5.2-cp38-cp38-win32.whl", hash = "sha256:dac09281a0eacd59974e24525a3bc90fa39b4e95177e638a31b14db60d3fa806"},
-    {file = "scipy-1.5.2-cp38-cp38-win_amd64.whl", hash = "sha256:92eb04041d371fea828858e4fff182453c25ae3eaa8782d9b6c32b25857d23bc"},
-    {file = "scipy-1.5.2.tar.gz", hash = "sha256:066c513d90eb3fd7567a9e150828d39111ebd88d3e924cdfc9f8ce19ab6f90c9"},
 ]
 secretstorage = [
     {file = "SecretStorage-3.1.2-py3-none-any.whl", hash = "sha256:b5ec909dde94d4ae2fa26af7c089036997030f0cf0a5cb372b4cccabd81c143b"},
