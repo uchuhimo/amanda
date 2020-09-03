@@ -201,6 +201,7 @@ def download_file(
             ret = wget.download(url, local_fname, bar=None)
         except Exception:
             ret = _single_thread_download(url, local_fname)
+        logger.info(f"Successfully download file [{local_fname}] from [{url}]")
 
     if auto_unzip:
         if ret.endswith(".tar.gz") or ret.endswith(".tgz"):
