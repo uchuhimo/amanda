@@ -155,9 +155,10 @@ def download_all_tflite_models(root=None):
 
 
 def download_all_models(root=None):
-    download_all_tf_models(root=root)
-    download_all_onnx_models(root=root)
-    download_all_tflite_models(root=root)
+    with ProcessPoolExecutor() as executor:
+        executor.submit(download_all_tf_models, root=root)
+        executor.submit(download_all_onnx_models, root=root)
+        executor.submit(download_all_tflite_models, root=root)
 
 
 def _single_thread_download(url, file_name):
