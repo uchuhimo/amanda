@@ -2,18 +2,16 @@ import os
 import warnings
 from importlib.util import find_spec
 
-from .graph import ControlEdge  # noqa: F401
-from .graph import DataEdge  # noqa: F401
 from .graph import Edge  # noqa: F401
 from .graph import Graph  # noqa: F401
 from .graph import InputPort  # noqa: F401
 from .graph import Op  # noqa: F401
-from .graph import Tensor  # noqa: F401
-from .graph import connect  # noqa: F401
+from .graph import OutputPort  # noqa: F401
+from .graph import create_control_edge  # noqa: F401
+from .graph import create_control_input_port  # noqa: F401
+from .graph import create_control_output_port  # noqa: F401
 from .graph import create_edge  # noqa: F401
 from .graph import create_op  # noqa: F401
-from .graph import disconnect  # noqa: F401
-from .graph import remove_edge  # noqa: F401
 from .namespace import (  # noqa: F401
     Namespace,
     Registry,
@@ -22,6 +20,7 @@ from .namespace import (  # noqa: F401
     get_mapper,
     get_mapping_table,
 )
+from .type import DataType, unknown_type  # noqa: F401
 
 if find_spec("tensorflow"):
     os.environ["KMP_WARNINGS"] = "FALSE"

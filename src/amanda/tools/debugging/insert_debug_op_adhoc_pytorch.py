@@ -42,14 +42,10 @@ store_dir = root_dir() / "tmp" / "debug_info_pytorch" / arch_name
 if not Path(store_dir).exists():
     Path(store_dir).mkdir(mode=0o755, parents=True, exist_ok=True)
 
-input = torch.randn(1, 3, 224, 224)
-model = models.vgg11(pretrained=False, progress=False)
-model.eval()
-global traced_model
-global new_model
 
-
-def init():
+def init(input):
+    model = models.vgg11(pretrained=False, progress=False)
+    model.eval()
     torch.utils.cpp_extension.load_inline(
         name="store_tensor_to_file",
         cpp_sources=op_source,
@@ -57,16 +53,7 @@ def init():
         verbose=True,
     )
     logger.info(f"load {torch.ops.amanda.store_tensor_to_file} successfully")
-    global traced_model
-    traced_model = torch.jit.trace(model, (input,))
-
-
-def run_original_model():
-    return traced_model(input)
-
-
-def run_modified_model():
-    return new_model(input)
+    return torch.jit.trace(model, (input,))
 
 
 def verify_output(output, new_output):
@@ -74,17 +61,13 @@ def verify_output(output, new_output):
 
 
 def main():
-    global new_model
-
-    init()
-
-    output = run_original_model()
-
+    input = torch.randn(1, 3, 224, 224)
+    traced_model = init(input)
+    output = traced_model(input)
     graph = amanda.pytorch.import_from_module(traced_model)
     new_graph = modify_graph(graph)
     new_model = amanda.pytorch.export_to_module(new_graph)
-
-    new_output = run_modified_model()
+    new_output = new_model(input)
     verify_output(output, new_output)
 
 

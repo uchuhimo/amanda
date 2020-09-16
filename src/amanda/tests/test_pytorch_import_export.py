@@ -13,16 +13,17 @@ from amanda.conversion.pytorch import export_to_module, import_from_module
     params=[
         models.resnet18,
         # models.resnet50,
-        # models.inception_v3,
-        # models.alexnet,
+        pytest.param(models.inception_v3, marks=pytest.mark.slow),
+        pytest.param(models.alexnet, marks=pytest.mark.slow),
         # models.vgg11,
-        # models.vgg11_bn,
+        pytest.param(models.vgg11_bn, marks=pytest.mark.slow),
         # models.squeezenet1_1,
         # models.shufflenet_v2_x0_5,
-        # models.mobilenet_v2,
+        pytest.param(models.mobilenet_v2, marks=pytest.mark.slow),
         # models.mnasnet0_5,
+        # waiting for PyTorch to support
         # partial(models.detection.maskrcnn_resnet50_fpn, pretrained_backbone=False),
-        # # partial(models.quantization.mobilenet_v2, quantize=True),
+        # partial(models.quantization.mobilenet_v2, quantize=True),
     ],
 )
 def model_and_input(request):
@@ -52,6 +53,12 @@ def assert_close(output, new_output, model):
         np.testing.assert_allclose(output.detach().numpy(), new_output.detach().numpy())
 
 
+# TODO: waiting for PyTorch's bugfix
+# see https://github.com/pytorch/pytorch/issues/43948
+# also see:
+# https://github.com/pytorch/pytorch/issues/41674
+# https://github.com/pytorch/pytorch/issues/34002
+# https://github.com/pytorch/pytorch/issues/37720
 @pytest.mark.skip
 def test_pytorch_import_export_script(model_and_input):
     model, x = model_and_input
@@ -66,8 +73,6 @@ def test_pytorch_import_export_script(model_and_input):
 def test_pytorch_import_export_trace(model_and_input):
     model, x = model_and_input
     # torch.save(model, "model.pth")
-    if isinstance(model, GeneralizedRCNN):
-        return
     traced_model = torch.jit.trace(model, (x,))
     # torch.jit.save(traced_model, "traced_model.pth")
     output = traced_model(x)

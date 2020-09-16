@@ -73,9 +73,9 @@ def modify_graph(graph: amanda.Graph):
     # map the graph from the framework namespace to the application namespace
     graph = graph.to_namespace(debugging_namespace)
     for op in graph.ops:
-        for edge in op.output_edges:
+        for edge in op.out_edges:
             # check whether the edge represents a valid tensor or not
-            if op.attrs["is_valid"][edge.src_output_index]:
+            if op.attrs["is_valid"][edge.src.name]:
                 # create the debug op
                 debug_op = amanda.create_op(type="store_tensor_to_file")
                 # insert the debug op

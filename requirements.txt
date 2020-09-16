@@ -24,6 +24,7 @@ pre-commit
 protobuf
 pytest
 pytest-xdist
+scipy
 sphinx
 tensorflow==1.13.1
 torch==1.6.0

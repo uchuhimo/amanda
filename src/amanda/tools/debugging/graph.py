@@ -5,29 +5,29 @@ from typing import Any, Callable, Dict, List, Set, Tuple, Union
 class InputPort:
     op: "Op"
     name: str
-    type: str
+    type: Any
 
     # additional APIs for convenience
     @property
     def in_edges(self) -> List["Edge"]:
-        return [edge for edge in self.op.graph.edges.values() if edge.dst == self]
+        return [edge for edge in self.op.graph.edges if edge.dst == self]
 
 
 class OutputPort:
     op: "Op"
     name: str
-    type: str
+    type: Any
 
     # additional APIs for convenience
     @property
     def out_edges(self) -> List["Edge"]:
-        return [edge for edge in self.op.graph.edges.values() if edge.src == self]
+        return [edge for edge in self.op.graph.edges if edge.src == self]
 
 
 class Op:
     attrs: Dict[str, Any]
-    input_ports: Dict[str, InputPort]
-    output_ports: Dict[str, OutputPort]
+    input_ports: List[InputPort]
+    output_ports: List[OutputPort]
     control_input_port: InputPort
     control_output_port: OutputPort
 
@@ -35,15 +35,16 @@ class Op:
     graph: "Graph"
 
     # builtin attributes
-    name: str  # is attrs["name"]
-    type: str  # is attrs["type"]
+    name: str
+    type: Any
+    namespace: str
 
     # additional APIs for convenience
     @property
     def input_ops(self) -> List["Op"]:
         return [
             edge.src.op
-            for input_port in self.input_ports.values()
+            for input_port in self.input_ports
             for edge in input_port.in_edges
         ]
 
@@ -51,25 +52,33 @@ class Op:
     def output_ops(self) -> List["Op"]:
         return [
             edge.dst.op
-            for output_port in self.output_ports.values()
+            for output_port in self.output_ports
             for edge in output_port.out_edges
         ]
 
+    def input_port(index: str) -> InputPort:
+        ...
+
+    def output_port(index: str) -> OutputPort:
+        ...
+
     def insert_op_before(self, op: "Op"):
         assert len(self.input_ports) == len(op.input_ports) == len(op.output_ports)
-        for name, input_port in self.input_ports.items():
+        for input_port in self.input_ports:
             for edge in input_port.in_edges:
-                self.graph.create_edge(src=edge.src, dst=op.input_ports[name])
+                self.graph.create_edge(src=edge.src, dst=op.input_port(input_port.name))
                 self.graph.remove_edge(edge)
-            self.graph.create_edge(src=op.output_ports[name], dst=input_port)
+            self.graph.create_edge(src=op.output_port(input_port.name), dst=input_port)
 
     def insert_op_after(self, op: "Op"):
         assert len(self.output_ports) == len(op.input_ports) == len(op.output_ports)
-        for name, output_port in self.output_ports.items():
+        for output_port in self.output_ports:
             for edge in output_port.out_edges:
-                self.graph.create_edge(src=op.output_ports[name], dst=edge.dst)
+                self.graph.create_edge(
+                    src=op.output_port(output_port.name), dst=edge.dst
+                )
                 self.graph.remove_edge(edge)
-            self.graph.create_edge(src=output_port, dst=op.input_ports[name])
+            self.graph.create_edge(src=output_port, dst=op.input_port(output_port.name))
 
 
 class Edge:
@@ -83,45 +92,43 @@ class Edge:
     # additional APIs for convenience
     def insert_op(self, op: Op):
         assert len(op.input_ports) == 1 and len(op.output_ports) == 1
-        self.graph.create_edge(src=self.src, dst=op.input_ports[0])
-        self.graph.create_edge(src=op.output_ports[0], dst=self.dst)
+        self.graph.create_edge(src=self.src, dst=op.input_port(0))
+        self.graph.create_edge(src=op.output_port(0), dst=self.dst)
         self.graph.remove_edge(self)
 
 
 class Graph:
     ops: List[Op]
-    edges: Dict[Tuple[OutputPort, InputPort], Edge]
+    edges: List[Edge]
     attrs: Dict[str, Any]
 
     # builtin attributes
-    namespace: str  # is attrs["namespace"]
+    namespace: str
 
     @property
     def sorted_ops(self) -> List[Op]:
         ...
 
     def add_op(self, op: Op) -> None:
-        self.ops.append(op)
+        ...
 
     def remove_op(self, op: Op) -> None:
-        self.ops.remove(op)
+        ...
 
     def get_op(self, name: str) -> Op:
         ...
 
     def get_edge(self, src: OutputPort, dst: InputPort) -> Edge:
-        return self.edges[(src, dst)]
+        ...
 
     def create_edge(self, src: OutputPort, dst: InputPort) -> Edge:
-        edge = Edge(src=src, dst=dst)
-        self.edges[(src, dst)] = edge
-        return edge
+        ...
 
     def add_edge(self, edge: Edge):
-        self.edges[(edge.src, edge.dst)] = edge
+        ...
 
     def remove_edge(self, edge: Edge):
-        del self.edges[(edge.src, edge.dst)]
+        ...
 
     def to_namespace(self, namespace: str, tags: Set[str] = None) -> "Graph":
         table = get_mapping_table(self.namespace, namespace)
@@ -142,10 +149,16 @@ def create_graph() -> Graph:
 
 
 MatcherType = Union[
-    str, List, Callable[..., bool], None,
+    str,
+    List,
+    Callable[..., bool],
+    None,
 ]
 MapperType = Union[
-    str, List, Callable[..., Any], None,
+    str,
+    List,
+    Callable[..., Any],
+    None,
 ]
 
 

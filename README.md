@@ -178,6 +178,18 @@ make build_cc
 KMP_AFFINITY=disabled pytest -n 2
 ```
 
+Run quick tests only:
+
+```bash
+KMP_AFFINITY=disabled pytest -n 2 -m "not slow"
+```
+
+Run a single test:
+
+```bash
+pytest src/amanda/tests/test_op.py -k "test_new_op"
+```
+
 ### Show information about installed packages
 
 ```bash
@@ -204,4 +216,11 @@ poetry update
 
 ```bash
 bumpversion minor  # major, minor, patch
+```
+
+### Measure code coverage
+
+```bash
+coverage run -m pytest
+coverage html
 ```

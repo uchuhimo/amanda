@@ -7,26 +7,41 @@ import numpy as np
 from mmdnn.conversion.common.IR import graph_pb2
 
 from amanda.conversion.utils import to_proto
-from amanda.graph import Graph, Op
-from amanda.namespace import is_qualified
+from amanda.exception import MismatchNamespaceError
+from amanda.graph import Graph, create_graph, create_op
+from amanda.namespace import Namespace, default_namespace
+
+_namespace = default_namespace() / Namespace("mmdnn")
+_internal_namespace = _namespace / Namespace("internal")
+
+
+def mmdnn_namespace() -> Namespace:
+    return _namespace
+
+
+def mmdnn_internal_namespace() -> Namespace:
+    return _internal_namespace
 
 
 def export_to_graph_def(graph: Graph) -> graph_pb2.GraphDef:
+    if not graph.namespace.belong_to(mmdnn_namespace()):
+        raise MismatchNamespaceError(expect=mmdnn_namespace(), actual=graph.namespace)
     graph_def = graph_pb2.GraphDef()
     for op in graph.ops:
         node = graph_def.node.add()
-        for port in op.input_tensors:
-            if port.output_index == 0:
-                port_string = port.op.name
+        for port in op.input_ports:
+            src_port = port.in_edges[0].src
+            if src_port.name == "0":
+                port_string = src_port.op.name
             else:
-                port_string = port.op.name + ":" + str(port.output_index)
+                port_string = f"{src_port.op.name}:{src_port.name}"
             node.input.append(port_string)
 
         node.op = op.type
         node.name = op.name
         # set attrs for node
 
-        for key in without_internal_attrs(op.attrs):
+        for key in op.attrs:
             ir_value = node.attr[key]
             value = op.attrs[key]
             if type(value) == bytes:
@@ -67,14 +82,6 @@ def export_to_graph_def(graph: Graph) -> graph_pb2.GraphDef:
     return graph_def
 
 
-def without_internal_attrs(attrs):
-    return {
-        name: value
-        for name, value in attrs.items()
-        if not (is_qualified(name) or name in ["name", "type"])
-    }
-
-
 @dataclass(frozen=True)
 class MmdnnTensor:
     op: str
@@ -85,11 +92,11 @@ def import_from_graph_def(
     graph_def: Union[graph_pb2.GraphDef, str, bytes, Path]
 ) -> Graph:
     graph_def = to_proto(graph_def, graph_pb2.GraphDef)
-    graph = Graph()
+    graph = create_graph(namespace=mmdnn_namespace())
     name_to_node = {node.name: node for node in graph_def.node}
 
     def add_op(node):
-        if graph.get_op_by_name(node.name) is not None:
+        if graph.get_op(node.name) is not None:
             return
         input_tensors: List[MmdnnTensor] = []
         input: str
@@ -102,16 +109,12 @@ def import_from_graph_def(
                 input_tensors.append(MmdnnTensor(names[0], int(names[1])))
         for input_tensor in input_tensors:
             add_op(name_to_node[input_tensor.op])
-        op = Op(
-            input_tensors=[
-                graph.get_op_by_name(input_tensor.op).output_tensor(
-                    input_tensor.output_index
-                )
-                for input_tensor in input_tensors
-            ]
+        op = create_op(
+            name=node.name,
+            type=node.op,
+            inputs=len(input_tensors),
+            outputs=1,
         )
-        op.type = node.op
-        op.name = node.name
         #  add attrs into op
         for key in node.attr:
             ir_attr_value = node.attr[key]
@@ -150,8 +153,12 @@ def import_from_graph_def(
                 op.attrs[key] = attr_value_list
             else:
                 raise ValueError("unknown field met")
-
         graph.add_op(op)
+        for index, input_tensor in enumerate(input_tensors):
+            graph.create_edge(
+                graph.get_op(input_tensor.op).output_port(input_tensor.output_index),
+                op.input_port(index),
+            )
 
     for ir_node in graph_def.node:
         add_op(ir_node)

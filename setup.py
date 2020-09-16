@@ -63,17 +63,17 @@ setup(
     install_requires=[
         'click', 'contextvars; python_version < "3.7"',
         'dataclasses; python_version < "3.7"', 'immutables', 'loguru',
-        'more-itertools', 'numpy', 'protobuf', 'typing; python_version < "3.7"',
+        'more-itertools', 'protobuf', 'typing; python_version < "3.7"',
         'typing-extensions'
     ],
     extras_require={
         "dev": [
             "black", "bump2version", "coverage[toml]", "dephell[full]",
             "filelock", "fissix", "flake8", "ipython", "isort[pyproject]",
-            "jsondiff", "mmdnn", "mypy", "onnx", "onnxruntime", "pip>=19.3",
-            "pre-commit", "pytest", "pytest-xdist", "sphinx",
-            "tensorflow==1.13.1", "torch==1.6.0", "torchvision==0.7.0", "tox",
-            "twine", "watchdog", "wget", "wheel"
+            "jsondiff", "mmdnn", "mypy", "numpy", "onnx", "onnxruntime",
+            "pip>=19.3", "pre-commit", "pytest", "pytest-xdist", "scipy",
+            "sphinx", "tensorflow==1.13.1", "torch==1.6.0",
+            "torchvision==0.7.0", "tox", "twine", "watchdog", "wget", "wheel"
         ]
     },
 )

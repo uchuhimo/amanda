@@ -11,7 +11,9 @@ class Namespace:
         return f"/{self.namespace}/{get_base_name(name)}"
 
     def belong_to(self, namespace: "Namespace") -> bool:
-        return self.namespace.startswith(namespace.namespace + "/")
+        return self.namespace == namespace.namespace or self.namespace.startswith(
+            namespace.namespace + "/"
+        )
 
     def __truediv__(self, other: Union["Namespace", str]) -> "Namespace":
         if isinstance(other, str):

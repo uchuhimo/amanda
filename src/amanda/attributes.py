@@ -1,5 +1,5 @@
 import reprlib
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import immutables
 
@@ -20,7 +20,7 @@ class Attributes(Dict[str, Any]):
     def clear(self):
         self._map = immutables.Map()
 
-    def copy(self):
+    def copy(self) -> "Attributes":
         return Attributes(self)
 
     def get(self, key, default=None):
@@ -78,12 +78,25 @@ class Attributes(Dict[str, Any]):
     def __len__(self):
         return self._map.__len__()
 
+    def to_item_strings(self) -> List[str]:
+        items = []
+        for name, value in self.items():
+            if not name.startswith("/"):
+                value_string = repr(value)
+                if "\n" in value_string:
+                    value_string = value_string.replace("\n", " ")
+                items.append(f"{name}={value_string}")
+        for name, value in self.items():
+            if name.startswith("/"):
+                value_string = repr(value)
+                if "\n" in value_string:
+                    value_string = value_string.replace("\n", " ")
+                items.append(f"{name}={value_string}")
+        return items
+
     @reprlib.recursive_repr("{...}")
     def __repr__(self):
-        items = []
-        for key, val in self.items():
-            items.append("{!r}: {!r}".format(key, val))
-        return "Attributes({{{}}})".format(", ".join(items))
+        return "Attributes({{{}}})".format(", ".join(self.to_item_strings()))
 
     def __setitem__(self, key, value):
         self._map = self._map.set(key, value)

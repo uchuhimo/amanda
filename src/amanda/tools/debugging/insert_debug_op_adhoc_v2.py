@@ -1,3 +1,4 @@
+# type: ignore
 from torch._C import TensorType
 
 import amanda
@@ -9,14 +10,14 @@ debugging_namespace = Namespace("debugging")
 
 def map_pytorch_to_debugging(op_list):
     op = op_list[0]
-    for tensor in op.output_tensors:
+    for tensor in op.output_ports.values():
         tensor.attrs["is_tensor"] = tensor.attrs["type"].kind() == "TensorType"
         tensor.attrs["is_ref"] = False
 
 
 def map_tf_to_debugging(op_list):
     op = op_list[0]
-    for tensor in op.output_tensors:
+    for tensor in op.output_ports.values():
         tensor.attrs["is_tensor"] = True
         tensor.attrs["is_ref"] = tensor.attrs["dtype"]._is_ref_dtype
         tensor.attrs["type"] = TensorType.get()
@@ -24,14 +25,14 @@ def map_tf_to_debugging(op_list):
 
 def map_debugging_to_tf(op_list):
     op = op_list[0]
-    input_tensor = op.input_tensors[0]
-    op.name = f"debug/{input_tensor.op.name}/{input_tensor.output_index}"
+    input_tensor = op.input_ports[0]
+    op.name = f"debug/{input_tensor.op.name}/{input_tensor.name}"
     op.attrs["T"] = input_tensor.attrs["dtype"]
 
 
 def map_debugging_to_pytorch(op_list):
     op = op_list[0]
-    op.output_tensors[0].attrs["type"] = op.input_tensors[0].attrs["type"]
+    op.output_port(0).attrs["type"] = op.input_ports[0].attrs["type"]
 
 
 amanda.get_mapper(amanda.pytorch.pytorch_namespace(), debugging_namespace).add_rule(
@@ -59,11 +60,11 @@ def modify_graph(graph: amanda.Graph):
     namespace = graph.namespace
     graph = graph.to_namespace(debugging_namespace)
     for op in graph.ops:
-        for tensor in op.output_tensors:
+        for tensor in op.output_ports:
             if tensor.attrs["is_tensor"] and not tensor.attrs["is_ref"]:
                 debug_op = amanda.create_op(type="store_tensor_to_file")
-                debug_op.input_tensors[0] = tensor
+                debug_op.input_ports[0] = tensor
                 graph.add_op(debug_op)
                 for output_op, index in tensor.outputs:
-                    output_op.input_tensors[index] = debug_op.output_tensors[0]
+                    output_op.input_ports[index] = debug_op.output_port(0)
     return graph.to_namespace(namespace)

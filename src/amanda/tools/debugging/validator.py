@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 import tensorflow as tf
 
-from amanda import Graph, Tensor
+from amanda import Graph, OutputPort
 from amanda.conversion.tensorflow import import_from_tf_func
 from amanda.tests.test_tf_import_export import modify_model, run_model
 from amanda.tests.utils import root_dir
@@ -23,21 +23,21 @@ def store_as_numpy(input: np.array, store_dir: str, file_name: str):
 def modify_graph(graph: Graph):
     store_dir = root_dir() / "tmp" / "validation_info" / arch_name
     for op in graph.ops:
-        for tensor in op.output_tensors:
-            if not tensor.attrs["dtype"]._is_ref_dtype:
-                output_edges = graph.data_edges_from_tensor(tensor)
-                if len(output_edges) != 0:
-                    debug_output: Tensor = import_from_tf_func(tf.py_func)(graph)(
-                        partial(
-                            store_as_numpy,
-                            store_dir=store_dir,
-                            file_name=f"{op.name}_{tensor.output_index}",
-                        ),
-                        [tensor],
-                        tensor.attrs["dtype"],
-                    )
-                    for edge in output_edges:
-                        edge.dst_op.input_tensors[edge.dst_input_index] = debug_output
+        for output_port in op.output_ports:
+            if not output_port.type.raw._is_ref_dtype:
+                edges = output_port.out_edges
+                debug_output: OutputPort = import_from_tf_func(tf.py_func)(graph)(
+                    partial(
+                        store_as_numpy,
+                        store_dir=store_dir,
+                        file_name=f"{op.name}_{output_port.name}",
+                    ),
+                    [output_port],
+                    output_port.type.raw,
+                )
+                for edge in edges:
+                    graph.create_edge(debug_output, edge.dst)
+                    graph.remove_edge(edge)
 
 
 def main(arch_name):

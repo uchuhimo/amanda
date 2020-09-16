@@ -21,14 +21,14 @@ def map_tf_to_debugging(src_op_list, dst_op_list):
 
 def map_debugging_to_tf(src_op_list, dst_op_list):
     op = dst_op_list[0]
-    edge = op.input_edges[0]
-    op.name = f"debug/{edge.src_op.name}/{edge.src_output_index}"
-    op.attrs["T"] = edge.src_op.attrs["output_dtypes"][edge.src_output_index]
+    edge = op.in_edges[0]
+    op.name = f"debug/{edge.src.op.name}/{edge.src.name}"
+    op.attrs["T"] = edge.src.op.attrs["output_dtypes"][edge.src.name]
 
 
 def map_debugging_to_pytorch(src_op_list, dst_op_list):
     op = dst_op_list[0]
-    op.attrs["output_types"] = [op.input_edges[0].src_op.attrs["output_types"][0]]
+    op.attrs["output_types"] = [op.in_edges[0].src.op.attrs["output_types"][0]]
 
 
 amanda.get_mapper(amanda.pytorch.pytorch_namespace(), debugging_namespace).add_rule(
@@ -57,9 +57,9 @@ def modify_graph(graph: amanda.Graph):
     # map the graph from the framework namespace to the application namespace
     graph = graph.to_namespace(debugging_namespace)
     for op in graph.ops:
-        for edge in op.output_edges:
+        for edge in op.out_edges:
             # check whether the edge represents a valid tensor or not
-            if op.attrs["is_valid"][edge.src_output_index]:
+            if op.attrs["is_valid"][edge.src.name]:
                 # create the debug op
                 debug_op = amanda.create_op(type="store_tensor_to_file")
                 # insert the debug op

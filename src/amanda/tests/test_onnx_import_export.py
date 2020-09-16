@@ -1,11 +1,18 @@
+import jsondiff
 import numpy as np
 import onnx
 import onnxruntime as rt
 import pytest
 from onnx import numpy_helper
 
+from amanda.cli.main import ensure_dir
 from amanda.conversion.onnx import export_to_model_def, import_from_model_def
-from amanda.conversion.utils import diff_graph_def, diff_proto, to_proto
+from amanda.conversion.utils import (
+    diff_graph_def,
+    diff_proto,
+    repeated_fields_to_dict,
+    to_proto,
+)
 from amanda.tests.utils import root_dir
 
 
@@ -14,10 +21,10 @@ def arch_name(request):
     return request.param
 
 
-def test_onnx_import_export(arch_name, tmp_path):
+def test_onnx_import_export(arch_name):
     model_dir = root_dir() / "downloads" / "onnx_model" / arch_name
     model_path = str(model_dir / f"{arch_name}.onnx")
-    new_model_path = tmp_path / "model.onnx"
+    new_model_path = root_dir() / "tmp" / "onnx_model" / arch_name / "model.onnx"
     model_def = onnx.load(str(model_path))
     session = rt.InferenceSession(model_path)
     input_name = session.get_inputs()[0].name
@@ -29,8 +36,8 @@ def test_onnx_import_export(arch_name, tmp_path):
     )
     prediction = session.run(None, {input_name: input_tensor})[0]
     np.testing.assert_allclose(prediction, output_tensor, atol=1.0e-3)
-    graph = import_from_model_def(model_path).to_default_namespace()
-    new_model_def = export_to_model_def(graph, new_model_path)
+    graph = import_from_model_def(model_path)
+    new_model_def = export_to_model_def(graph, ensure_dir(new_model_path))
     new_session = rt.InferenceSession(str(new_model_path))
     new_prediction = new_session.run(None, {input_name: input_tensor})[0]
     np.testing.assert_allclose(prediction, new_prediction)
@@ -52,7 +59,12 @@ def test_onnx_import_export(arch_name, tmp_path):
             initializer.ClearField(key)
         for initializer in new_model_def.graph.sparse_initializer:
             initializer.ClearField(key)
+    initializer = repeated_fields_to_dict(model_def.graph.initializer)
+    model_def.graph.ClearField("initializer")
+    new_initializer = repeated_fields_to_dict(new_model_def.graph.initializer)
+    new_model_def.graph.ClearField("initializer")
     assert diff_graph_def(model_def.graph, new_model_def.graph) == {}
+    assert jsondiff.diff(initializer, new_initializer, syntax="explicit") == {}
     model_def.ClearField("graph")
     new_model_def.ClearField("graph")
     assert diff_proto(model_def, new_model_def) == {}

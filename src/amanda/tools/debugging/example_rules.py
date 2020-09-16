@@ -12,7 +12,7 @@ def assign_tensor_name(graph: amanda.Graph):
     for op in graph.ops:
         for output_port in op.output_ports:
             tensor = output_port.tensor
-            tensor.attrs["name"] = op.name + ":" + str(output_port.index)
+            tensor.attrs["name"] = op.name + ":" + output_port.name
 
 
 def constant_folding(graph: amanda.Graph):
@@ -32,15 +32,15 @@ def constant_folding(graph: amanda.Graph):
             graph.remove_op(const2)
             graph.remove_op(op)
             amanda.remove_edge(
-                amanda.get_edge(src=const1.output_ports[0], dst=op.input_ports[0])
+                amanda.get_edge(src=const1.output_port(0), dst=op.input_port(0))
             )
             amanda.remove_edge(
-                amanda.get_edge(src=const2.output_ports[0], dst=op.input_ports[1])
+                amanda.get_edge(src=const2.output_port(0), dst=op.input_port(1))
             )
             for output_port in op.output_ports:
                 for out_edge in output_port.out_edges:
                     amanda.create_edge(
-                        src=new_const.output_ports[output_port.index], dst=out_edge.dst
+                        src=new_const.output_port(output_port.name), dst=out_edge.dst
                     )
                     amanda.remove_edge(out_edge)
 

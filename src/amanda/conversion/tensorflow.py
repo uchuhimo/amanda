@@ -1,4 +1,4 @@
-import copy
+from collections import OrderedDict
 from contextlib import ExitStack
 from dataclasses import dataclass
 from functools import lru_cache
@@ -10,7 +10,7 @@ import tensorflow as tf
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework.op_def_pb2 import OpDef
 from tensorflow.core.protobuf.saver_pb2 import SaverDef
-from tensorflow.python import RefVariable, tensor_shape, types_pb2
+from tensorflow.python import tensor_shape, types_pb2
 from tensorflow.python.framework.op_def_library import (
     _IsListValue,
     _MakeBool,
@@ -24,17 +24,14 @@ from tensorflow.python.framework.op_def_library import (
 from tensorflow.python.util import compat
 
 from amanda.conversion.utils import diff_graph_def, to_proto
-from amanda.graph import Graph, Op, Tensor
-from amanda.namespace import (
-    Namespace,
-    default_namespace,
-    get_global_registry,
-    is_qualified,
-)
-from amanda.rule import OpMapping, Rule, RuleMapper
+from amanda.exception import MismatchNamespaceError
+from amanda.graph import Graph, Op, OutputPort, create_graph, create_op
+from amanda.namespace import Namespace, default_namespace
+from amanda.type import DataType
 
 _namespace = default_namespace() / Namespace("tensorflow")
 _internal_namespace = _namespace / Namespace("internal")
+_type_namespace = Namespace("tf")
 
 
 def tf_namespace() -> Namespace:
@@ -45,124 +42,42 @@ def tf_internal_namespace() -> Namespace:
     return _internal_namespace
 
 
-class ToDefaultRule(Rule):
-    def apply(self, graph: Graph, op: Op) -> OpMapping:
-        for key in ["name", "type"]:
-            if tf_namespace().qualified(key) in op.attrs:
-                op.attrs[key] = op.attrs[tf_namespace().qualified(key)]
-        return OpMapping(source_ops=[op], target_ops=[op])
-
-
-class ToTFRule(Rule):
-    def apply(self, graph: Graph, op: Op) -> OpMapping:
-        for key in ["name", "type"]:
-            if default_namespace().qualified(key) in op.attrs:
-                op.attrs[key] = op.attrs[default_namespace().qualified(key)]
-        return OpMapping(source_ops=[op], target_ops=[op])
-
-
-_tf_to_default_mapper = RuleMapper(rules=[ToDefaultRule()])
-_default_to_tf_mapper = RuleMapper(rules=[ToTFRule()])
-
-
-def tf_to_default_mapper() -> RuleMapper:
-    return _tf_to_default_mapper
-
-
-def default_to_tf_mapper() -> RuleMapper:
-    return _default_to_tf_mapper
-
-
-get_global_registry().add_mapper(
-    tf_namespace(), default_namespace(), tf_to_default_mapper()
-)
-get_global_registry().add_mapper(
-    default_namespace(), tf_namespace(), default_to_tf_mapper()
-)
+def tf_type_namespace() -> Namespace:
+    return _type_namespace
 
 
 class GraphAttrName:
     meta_graph = tf_internal_namespace().qualified("meta_graph")
+    saver_def = tf_internal_namespace().qualified("saver_def")
     initialized_variables = tf_internal_namespace().qualified("initialized_variables")
-    lower_name_func = tf_internal_namespace().qualified("lower_name_func")
 
 
 class OpAttrName:
-    contains_index_in_input_name = tf_internal_namespace().qualified(
-        "contains_index_in_input_name"
-    )
-    experimental_debug_info = tf_internal_namespace().qualified(
-        "experimental_debug_info"
-    )
+    experimental_debug_info = "experimental_debug_info"
 
 
+class TFDType(DataType):
+    def __init__(self, dtype: tf.DType):
+        super().__init__(namespace=tf_type_namespace(), name=dtype.name, raw=dtype)
+
+    def __eq__(self, other):
+        return isinstance(other, TFDType) and self.name == other.name
+
+
+# TODO: move collections to op's attributes
+# TODO: move initialized variable values to variable's attributes
 def import_from_graph(
-    tf_graph: tf.Graph, saver_def: SaverDef = None, session: tf.Session = None,
+    tf_graph: tf.Graph,
+    saver_def: SaverDef = None,
+    session: tf.Session = None,
 ) -> Graph:
-    graph = Graph()
-    meta_graph: tf.MetaGraphDef = tf.train.export_meta_graph(
-        graph=tf_graph, saver_def=saver_def
-    )
-    graph_def = meta_graph.graph_def
-    node_defs = {op_def.name: op_def for op_def in graph_def.node}
-
-    def add_op(tf_op: tf.Operation):
-        if graph.get_op_by_name(tf_op.name) is not None:
-            return
-        input_tensor: tf.Tensor
-        for input_tensor in tf_op.inputs:
-            add_op(input_tensor.op)
-        control_input_op: tf.Operation
-        for control_input_op in tf_op.control_inputs:
-            add_op(control_input_op)
-        attrs = {
-            attr_name: tf_op.get_attr(attr_name) for attr_name in tf_op.node_def.attr
-        }
-        node = node_defs[tf_op.name]
-        op = Op(
-            attrs=attrs,
-            input_tensors=[
-                from_tf_tensor(input_tensor, graph) for input_tensor in tf_op.inputs
-            ],
-            control_dependencies=[
-                graph.get_op_by_name(control_input_op.name)
-                for control_input_op in tf_op.control_inputs
-            ],
-            output_num=len(tf_op.outputs),
-        )
-        init_op_attrs(op, node)
-        op.name = tf_op.name
-        op.type = tf_op.type
-        op.attrs["device"] = tf_op.device
-        op.attrs[OpAttrName.contains_index_in_input_name] = [
-            len(input_name.split(":")) != 1
-            for input_name in node.input
-            if not input_name.startswith("^")
-        ]
-        for tf_output_tensor, output_tensor in zip(tf_op.outputs, op.output_tensors):
-            output_tensor.attrs["dtype"] = tf_output_tensor.dtype
-        graph.add_op(op)
-
-    for tf_op in tf_graph.get_operations():
-        add_op(tf_op)
-    init_graph_attrs(graph, graph_def)
-    meta_graph.graph_def.Clear()
-    graph.attrs[GraphAttrName.meta_graph] = meta_graph
+    graph_def = tf_graph.as_graph_def()
+    graph = import_from_graph_def(graph_def)
+    if saver_def is not None:
+        graph.attrs[GraphAttrName.saver_def] = saver_def
     if session is not None:
         update_initialized_variables(graph, tf_graph, session)
     return graph
-
-
-def init_graph_attrs(graph: Graph, graph_def: tf.GraphDef):
-    graph.namespace = tf_namespace()
-    for key in ["versions", "library"]:
-        if graph_def.HasField(key):
-            graph.attrs[key] = getattr(graph_def, key)
-    graph.attrs[GraphAttrName.meta_graph] = tf.MetaGraphDef()
-    graph.attrs[GraphAttrName.initialized_variables] = {}
-    graph.attrs[GraphAttrName.lower_name_func] = lru_cache(maxsize=None)(
-        lambda name: name.lower()
-    )
 
 
 def init_op_attrs(op: Op, node: tf.NodeDef):
@@ -192,128 +107,155 @@ def update_initialized_variables(graph: Graph, tf_graph: tf.Graph, session: tf.S
         graph.attrs[GraphAttrName.initialized_variables].update(initialized_variables)
 
 
-def from_tf_tensor(tensor: Union[tf.Tensor, RefVariable], graph: Graph) -> Tensor:
-    op = graph.get_op_by_name(tensor.op.name)
-    if op.type == "VariableV2":
-        return op.output_tensor(0)
-    else:
-        return op.output_tensor(tensor.value_index)
-
-
 @dataclass(frozen=True)
 class TFTensor:
     op: str
     output_index: int
-    contains_index_in_input_name: bool = True
 
 
-def import_from_graph_def(
-    graph_def: Union[tf.GraphDef, str, bytes, Path], saver_def: SaverDef = None,
-) -> Graph:
+@lru_cache(maxsize=100000)
+def lower_name(name: str):
+    return name.lower()
+
+
+def import_from_graph_def(graph_def: Union[tf.GraphDef, str, bytes, Path]) -> Graph:
     graph_def = to_proto(graph_def, tf.GraphDef)
-    if saver_def is not None:
-        with tf.Graph().as_default() as tf_graph:
-            with tf.Session() as session:
-                tf.import_graph_def(graph_def, name="")
-                return import_from_graph(tf_graph, saver_def, session)
-    else:
-        graph = Graph()
-        tf_graph = tf.Graph()
-        name_to_node = {node.name: node for node in graph_def.node}
+    graph = create_graph(
+        namespace=tf_namespace(),
+    )
+    tf_graph = tf.Graph()
+    name_to_node = {node.name: node for node in graph_def.node}
 
-        def add_op(node: tf.NodeDef):
-            if graph.get_op_by_name(node.name) is not None:
-                return
-            input_tensors: List[TFTensor] = []
-            control_input_nodes: List[str] = []
-            input: str
-            for input in node.input:
-                if input.startswith("^"):
-                    control_input_nodes.append(input[1:])
+    def add_op(node: tf.NodeDef):
+        if graph.get_op(node.name) is not None:
+            return
+        input_tensors: List[TFTensor] = []
+        control_input_nodes: List[str] = []
+        input: str
+        for input in node.input:
+            if input.startswith("^"):
+                control_input_nodes.append(input[1:])
+            else:
+                names = input.split(":")
+                assert len(names) == 1 or len(names) == 2
+                if len(names) == 1:
+                    input_tensors.append(TFTensor(names[0], 0))
                 else:
-                    names = input.split(":")
-                    assert len(names) == 1 or len(names) == 2
-                    if len(names) == 1:
-                        input_tensors.append(TFTensor(names[0], 0, False))
-                    else:
-                        input_tensors.append(TFTensor(names[0], int(names[1])))
-            for input_tensor in input_tensors:
-                add_op(name_to_node[input_tensor.op])
-            for control_input_node in control_input_nodes:
-                add_op(name_to_node[control_input_node])
+                    input_tensors.append(TFTensor(names[0], int(names[1])))
+        for input_tensor in input_tensors:
+            add_op(name_to_node[input_tensor.op])
+        for control_input_node in control_input_nodes:
+            add_op(name_to_node[control_input_node])
 
-            attrs = {
-                attr_name: from_attr_proto(node.attr[attr_name])
-                for attr_name in node.attr
-            }
+        attrs = {
+            attr_name: from_attr_proto(node.attr[attr_name]) for attr_name in node.attr
+        }
 
-            dtypes = get_dtypes(tf_graph, node)
-            op = Op(
-                attrs=attrs,
-                input_tensors=[
-                    graph.get_op_by_name(input_tensor.op).output_tensor(
-                        input_tensor.output_index
-                    )
-                    for input_tensor in input_tensors
-                ],
-                control_dependencies=[
-                    graph.get_op_by_name(control_input_name)
-                    for control_input_name in control_input_nodes
-                ],
-                output_num=len(dtypes),
+        op = create_op(
+            type=node.op,
+            name=node.name,
+            attrs=attrs,
+            inputs=OrderedDict(
+                (name, TFDType(dtype)) for name, dtype in get_input_args(tf_graph, node)
+            ),
+            outputs=OrderedDict(
+                (name, TFDType(dtype))
+                for name, dtype in get_output_args(tf_graph, node)
+            ),
+        )
+        init_op_attrs(op, node)
+        op.attrs["device"] = node.device
+        graph.add_op(op)
+        for index, input_tensor in enumerate(input_tensors):
+            graph.create_edge(
+                graph.get_op(input_tensor.op).output_port(input_tensor.output_index),
+                op.input_port(index),
             )
-            init_op_attrs(op, node)
-            op.name = node.name
-            op.type = node.op
-            op.attrs["device"] = node.device
-            op.attrs[OpAttrName.contains_index_in_input_name] = [
-                input_tensor.contains_index_in_input_name
-                for input_tensor in input_tensors
-            ]
-            for dtype, output_tensor in zip(dtypes, op.output_tensors):
-                output_tensor.attrs["dtype"] = dtype
-            graph.add_op(op)
+        for control_input_name in control_input_nodes:
+            graph.create_control_edge(graph.get_op(control_input_name), op)
 
-        for node in graph_def.node:
-            add_op(node)
-        init_graph_attrs(graph, graph_def)
-        return graph
+    for node in graph_def.node:
+        add_op(node)
+    for key in ["versions", "library"]:
+        if graph_def.HasField(key):
+            graph.attrs[key] = getattr(graph_def, key)
+    graph.attrs[GraphAttrName.initialized_variables] = {}
+    return graph
 
 
-def get_dtype_proto(node_def, op_def, output_arg):
+def get_dtype_proto(node_def, op_def, arg):
     def with_number_attr(dtype):
-        if len(output_arg.number_attr) != 0:
+        if len(arg.number_attr) != 0:
             for attr in op_def.attr:
-                if attr.name == output_arg.number_attr:
+                if attr.name == arg.number_attr:
                     return [dtype] * node_def.attr[attr.name].i
             raise AssertionError()
         else:
             return dtype
 
-    if len(output_arg.type_attr) != 0:
+    def with_ref(dtype):
+        if arg.is_ref:
+            return dtype._as_ref
+        else:
+            return dtype
+
+    if len(arg.type_attr) != 0:
         for attr in op_def.attr:
-            if attr.name == output_arg.type_attr:
-                return with_number_attr(node_def.attr[attr.name].type)
+            if attr.name == arg.type_attr:
+                return with_number_attr(
+                    with_ref(tf.as_dtype(node_def.attr[attr.name].type))
+                )
         raise AssertionError()
-    elif len(output_arg.type_list_attr) != 0:
+    elif len(arg.type_list_attr) != 0:
         for attr in op_def.attr:
-            if attr.name == output_arg.type_list_attr:
-                return list(node_def.attr[attr.name].list.type)
+            if attr.name == arg.type_list_attr:
+                return [
+                    with_ref(tf.as_dtype(dtype))
+                    for dtype in node_def.attr[attr.name].list.type
+                ]
         raise AssertionError()
     else:
-        assert output_arg.type != types_pb2.DT_INVALID
-        return with_number_attr(output_arg.type)
+        assert arg.type != types_pb2.DT_INVALID
+        return with_number_attr(with_ref(tf.as_dtype(arg.type)))
+
+
+def get_op_def(tf_graph, node_def):
+    return tf_graph._get_op_def(node_def.op)
+
+
+def flatten_args(args):
+    flat_args = []
+    for name, dtype in args:
+        if isinstance(dtype, list):
+            for index, child_dtype in enumerate(dtype):
+                flat_args.append((f"{name}/{index}", child_dtype))
+        else:
+            flat_args.append((name, dtype))
+    return flat_args
+
+
+def get_input_args(tf_graph, node_def):
+    op_def = get_op_def(tf_graph, node_def)
+    return flatten_args(
+        (input_arg.name, get_dtype_proto(node_def, op_def, input_arg))
+        for input_arg in op_def.input_arg
+    )
+
+
+def get_output_args(tf_graph, node_def):
+    op_def = get_op_def(tf_graph, node_def)
+    return flatten_args(
+        (output_arg.name, get_dtype_proto(node_def, op_def, output_arg))
+        for output_arg in op_def.output_arg
+    )
 
 
 def get_dtypes(tf_graph, node_def):
-    op_def = tf_graph._get_op_def(node_def.op)
-    dtypes = [
+    op_def = get_op_def(tf_graph, node_def)
+    return [
         get_dtype_proto(node_def, op_def, output_arg)
         for output_arg in op_def.output_arg
     ]
-    if len(dtypes) == 1 and isinstance(dtypes[0], list):
-        dtypes = dtypes[0]
-    return [tf.as_dtype(dtype) for dtype in dtypes]
 
 
 def from_attr_proto(attr_value: tf.AttrValue) -> Any:
@@ -378,7 +320,12 @@ def import_from_meta_graph(
                 session = tf.Session()
                 exit_stack.enter_context(session)
             saver.restore(session, str(checkpoint))
-        graph = import_from_graph(tf_graph, saver.saver_def, session)
+        graph = import_from_graph(tf_graph, saver.as_saver_def(), session)
+        new_meta_graph = tf.MetaGraphDef()
+        new_meta_graph.CopyFrom(meta_graph)
+        new_meta_graph.graph_def.Clear()
+        new_meta_graph.saver_def.Clear()
+        graph.attrs[GraphAttrName.meta_graph] = new_meta_graph
         return graph
 
 
@@ -393,53 +340,29 @@ def import_from_saved_model(path: Union[str, Path], tags: List[str]) -> Graph:
         with tf.Session() as session:
             meta_graph = tf.saved_model.load(session, tags, path)
             graph = import_from_graph(tf_graph, meta_graph.saver_def, session)
+            new_meta_graph = tf.MetaGraphDef()
+            new_meta_graph.CopyFrom(meta_graph)
+            new_meta_graph.graph_def.Clear()
+            new_meta_graph.saver_def.Clear()
+            graph.attrs[GraphAttrName.meta_graph] = new_meta_graph
             return graph
 
 
-@dataclass
-class FakeNodeDef:
-    op: str
-    attr: Dict[str, Any]
-
-
 def export_to_graph(graph: Graph) -> Tuple[tf.Graph, tf.train.Saver, tf.Session]:
-    if graph.namespace != tf_namespace():
-        graph = graph.to_default_namespace().to_namespace(tf_namespace())
+    if not graph.namespace.belong_to(tf_namespace()):
+        raise MismatchNamespaceError(expect=tf_namespace(), actual=graph.namespace)
     tf_graph: tf.Graph
     with tf.Graph().as_default() as tf_graph:
-        for op in graph.sorted_ops:
-            attrs = without_internal_attrs(op.attrs)
-            with tf.control_dependencies(
-                [
-                    tf_graph.get_operation_by_name(control_input.name)
-                    for control_input in op.control_dependencies
-                ]
-            ):
-                attrs_proto = to_attrs_proto(
-                    tf_graph._get_op_def(op.type), op.type, attrs
-                )
-                dtypes = [
-                    output_tensor.attrs.get("dtype")
-                    for output_tensor in op.output_tensors
-                ]
-                if None in dtypes:
-                    dtypes = get_dtypes(tf_graph, FakeNodeDef(op.type, attrs_proto))
-                tf_op = tf_graph.create_op(
-                    op_type=op.type,
-                    inputs=[
-                        tf_graph.get_tensor_by_name(
-                            f"{tensor.op.name}:{tensor.output_index}"
-                        )
-                        for tensor in op.input_tensors
-                    ],
-                    dtypes=dtypes,
-                    input_types=None,
-                    name=op.name,
-                    attrs=attrs_proto,
-                )
-            if "device" in op.attrs:
-                tf_op._set_device(op.attrs["device"])
-        saver = tf.train.import_meta_graph(graph.attrs[GraphAttrName.meta_graph])
+        if GraphAttrName.saver_def in graph.attrs:
+            meta_graph = tf.MetaGraphDef()
+            if GraphAttrName.meta_graph in graph.attrs:
+                meta_graph.CopyFrom(graph.attrs[GraphAttrName.meta_graph])
+            meta_graph.graph_def.CopyFrom(export_to_graph_def(graph))
+            meta_graph.saver_def.CopyFrom(graph.attrs[GraphAttrName.saver_def])
+            saver = tf.train.import_meta_graph(meta_graph)
+        else:
+            tf.graph_util.import_graph_def(export_to_graph_def(graph))
+            saver = tf.train.Saver()
         variables = {
             variable.name: variable
             for variable in tf_graph.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
@@ -457,50 +380,40 @@ def export_to_graph(graph: Graph) -> Tuple[tf.Graph, tf.train.Saver, tf.Session]
         return tf_graph, saver, session
 
 
-def without_internal_attrs(attrs):
-    return {
-        name: value
-        for name, value in attrs.items()
-        if not (is_qualified(name) or name in ["name", "type", "device"])
-    }
-
-
 def export_to_graph_def(graph: Graph) -> tf.GraphDef:
-    if graph.namespace != tf_namespace():
-        graph = graph.to_default_namespace().to_namespace(tf_namespace())
+    if not graph.namespace.belong_to(tf_namespace()):
+        raise MismatchNamespaceError(expect=tf_namespace(), actual=graph.namespace)
     tf_graph = tf.Graph()
     graph_def = tf_graph.as_graph_def()
     for key in ["versions", "library"]:
         if key in graph.attrs:
             getattr(graph_def, key).CopyFrom(graph.attrs[key])
     for op in graph.sorted_ops:
-        attrs = without_internal_attrs(op.attrs)
+        attrs = dict(op.attrs)
         node = graph_def.node.add()
         node.name = op.name
         node.op = op.type
-        node.device = op.attrs["device"]
-        if OpAttrName.experimental_debug_info in op.attrs:
+        if "device" in attrs:
+            node.device = attrs["device"]
+            attrs.pop("device")
+        if OpAttrName.experimental_debug_info in attrs:
             node.experimental_debug_info.CopyFrom(
-                op.attrs[OpAttrName.experimental_debug_info]
+                attrs[OpAttrName.experimental_debug_info]
             )
+            attrs.pop(OpAttrName.experimental_debug_info)
         for name, attr_value in to_attrs_proto(
             tf_graph._get_op_def(op.type), op.type, attrs
         ).items():
             node.attr[name].CopyFrom(attr_value)
-        for index, tensor in enumerate(op.input_tensors):
-            input_op = tensor.op
-            if OpAttrName.contains_index_in_input_name in op.attrs:
-                contains_index_in_name = op.attrs[
-                    OpAttrName.contains_index_in_input_name
-                ][index]
+        for port in op.input_ports:
+            src_port = port.in_edges[0].src
+            src_port_index = list(src_port.op.name_to_output_port).index(src_port.name)
+            if src_port_index == 0:
+                node.input.append(src_port.op.name)
             else:
-                contains_index_in_name = True
-            if contains_index_in_name:
-                node.input.append(f"{input_op.name}:{tensor.output_index}")
-            else:
-                node.input.append(input_op.name)
-        for control_input in op.control_dependencies:
-            node.input.append(f"^{control_input.name}")
+                node.input.append(f"{src_port.op.name}:{src_port_index}")
+        for op in op.control_dependencies:
+            node.input.append(f"^{op.name}")
     return graph_def
 
 
@@ -535,7 +448,10 @@ def export_to_saved_model(
     builder = tf.saved_model.builder.SavedModelBuilder(path)
     with tf_graph.as_default(), session:
         builder.add_meta_graph_and_variables(
-            session, tags, strip_default_attrs=True, saver=saver,
+            session,
+            tags,
+            strip_default_attrs=True,
+            saver=saver,
         )
     builder.save()
 
@@ -547,7 +463,9 @@ def get_diff_after_conversion(graph_def: tf.GraphDef) -> Dict[str, Any]:
 
 
 def to_attrs_proto(
-    op_def: OpDef, op_type_name: str, attrs: Dict[str, Any],
+    op_def: OpDef,
+    op_type_name: str,
+    attrs: Dict[str, Any],
 ) -> Dict[str, Any]:
     # Convert attr values to AttrValue protos.
     attr_protos = {}
@@ -712,13 +630,13 @@ def import_from_tf_func(tf_func):
             args_dict = dict(enumerate(args))
             tf_args = list(args)
             tf_kwargs = dict(kwargs)
-            input_tensors: List[Tensor] = []
-            placeholders: List[tf.Tensor] = []
+            src_ports: Dict[str, OutputPort] = {}
+            tf_placeholders: List[tf.Tensor] = []
 
-            def to_tf_tensor(tensor: Tensor) -> tf.Tensor:
-                placeholder = tf.placeholder(tensor.attrs["dtype"])
-                input_tensors.append(tensor)
-                placeholders.append(placeholder)
+            def to_tf_tensor(output_port: OutputPort) -> tf.Tensor:
+                placeholder = tf.placeholder(output_port.type.raw)
+                tf_placeholders.append(placeholder)
+                src_ports[placeholder.op.name] = output_port
                 return placeholder
 
             def get_args(name: Union[int, str]) -> Dict[Any, Any]:
@@ -729,40 +647,34 @@ def import_from_tf_func(tf_func):
 
             with tf.Graph().as_default() as tf_graph:
                 # mimic tensorflow.python.framework.ops.Graph.unique_name
-                lower_name_func = graph.attrs[GraphAttrName.lower_name_func]
-                tf_graph._names_in_use = {
-                    lower_name_func(name): 1 for name in graph.names
-                }
+                tf_graph._names_in_use = {lower_name(op.name): 1 for op in graph.ops}
 
                 all_args = {**args_dict, **kwargs}
                 for name in all_args:
                     arg = get_args(name)[name]
-                    if isinstance(arg, Tensor):
+                    if isinstance(arg, OutputPort):
                         get_tf_args(name)[name] = to_tf_tensor(arg)
                     if isinstance(arg, list):
                         arg_list = arg
                         for i, arg in enumerate(arg_list):
-                            if isinstance(arg, Tensor):
+                            if isinstance(arg, OutputPort):
                                 get_tf_args(name)[name][i] = to_tf_tensor(arg)
                 output_tensor: tf.Tensor = tf_func(*tf_args, **tf_kwargs)
                 new_graph = import_from_graph(tf_graph)
-                for input, placeholder in zip(input_tensors, placeholders):
-                    placeholder_op = new_graph.get_op_by_name(placeholder.op.name)
-                    new_graph.replace_tensor(placeholder_op.output_tensor(0), input)
-                    new_graph.remove_op(placeholder_op)
+                placeholders = [
+                    new_graph.get_op(placeholder.op.name)
+                    for placeholder in tf_placeholders
+                ]
                 for op in new_graph.ops:
-                    graph.add_op(op)
-
-                current_meta_graph = new_graph.attrs[GraphAttrName.meta_graph]
-                if len(current_meta_graph.collection_def) != 0:
-                    meta_graph = copy.deepcopy(graph.attrs[GraphAttrName.meta_graph])
-                    meta_graph.collection_def.MergeFrom(
-                        current_meta_graph.collection_def
-                    )
-                    graph.attrs[GraphAttrName.meta_graph] = meta_graph
-
-                output_op = graph.get_op_by_name(output_tensor.op.name)
-                return output_op.output_tensor(output_tensor.value_index)
+                    if op not in placeholders:
+                        graph.add_op(op)
+                for edge in new_graph.edges:
+                    if edge.src.op in placeholders:
+                        graph.create_edge(src_ports[edge.src.op.name], edge.dst)
+                    else:
+                        graph.create_edge(edge.src, edge.dst)
+                output_op = graph.get_op(output_tensor.op.name)
+                return output_op.output_port(output_tensor.value_index)
 
         return func
 

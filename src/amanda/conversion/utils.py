@@ -25,14 +25,18 @@ def to_proto(proto: Union[T, str, bytes, Path], message_type: Type[T]) -> T:
     return proto
 
 
+def repeated_fields_to_dict(repeated_fields) -> Dict[str, Any]:
+    return {
+        proto_def.name: json_format.MessageToDict(
+            proto_def, preserving_proto_field_name=True
+        )
+        for proto_def in repeated_fields
+    }
+
+
 def node_def_to_dict(node_def) -> Dict[str, Any]:
     if isinstance(node_def, onnx.NodeProto):
-        attrs = {
-            attr_def.name: json_format.MessageToDict(
-                attr_def, preserving_proto_field_name=True
-            )
-            for attr_def in node_def.attribute
-        }
+        attrs = repeated_fields_to_dict(node_def.attribute)
         node_def.ClearField("attribute")
         node_dict = json_format.MessageToDict(
             node_def, preserving_proto_field_name=True

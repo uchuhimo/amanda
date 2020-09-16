@@ -17,26 +17,30 @@ def modify_graph(graph: amanda.Graph):
         path_op.name = op.name + "_path"
 
         graph.create_edge(
-            src=path_op.output_ports["ref"], dst=extract_op.input_ports["read_path"],
+            src=path_op.output_port("ref"),
+            dst=extract_op.input_port("read_path"),
         )
         graph.create_edge(
-            src=extract_op.output_ports["path"], dst=path_op.input_ports["value"]
+            src=extract_op.output_port("path"), dst=path_op.input_port("value")
         )
 
-        for name, input_port in op.input_ports.items():
+        for input_port in op.input_ports:
             graph.create_edge(
-                src=input_port.in_edges[0].src, dst=extract_op.input_ports[name]
+                src=input_port.in_edges[0].src,
+                dst=extract_op.input_port(input_port.name),
             )
-        for name, output_port in op.output_ports.items():
-            graph.create_edge(src=output_port, dst=extract_op.input_ports[name])
+        for output_port in op.output_ports:
+            graph.create_edge(
+                src=output_port, dst=extract_op.input_port(output_port.name)
+            )
             if len(output_port.out_edges) == 1:
                 downstream_input_port = output_port.out_edges[0].dst
                 downstream_extract_op = graph.get_op(
                     "extract_" + downstream_input_port.op.name
                 )
                 graph.create_edge(
-                    src=downstream_extract_op.output_ports[downstream_input_port.name],
-                    dst=extract_op.input_ports["extract_" + name],
+                    src=downstream_extract_op.output_port(downstream_input_port.name),
+                    dst=extract_op.input_port("extract_" + output_port.name),
                 )
 
     # convert the graph from the application namespace to the framework namespace

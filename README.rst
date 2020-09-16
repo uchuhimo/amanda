@@ -203,6 +203,18 @@ run tests
    make build_cc
    KMP_AFFINITY=disabled pytest -n 2
 
+Run quick tests only:
+
+.. code-block:: bash
+
+   KMP_AFFINITY=disabled pytest -n 2 -m "not slow"
+
+Run a single test:
+
+.. code-block:: bash
+
+   pytest src/amanda/tests/test_op.py -k "test_new_op"
+
 Show information about installed packages
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -234,3 +246,11 @@ Bump version
 .. code-block:: bash
 
    bumpversion minor  # major, minor, patch
+
+Measure code coverage
+^^^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: bash
+
+   coverage run -m pytest
+   coverage html

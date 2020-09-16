@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import numpy as np
 import tensorflow as tf
 from tensorflow.python.framework import load_library
@@ -23,20 +21,14 @@ original_checkpoint_dir = tf.train.latest_checkpoint(
 )
 assert original_checkpoint_dir is not None
 modified_checkpoint_dir = root_dir() / "tmp" / "modified_model" / arch_name / arch_name
-store_dir = root_dir() / "tmp" / "debug_info" / arch_name
-
-if not Path(store_dir).exists():
-    Path(store_dir).mkdir(mode=0o755, parents=True, exist_ok=True)
-
-input = np.random.rand(1, 224, 224, 3)
 
 
-def run_original_model():
+def run_original_model(input):
     output, _ = run_model(arch_name, model_dir="downloads/model", input=input)
     return output
 
 
-def run_modified_model():
+def run_modified_model(input):
     new_output, _ = run_model(arch_name, model_dir="tmp/modified_model", input=input)
     return new_output
 
@@ -46,13 +38,14 @@ def verify_output(output, new_output):
 
 
 def main():
-    output = run_original_model()
+    input = np.random.rand(1, 224, 224, 3)
+    output = run_original_model(input)
 
     graph = amanda.tensorflow.import_from_checkpoint(original_checkpoint_dir)
     new_graph = modify_graph(graph)
     amanda.tensorflow.export_to_checkpoint(new_graph, modified_checkpoint_dir)
 
-    new_output = run_modified_model()
+    new_output = run_modified_model(input)
     verify_output(output, new_output)
 
 
