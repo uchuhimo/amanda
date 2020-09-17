@@ -13,7 +13,7 @@ def tf_model_zoo(path: str) -> str:
     return f"http://download.tensorflow.org/models/{path}"
 
 
-def download_tf_model(arch_name, model_dir, root=None):
+def download_tf_model(arch_name, model_dir, root=None, skip_download=False):
     if root is None:
         root = root_dir() / "downloads"
     full_model_dir = Path(root) / model_dir
@@ -26,14 +26,17 @@ def download_tf_model(arch_name, model_dir, root=None):
         )
     from amanda.cli import tensorflow_extractor
 
-    download_file(
-        tensorflow_extractor.architecture_map[arch_name]["url"],
-        directory=path,
-        auto_unzip=True,
-    )
+    if not skip_download:
+        download_file(
+            tensorflow_extractor.architecture_map[arch_name]["url"],
+            directory=path,
+            auto_unzip=True,
+        )
     if not (full_model_dir / arch_name / "checkpoint").exists():
         if "ckpt" in tensorflow_extractor.architecture_map[arch_name]["filename"]:
-            tensorflow_extractor.handle_checkpoint(arch_name, path)
+            tensorflow_extractor.handle_checkpoint(
+                arch_name, path, skip_download=skip_download
+            )
 
 
 # for a complete list of architecture name supported, see
@@ -59,11 +62,16 @@ tf_arch_names = [
 ]
 
 
-def download_all_tf_models(root=None):
+def download_all_tf_models(root=None, skip_download=False):
     with ProcessPoolExecutor() as executor:
         list(
             executor.map(
-                partial(download_tf_model, model_dir="model", root=root),
+                partial(
+                    download_tf_model,
+                    model_dir="model",
+                    root=root,
+                    skip_download=skip_download,
+                ),
                 list(tf_arch_names),
             )
         )
@@ -228,4 +236,7 @@ def download_file(
 
 
 if __name__ == "__main__":
-    download_all_models()
+    with ProcessPoolExecutor() as executor:
+        executor.submit(download_all_tf_models, skip_download=True)
+        executor.submit(download_all_onnx_models)
+        executor.submit(download_all_tflite_models)

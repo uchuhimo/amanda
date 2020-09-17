@@ -226,7 +226,7 @@ architecture_map = {
 }
 
 
-def handle_checkpoint(architecture, path):
+def handle_checkpoint(architecture, path, skip_download=False):
     with slim.arg_scope(architecture_map[architecture]["arg_scope"]()):
         data_input = architecture_map[architecture]["input"]()
         logits, endpoints = architecture_map[architecture]["builder"]()(
@@ -244,7 +244,8 @@ def handle_checkpoint(architecture, path):
     with tf.Session() as sess:
         sess.run(init)
         saver = tf.train.Saver()
-        saver.restore(sess, path + architecture_map[architecture]["filename"])
+        if not skip_download:
+            saver.restore(sess, path + architecture_map[architecture]["filename"])
         save_path = saver.save(sess, path + "imagenet_{}.ckpt".format(architecture))
         logger.info(f"Model saved in file: {save_path}")
 
