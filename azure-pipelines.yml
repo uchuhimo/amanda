@@ -55,5 +55,5 @@ steps:
 - script: poetry run make build_cc
   displayName: 'Build C++ code'
 
-- script: poetry run pytest
+- script: poetry run pytest -m "not slow"
   displayName: 'Run pytest'

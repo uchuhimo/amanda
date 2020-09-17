@@ -239,4 +239,3 @@ if __name__ == "__main__":
     with ProcessPoolExecutor() as executor:
         executor.submit(download_all_tf_models, skip_download=True)
         executor.submit(download_all_onnx_models)
-        executor.submit(download_all_tflite_models)

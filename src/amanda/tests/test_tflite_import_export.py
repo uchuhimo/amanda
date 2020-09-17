@@ -12,6 +12,7 @@ def arch_name(request):
     return request.param
 
 
+@pytest.mark.slow
 def test_tflite_import_export(arch_name):
     model_dir = root_dir() / "downloads" / "tflite_model" / arch_name
     interpreter = tf.lite.Interpreter(model_path=str(model_dir / f"{arch_name}.tflite"))
