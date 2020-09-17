@@ -72,7 +72,7 @@ setup(
             "filelock", "fissix", "flake8", "ipython", "isort[pyproject]",
             "jsondiff", "mmdnn", "mypy", "numpy", "onnx", "onnxruntime",
             "pip>=19.3", "pre-commit", "pytest", "pytest-xdist", "scipy",
-            "sphinx", "tensorflow==1.13.1", "torch==1.6.0",
+            "sphinx", "tensorflow==1.15.3", "torch==1.6.0",
             "torchvision==0.7.0", "tox", "twine", "watchdog", "wget", "wheel"
         ]
     },

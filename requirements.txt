@@ -26,7 +26,7 @@ pytest
 pytest-xdist
 scipy
 sphinx
-tensorflow==1.13.1
+tensorflow==1.15.3
 torch==1.6.0
 torchvision==0.7.0
 tox

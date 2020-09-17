@@ -2,9 +2,5 @@ name: amanda
 dependencies:
     - python=3.7
     - pip>=19.3
-    - tensorflow=1.13.1=mkl*
-    - pytorch::pytorch=1.6.0
-    - pytorch::torchvision=0.7.0
-    - cudatoolkit=10.2
     - pip:
         - poetry==1.0.10

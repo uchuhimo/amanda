@@ -4,9 +4,5 @@ dependencies:
     - pip>=19.3
     - six==1.15.0
     - markdown==3.2.2
-    - tensorflow=1.13.1=mkl*
-    - pytorch::pytorch=1.6.0
-    - pytorch::torchvision=0.7.0
-    - cudatoolkit=10.2
     - pip:
         - poetry==1.0.10

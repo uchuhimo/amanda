@@ -330,9 +330,8 @@ def extract_meta_graph_fields(graph, meta_graph):
     graph.attrs["meta_info_def"] = new_meta_info_def
     graph.attrs["signature_def"] = dict(meta_graph.signature_def)
     graph.attrs["asset_file_def"] = list(meta_graph.asset_file_def)
-    # TODO: enable this field after upgraded to 1.14.0
-    # if meta_graph.HasField("object_graph_def"):
-    #     graph.attrs["object_graph_def"] = meta_graph.object_graph_def
+    if meta_graph.HasField("object_graph_def"):
+        graph.attrs["object_graph_def"] = meta_graph.object_graph_def
 
 
 def construct_meta_graph_fields(graph, meta_graph, graph_def):
@@ -345,9 +344,8 @@ def construct_meta_graph_fields(graph, meta_graph, graph_def):
     for proto in graph.attrs["asset_file_def"]:
         new_proto = meta_graph.asset_file_def.add()
         new_proto.CopyFrom(proto)
-    # TODO: enable this field after upgraded to 1.14.0
-    # if "object_graph_def" in graph.attrs:
-    #     meta_graph.object_graph_def.CopyFrom(graph.attrs["object_graph_def"])
+    if "object_graph_def" in graph.attrs:
+        meta_graph.object_graph_def.CopyFrom(graph.attrs["object_graph_def"])
 
 
 def import_from_meta_graph(

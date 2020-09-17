@@ -76,7 +76,7 @@ contextvars = { version = "*", python = "< 3.7" }
 [tool.poetry.dev-dependencies]
 numpy = "*"
 scipy = "*"
-tensorflow = "1.13.1"
+tensorflow = "1.15.3"
 torch = "1.6.0"
 torchvision = "0.7.0"
 mmdnn = "*"
