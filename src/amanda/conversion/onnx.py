@@ -6,7 +6,7 @@ import onnx
 from onnx import defs
 
 from amanda.attributes import Attributes
-from amanda.conversion.utils import to_proto
+from amanda.conversion.utils import to_proto, without_internal_attrs
 from amanda.exception import MismatchNamespaceError
 from amanda.graph import (
     Graph,
@@ -351,7 +351,7 @@ def export_to_graph_def(
         elif op.type == "SparseInitializer":
             graph_def.sparse_initializer.append(op.attrs["value"])
         else:
-            attrs = dict(op.attrs)
+            attrs = without_internal_attrs(op.attrs, ["doc_string"])
             node = graph_def.node.add()
             if "/" in op.type:
                 domain, op_type = op.type.split("/")
@@ -364,7 +364,6 @@ def export_to_graph_def(
                 node.domain = domain
             if "doc_string" in op.attrs:
                 node.doc_string = op.attrs["doc_string"]
-                attrs.pop("doc_string")
             for input_port in op.input_ports:
                 in_edges = input_port.in_edges
                 if len(in_edges) == 0:
@@ -385,7 +384,6 @@ def export_to_graph_def(
                 value_name_key = f"output_port/{output_port.name}/value_name"
                 if value_name_key in op.attrs:
                     node.output.append(op.attrs[value_name_key])
-                    attrs.pop(value_name_key)
                 else:
                     node.output.append(op.name)
             for name, value in attrs.items():

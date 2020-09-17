@@ -12,6 +12,7 @@ from torch._C import Type
 from torch._C import Value as TorchValue
 from torch.nn import Parameter
 
+from amanda.conversion.utils import without_internal_attrs
 from amanda.exception import MismatchNamespaceError
 from amanda.graph import (
     Graph,
@@ -22,7 +23,7 @@ from amanda.graph import (
     create_op,
     create_subgraph,
 )
-from amanda.namespace import Namespace, default_namespace, is_qualified
+from amanda.namespace import Namespace, default_namespace
 from amanda.type import DataType
 
 _namespace = default_namespace() / Namespace("pytorch")
@@ -177,7 +178,7 @@ def export_to_graph(graph: SubGraph) -> TorchGraph:
                 [port_to_output[port.in_edges[0].src] for port in op.input_ports],
                 op.output_num,
             )
-            attrs = without_internal_attrs(op.attrs)
+            attrs = without_internal_attrs(op.attrs, ["scope", "sourceRange"])
             for attr_name, attr_value in attrs.items():
                 set_ir_attr(node, attr_name, attr_value, op)
             for output_port, output_value in zip(op.output_ports, node.outputs()):
@@ -202,14 +203,6 @@ def export_to_module(graph: SubGraph, file: Union[str, Path] = None) -> torch.nn
     if file is not None:
         torch.jit.save(module, file)
     return module
-
-
-def without_internal_attrs(attrs):
-    return {
-        name: value
-        for name, value in attrs.items()
-        if not (is_qualified(name) or name in ["scope", "sourceRange"])
-    }
 
 
 def from_ir_attr(node: TorchNode, attr_name: str) -> Any:

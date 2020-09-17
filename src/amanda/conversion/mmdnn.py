@@ -6,7 +6,7 @@ from typing import List, Union
 import numpy as np
 from mmdnn.conversion.common.IR import graph_pb2
 
-from amanda.conversion.utils import to_proto
+from amanda.conversion.utils import to_proto, without_internal_attrs
 from amanda.exception import MismatchNamespaceError
 from amanda.graph import Graph, create_graph, create_op
 from amanda.namespace import Namespace, default_namespace
@@ -29,6 +29,8 @@ def export_to_graph_def(graph: Graph) -> graph_pb2.GraphDef:
     graph_def = graph_pb2.GraphDef()
     for op in graph.ops:
         node = graph_def.node.add()
+        node.op = op.type
+        node.name = op.name
         for port in op.input_ports:
             src_port = port.in_edges[0].src
             if src_port.name == "0":
@@ -36,12 +38,7 @@ def export_to_graph_def(graph: Graph) -> graph_pb2.GraphDef:
             else:
                 port_string = f"{src_port.op.name}:{src_port.name}"
             node.input.append(port_string)
-
-        node.op = op.type
-        node.name = op.name
-        # set attrs for node
-
-        for key in op.attrs:
+        for key in without_internal_attrs(op.attrs):
             ir_value = node.attr[key]
             value = op.attrs[key]
             if type(value) == bytes:

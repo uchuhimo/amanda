@@ -7,7 +7,6 @@ from tensorflow.python.framework import load_library
 
 import amanda
 from amanda import create_op
-from amanda.cli.download_model import download_tf_model
 from amanda.tests.test_tf_import_export import run_model as run_model_from
 from amanda.tests.utils import root_dir
 from amanda.tool import Tool
@@ -91,7 +90,6 @@ def run_model(model_dir):
 
 def main():
     input = np.random.rand(1, 224, 224, 3)
-    download_tf_model(arch_name, model_dir="model")
     output = run_original_model(input)
 
     graph = amanda.tensorflow.import_from_checkpoint(original_checkpoint_dir)

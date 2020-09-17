@@ -2,12 +2,14 @@ import sys
 import typing
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, Type, TypeVar, Union
+from typing import Any, Dict, List, Type, TypeVar, Union
 
 import jsondiff
 import onnx
 from google.protobuf import json_format
 from google.protobuf.message import Message
+
+from amanda.namespace import is_qualified
 
 T = TypeVar("T", bound=Message)
 
@@ -23,6 +25,19 @@ def to_proto(proto: Union[T, str, bytes, Path], message_type: Type[T]) -> T:
         proto = message_type()
         proto.ParseFromString(proto_bytes)
     return proto
+
+
+def without_internal_attrs(attrs: Dict[str, Any], names: List[str] = []):
+    return {
+        name: value
+        for name, value in attrs.items()
+        if not (
+            is_qualified(name)
+            or name in names
+            or name.startswith("output_port/")
+            or name.startswith("input_port/")
+        )
+    }
 
 
 def repeated_fields_to_dict(repeated_fields) -> Dict[str, Any]:

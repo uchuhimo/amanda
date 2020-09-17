@@ -7,10 +7,11 @@ from typing import Any, Dict, List, Tuple, Union
 
 import google.protobuf.text_format
 import tensorflow as tf
-from tensorflow.core.framework import tensor_pb2
+from tensorflow.core.framework import tensor_pb2, variable_pb2
 from tensorflow.core.framework.op_def_pb2 import OpDef
 from tensorflow.core.protobuf.saver_pb2 import SaverDef
 from tensorflow.python import tensor_shape, types_pb2
+from tensorflow.python.framework.meta_graph import stripped_op_list_for_graph
 from tensorflow.python.framework.op_def_library import (
     _IsListValue,
     _MakeBool,
@@ -23,7 +24,7 @@ from tensorflow.python.framework.op_def_library import (
 )
 from tensorflow.python.util import compat
 
-from amanda.conversion.utils import diff_graph_def, to_proto
+from amanda.conversion.utils import diff_graph_def, to_proto, without_internal_attrs
 from amanda.exception import MismatchNamespaceError
 from amanda.graph import Graph, Op, OutputPort, create_graph, create_op
 from amanda.namespace import Namespace, default_namespace
@@ -46,16 +47,6 @@ def tf_type_namespace() -> Namespace:
     return _type_namespace
 
 
-class GraphAttrName:
-    meta_graph = tf_internal_namespace().qualified("meta_graph")
-    saver_def = tf_internal_namespace().qualified("saver_def")
-    initialized_variables = tf_internal_namespace().qualified("initialized_variables")
-
-
-class OpAttrName:
-    experimental_debug_info = "experimental_debug_info"
-
-
 class TFDType(DataType):
     def __init__(self, dtype: tf.DType):
         super().__init__(namespace=tf_type_namespace(), name=dtype.name, raw=dtype)
@@ -64,8 +55,6 @@ class TFDType(DataType):
         return isinstance(other, TFDType) and self.name == other.name
 
 
-# TODO: move collections to op's attributes
-# TODO: move initialized variable values to variable's attributes
 def import_from_graph(
     tf_graph: tf.Graph,
     saver_def: SaverDef = None,
@@ -73,8 +62,34 @@ def import_from_graph(
 ) -> Graph:
     graph_def = tf_graph.as_graph_def()
     graph = import_from_graph_def(graph_def)
+    for variable in tf_graph.get_collection(tf.GraphKeys.GLOBAL_VARIABLES):
+        variable_def = variable.to_proto()
+        op = graph.get_op(variable.name[: variable.name.rfind(":")])
+        op.attrs["initial_value_name"] = variable_def.initial_value_name
+        op.attrs["initializer_name"] = variable_def.initializer_name
+        op.attrs["snapshot_name"] = variable_def.snapshot_name
+        op.attrs["is_resource"] = variable_def.is_resource
+        op.attrs["trainable"] = variable_def.trainable
+    for name in tf_graph.collections:
+        collection = tf_graph.get_collection(name)
+        if name in tf.GraphKeys._VARIABLE_COLLECTIONS:
+            graph.attrs[f"collection/{name}"] = [
+                graph.get_op(variable.name[: variable.name.rfind(":")])
+                for variable in collection
+            ]
+        elif isinstance(collection[0], tf.Operation):
+            graph.attrs[f"collection/{name}"] = [
+                graph.get_op(tf_op.name) for tf_op in collection
+            ]
+        elif isinstance(collection[0], tf.Tensor):
+            graph.attrs[f"collection/{name}"] = [
+                graph.get_op(tf_tensor.op.name).output_port(tf_tensor.value_index)
+                for tf_tensor in collection
+            ]
+        else:
+            graph.attrs[f"collection/{name}"] = collection
     if saver_def is not None:
-        graph.attrs[GraphAttrName.saver_def] = saver_def
+        graph.attrs["saver_def"] = saver_def
     if session is not None:
         update_initialized_variables(graph, tf_graph, session)
     return graph
@@ -83,7 +98,7 @@ def import_from_graph(
 def init_op_attrs(op: Op, node: tf.NodeDef):
     op.namespace = tf_namespace()
     if node.HasField("experimental_debug_info"):
-        op.attrs[OpAttrName.experimental_debug_info] = node.experimental_debug_info
+        op.attrs["experimental_debug_info"] = node.experimental_debug_info
 
 
 def update_initialized_variables(graph: Graph, tf_graph: tf.Graph, session: tf.Session):
@@ -97,14 +112,16 @@ def update_initialized_variables(graph: Graph, tf_graph: tf.Graph, session: tf.S
         initialized_variables = set(
             map(lambda variable: variable.op.name, all_variables)
         ) - set(map(lambda x: x.decode(), uninitialized_variables))
-        initialized_variables = session.run(
+        initialized_variable_to_value = session.run(
             {
                 variable.name: variable.read_value()
                 for variable in all_variables
                 if variable.op.name in initialized_variables
             }
         )
-        graph.attrs[GraphAttrName.initialized_variables].update(initialized_variables)
+        for name, value in initialized_variable_to_value.items():
+            op_name = name.split(":")[0]
+            graph.get_op(op_name).attrs["value"] = value
 
 
 @dataclass(frozen=True)
@@ -179,7 +196,6 @@ def import_from_graph_def(graph_def: Union[tf.GraphDef, str, bytes, Path]) -> Gr
     for key in ["versions", "library"]:
         if graph_def.HasField(key):
             graph.attrs[key] = getattr(graph_def, key)
-    graph.attrs[GraphAttrName.initialized_variables] = {}
     return graph
 
 
@@ -307,6 +323,33 @@ def import_from_pbtxt(file: Union[str, Path]) -> Graph:
     return import_from_graph_def(graph_def)
 
 
+def extract_meta_graph_fields(graph, meta_graph):
+    new_meta_info_def = tf.MetaGraphDef.MetaInfoDef()
+    new_meta_info_def.CopyFrom(meta_graph.meta_info_def)
+    new_meta_info_def.stripped_op_list.Clear()
+    graph.attrs["meta_info_def"] = new_meta_info_def
+    graph.attrs["signature_def"] = dict(meta_graph.signature_def)
+    graph.attrs["asset_file_def"] = list(meta_graph.asset_file_def)
+    # TODO: enable this field after upgraded to 1.14.0
+    # if meta_graph.HasField("object_graph_def"):
+    #     graph.attrs["object_graph_def"] = meta_graph.object_graph_def
+
+
+def construct_meta_graph_fields(graph, meta_graph, graph_def):
+    meta_graph.meta_info_def.CopyFrom(graph.attrs["meta_info_def"])
+    meta_graph.meta_info_def.stripped_op_list.CopyFrom(
+        stripped_op_list_for_graph(graph_def)
+    )
+    for key, proto in graph.attrs["signature_def"]:
+        meta_graph.signature_def[key].CopyFrom(proto)
+    for proto in graph.attrs["asset_file_def"]:
+        new_proto = meta_graph.asset_file_def.add()
+        new_proto.CopyFrom(proto)
+    # TODO: enable this field after upgraded to 1.14.0
+    # if "object_graph_def" in graph.attrs:
+    #     meta_graph.object_graph_def.CopyFrom(graph.attrs["object_graph_def"])
+
+
 def import_from_meta_graph(
     meta_graph: Union[tf.MetaGraphDef, str, bytes, Path],
     checkpoint: Union[str, Path] = None,
@@ -321,11 +364,7 @@ def import_from_meta_graph(
                 exit_stack.enter_context(session)
             saver.restore(session, str(checkpoint))
         graph = import_from_graph(tf_graph, saver.as_saver_def(), session)
-        new_meta_graph = tf.MetaGraphDef()
-        new_meta_graph.CopyFrom(meta_graph)
-        new_meta_graph.graph_def.Clear()
-        new_meta_graph.saver_def.Clear()
-        graph.attrs[GraphAttrName.meta_graph] = new_meta_graph
+        extract_meta_graph_fields(graph, meta_graph)
         return graph
 
 
@@ -340,12 +379,16 @@ def import_from_saved_model(path: Union[str, Path], tags: List[str]) -> Graph:
         with tf.Session() as session:
             meta_graph = tf.saved_model.load(session, tags, path)
             graph = import_from_graph(tf_graph, meta_graph.saver_def, session)
-            new_meta_graph = tf.MetaGraphDef()
-            new_meta_graph.CopyFrom(meta_graph)
-            new_meta_graph.graph_def.Clear()
-            new_meta_graph.saver_def.Clear()
-            graph.attrs[GraphAttrName.meta_graph] = new_meta_graph
+            extract_meta_graph_fields(graph, meta_graph)
             return graph
+
+
+def get_tensor_name_by_port(port: OutputPort, compact: bool = False) -> str:
+    port_index = list(port.op.name_to_output_port).index(port.name)
+    if compact and port_index == 0:
+        return port.op.name
+    else:
+        return f"{port.op.name}:{port_index}"
 
 
 def export_to_graph(graph: Graph) -> Tuple[tf.Graph, tf.train.Saver, tf.Session]:
@@ -353,28 +396,70 @@ def export_to_graph(graph: Graph) -> Tuple[tf.Graph, tf.train.Saver, tf.Session]
         raise MismatchNamespaceError(expect=tf_namespace(), actual=graph.namespace)
     tf_graph: tf.Graph
     with tf.Graph().as_default() as tf_graph:
-        if GraphAttrName.saver_def in graph.attrs:
+        if "saver_def" in graph.attrs:
             meta_graph = tf.MetaGraphDef()
-            if GraphAttrName.meta_graph in graph.attrs:
-                meta_graph.CopyFrom(graph.attrs[GraphAttrName.meta_graph])
-            meta_graph.graph_def.CopyFrom(export_to_graph_def(graph))
-            meta_graph.saver_def.CopyFrom(graph.attrs[GraphAttrName.saver_def])
+            graph_def = export_to_graph_def(graph)
+            meta_graph.graph_def.CopyFrom(graph_def)
+            meta_graph.saver_def.CopyFrom(graph.attrs["saver_def"])
+            construct_meta_graph_fields(graph, meta_graph, graph_def)
             saver = tf.train.import_meta_graph(meta_graph)
         else:
             tf.graph_util.import_graph_def(export_to_graph_def(graph))
             saver = tf.train.Saver()
-        variables = {
-            variable.name: variable
-            for variable in tf_graph.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
-        }
+        for variable in tf_graph.get_collection(tf.GraphKeys.GLOBAL_VARIABLES):
+            variable_def = variable.to_proto()
+            op = graph.get_op(variable.name[: variable.name.rfind(":")])
+            op.attrs["initial_value_name"] = variable_def.initial_value_name
+            op.attrs["initializer_name"] = variable_def.initializer_name
+            op.attrs["snapshot_name"] = variable_def.snapshot_name
+            op.attrs["is_resource"] = variable_def.is_resource
+            op.attrs["trainable"] = variable_def.trainable
+        variables = {}
+        for op in graph.ops:
+            if op.type == "VariableV2":
+                variable_def = variable_pb2.VariableDef()
+                variable_def.variable_name = f"{op.name}:0"
+                variable_def.initial_value_name = op.attrs["initial_value_name"]
+                variable_def.initializer_name = op.attrs["initializer_name"]
+                variable_def.snapshot_name = op.attrs["snapshot_name"]
+                variable_def.is_resource = op.attrs["is_resource"]
+                variable_def.trainable = op.attrs["trainable"]
+                variable = tf.Variable.from_proto(variable_def)
+                variables[variable.name] = variable
+        for name in graph.attrs:
+            if name.startswith("collection/"):
+                collection_name = name[len("collection/") :]
+                collection = graph.attrs[name]
+                tf_collection = tf_graph.get_collection_ref(collection_name)
+                if collection_name in tf.GraphKeys._VARIABLE_COLLECTIONS:
+                    tf_collection.extend(
+                        [variables[f"{op.name}:0"] for op in collection]
+                    )
+                elif isinstance(collection[0], Op):
+                    tf_collection.extend(
+                        [tf_graph.get_operation_by_name(op.name) for op in collection]
+                    )
+                elif isinstance(collection[0], OutputPort):
+                    tf_collection.extend(
+                        [
+                            tf_graph.get_tensor_by_name(get_tensor_name_by_port(port))
+                            for port in collection
+                        ]
+                    )
+                else:
+                    tf_collection.extend(collection)
         session = tf.Session()
+        initialized_variables = {
+            f"{op.name}:0": op.attrs["value"]
+            for op in graph.ops
+            if op.type == "VariableV2" and "value" in op.attrs
+        }
         initializers = [
-            variables[name].initializer
-            for name, value in graph.attrs[GraphAttrName.initialized_variables].items()
+            variables[name].initializer for name in initialized_variables.keys()
         ]
         feed_dict = {
             variables[name].initializer.inputs[1]: value
-            for name, value in graph.attrs[GraphAttrName.initialized_variables].items()
+            for name, value in initialized_variables.items()
         }
         session.run(initializers, feed_dict)
         return tf_graph, saver, session
@@ -389,29 +474,32 @@ def export_to_graph_def(graph: Graph) -> tf.GraphDef:
         if key in graph.attrs:
             getattr(graph_def, key).CopyFrom(graph.attrs[key])
     for op in graph.sorted_ops:
-        attrs = dict(op.attrs)
+        attrs = without_internal_attrs(op.attrs, ["device", "experimental_debug_info"])
         node = graph_def.node.add()
         node.name = op.name
         node.op = op.type
-        if "device" in attrs:
-            node.device = attrs["device"]
-            attrs.pop("device")
-        if OpAttrName.experimental_debug_info in attrs:
-            node.experimental_debug_info.CopyFrom(
-                attrs[OpAttrName.experimental_debug_info]
-            )
-            attrs.pop(OpAttrName.experimental_debug_info)
+        if "device" in op.attrs:
+            node.device = op.attrs["device"]
+        if "experimental_debug_info" in op.attrs:
+            node.experimental_debug_info.CopyFrom(op.attrs["experimental_debug_info"])
+        if op.type == "VariableV2" and "value" in attrs:
+            for key in [
+                "value",
+                "initial_value_name",
+                "initializer_name",
+                "snapshot_name",
+                "is_resource",
+                "trainable",
+            ]:
+                if key in attrs:
+                    attrs.pop(key)
         for name, attr_value in to_attrs_proto(
             tf_graph._get_op_def(op.type), op.type, attrs
         ).items():
             node.attr[name].CopyFrom(attr_value)
         for port in op.input_ports:
             src_port = port.in_edges[0].src
-            src_port_index = list(src_port.op.name_to_output_port).index(src_port.name)
-            if src_port_index == 0:
-                node.input.append(src_port.op.name)
-            else:
-                node.input.append(f"{src_port.op.name}:{src_port_index}")
+            node.input.append(get_tensor_name_by_port(src_port, compact=True))
         for op in op.control_dependencies:
             node.input.append(f"^{op.name}")
     return graph_def
@@ -661,6 +749,13 @@ def import_from_tf_func(tf_func):
                                 get_tf_args(name)[name][i] = to_tf_tensor(arg)
                 output_tensor: tf.Tensor = tf_func(*tf_args, **tf_kwargs)
                 new_graph = import_from_graph(tf_graph)
+                for name in new_graph.attrs:
+                    if name.startswith("collection/"):
+                        new_collection = new_graph.attrs[name]
+                        if name in graph.attrs:
+                            graph.attrs[name].extend(new_collection)
+                        else:
+                            graph.attrs[name] = new_collection
                 placeholders = [
                     new_graph.get_op(placeholder.op.name)
                     for placeholder in tf_placeholders
