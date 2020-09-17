@@ -24,5 +24,5 @@ repos:
     - repo: https://github.com/mverteuil/precommit-dephell
       rev: master
       hooks:
-        - id: pyproject-toml-to-setup-py
+        - id: dephell
         - id: pyproject-toml-to-requirements-txt

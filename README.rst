@@ -135,42 +135,28 @@ Create a new op and its output tensors:
 
 .. code-block:: python
 
-   op =  amanda.Op(
+   op =  amanda.create_op(
+       type="Conv2D",
        attrs={},
-       input_tensors=[],
-       control_dependencies=[],
-       output_num=1,
+       inputs=["input", "filter"],
+       outputs=["output"],
    )
 
 Update an op’s attribute:
 
 .. code-block:: python
 
-   op.attrs["name"] = "conv_1"
-
-Update the input tensor of an op:
-
-.. code-block:: python
-
-   op.input_tensors[i] = tensor
-
-Add a control dependency op to an op:
-
-.. code-block:: python
-
-   op1.add_control_dependency(op2)
-
-Remove a control dependency op from an op:
-
-.. code-block:: python
-
-   op1.remove_control_dependency(op2)
+   op.attrs["data_format"] = "NHWC"
 
 Create a new graph:
 
 .. code-block:: python
 
-   graph = amanda.Graph(ops=[op1, op2], attrs={})
+   graph = amanda.create_graph(
+       ops=[op1, op2],
+       edges=[edge],
+       attrs={},
+   )
 
 Add an op to a graph:
 
@@ -183,6 +169,18 @@ Remove an op from a graph:
 .. code-block:: python
 
    graph.remove_op(op)
+
+Add an edge to a graph:
+
+.. code-block:: bash
+
+   graph.create_edge(op1.output_port("output"), op2.input_port("input"))
+
+Remove an edge from a graph:
+
+.. code-block:: bash
+
+   graph.remove_edge(edge)
 
 Development
 -----------
