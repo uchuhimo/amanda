@@ -48,14 +48,16 @@ setup(
         ]
     },
     packages=[
-        'amanda', 'amanda.cli', 'amanda.conversion', 'amanda.tests',
-        'amanda.tests.tensorflow', 'amanda.tests.tensorflow.models',
+        'amanda', 'amanda.cli', 'amanda.conversion', 'amanda.io',
+        'amanda.io.generated', 'amanda.tests', 'amanda.tests.tensorflow',
+        'amanda.tests.tensorflow.models',
         'amanda.tests.tensorflow.models.mobilenet', 'amanda.tools',
         'amanda.tools.byteps', 'amanda.tools.byteps.tensorflow',
         'amanda.tools.debugging', 'amanda.tools.path'
     ],
     package_dir={"": "src"},
     package_data={
+        "amanda.io": ["*.proto"],
         "amanda.tests": ["*.pbtxt"],
         "amanda.tools.debugging": ["*.json", "*.yaml"],
         "amanda.tools.path": ["*.yaml"]

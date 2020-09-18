@@ -44,6 +44,9 @@ build_cc: store_tensor_op
 $(STORE_TENSOR_TARGET_LIB): $(STORE_TENSOR_SRCS)
 	$(CXX) $(CFLAGS) -o $@ $^ ${LDFLAGS}
 
+proto:
+	protoc -I src/amanda/io --python_out=src/amanda/io/generated src/amanda/io/*.proto
+
 help:
 	@python -c "$$PRINT_HELP_PYSCRIPT" < $(MAKEFILE_LIST)
 

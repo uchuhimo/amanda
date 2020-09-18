@@ -5,7 +5,7 @@ to = {format = "setuppy", path = "setup.py"}
 [tool.black]
 line-length = 88
 target-version = ["py36"]
-exclude = "setup.py"
+exclude = "setup.py|.*_pb2.py"
 
 [tool.isort]
 multi_line_output = 3
@@ -13,6 +13,7 @@ include_trailing_comma = true
 force_grid_wrap = 0
 use_parentheses = true
 line_length = 88
+skip_glob="*_pb2.py"
 known_first_party = "amanda"
 default_section = "THIRDPARTY"
 # sections = "FUTURE,STDLIB,FIRSTPARTY,THIRDPARTY,LOCALFOLDER"
