@@ -7,8 +7,8 @@ from tensorflow.python.framework import load_library
 
 import amanda
 from amanda import create_op
+from amanda.io.file import root_dir
 from amanda.tests.test_tf_import_export import run_model as run_model_from
-from amanda.tests.utils import root_dir
 from amanda.tool import Tool
 
 store_tensor_to_file_ops = load_library.load_op_library(

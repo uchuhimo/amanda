@@ -1,27 +1,51 @@
 import types
 from collections import OrderedDict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Union, cast
 
 import torch
 import torch._C
 import torch.jit
+from torch._C import (
+    AnyType,
+    BoolType,
+    ClassType,
+    DeviceObjType,
+    DictType,
+    FloatType,
+    FutureType,
+)
 from torch._C import Graph as TorchGraph
+from torch._C import InterfaceType, IntType, ListType
 from torch._C import Node as TorchNode
-from torch._C import Type
+from torch._C import (
+    NoneType,
+    NumberType,
+    OptionalType,
+    PyObjectType,
+    RRefType,
+    StringType,
+    TensorType,
+    TupleType,
+    Type,
+)
 from torch._C import Value as TorchValue
 from torch.nn import Parameter
 
 from amanda.conversion.utils import without_internal_attrs
 from amanda.exception import MismatchNamespaceError
-from amanda.graph import (
-    Graph,
-    InputPort,
-    Op,
-    OutputPort,
-    SubGraph,
-    create_op,
-    create_subgraph,
+from amanda.graph import InputPort, Op, OutputPort, SubGraph, create_op, create_subgraph
+from amanda.io.serde import (
+    Serde,
+    SerdeContext,
+    SerdeDispatcher,
+    TypeSerde,
+    deserialize,
+    deserialize_type,
+    get_serde_registry,
+    serialize,
+    serialize_type,
 )
 from amanda.namespace import Namespace, default_namespace
 from amanda.type import DataType
@@ -43,21 +67,185 @@ def pytorch_type_namespace() -> Namespace:
     return _type_namespace
 
 
-class TorchType(DataType):
-    def __init__(self, torch_type: Type):
-        super().__init__(
-            namespace=pytorch_type_namespace(), name=torch_type.str(), raw=torch_type
+def torch_dtype(name: str) -> DataType:
+    return DataType(pytorch_type_namespace(), name)
+
+
+_name_to_torch_type = {
+    "AnyType": AnyType.get(),
+    "NumberType": NumberType.get(),
+    "IntType": IntType.get(),
+    "FloatType": FloatType.get(),
+    "TensorType": TensorType.get(),
+    "BoolType": BoolType.get(),
+    "StringType": StringType.get(),
+    "DeviceObjType": DeviceObjType.get(),
+    "PyObjectType": PyObjectType.get(),
+    "NoneType": NoneType.get(),
+}
+
+_name_to_dtype = {name: torch_dtype(name) for name in _name_to_torch_type}
+
+
+class PyTorchPrimitiveSerde(TypeSerde):
+    def serialize_type(self, type: Any) -> DataType:
+        return _name_to_dtype[type.kind()]
+
+    def deserialize_type(self, dtype: DataType) -> Any:
+        return _name_to_torch_type[dtype.name]
+
+
+_pytorch_primitive_serde = PyTorchPrimitiveSerde()
+
+
+class PyTorchTupleSerde(TypeSerde):
+    def serialize_type(self, type: Any) -> DataType:
+        dtype = torch_dtype("TupleType")
+        dtype.attrs["elements"] = [
+            _serde_dispatcher.serialize_type(element) for element in type.elements()
+        ]
+        return dtype
+
+    def deserialize_type(self, dtype: DataType) -> Any:
+        return TupleType(
+            [
+                _serde_dispatcher.deserialize_type(element)
+                for element in dtype.attrs["elements"]
+            ]
         )
 
-    def __eq__(self, other):
-        return isinstance(other, TorchType) and self.name == other.name
+
+class PyTorchDictSerde(TypeSerde):
+    def serialize_type(self, type: Any) -> DataType:
+        dtype = torch_dtype("DictType")
+        dtype.attrs["key"] = _serde_dispatcher.serialize_type(type.getKeyType())
+        dtype.attrs["value"] = _serde_dispatcher.serialize_type(type.getValueType())
+        return dtype
+
+    def deserialize_type(self, dtype: DataType) -> Any:
+        return DictType(
+            _serde_dispatcher.deserialize_type(dtype.attrs["key"]),
+            _serde_dispatcher.deserialize_type(dtype.attrs["value"]),
+        )
 
 
-def import_from_func(func: torch.jit.ScriptFunction) -> Graph:
+@dataclass
+class PyTorchContainerSerde(TypeSerde):
+    torch_type: Type
+
+    def serialize_type(self, type: Any) -> DataType:
+        dtype = torch_dtype(self.torch_type.__name__)
+        dtype.attrs["element"] = _serde_dispatcher.serialize_type(type.getElementType())
+        return dtype
+
+    def deserialize_type(self, dtype: DataType) -> Any:
+        return self.torch_type(
+            _serde_dispatcher.deserialize_type(dtype.attrs["element"])
+        )
+
+
+class PyTorchClassSerde(TypeSerde):
+    def serialize_type(self, type: Any) -> DataType:
+        dtype = torch_dtype("ClassType")
+        dtype.attrs["name"] = type.name()
+        return dtype
+
+    def deserialize_type(self, dtype: DataType) -> Any:
+        return ClassType(dtype.attrs["name"])
+
+
+class PyTorchInterfaceSerde(TypeSerde):
+    def serialize_type(self, type: Any) -> DataType:
+        dtype = torch_dtype("InterfaceType")
+        dtype.attrs["name"] = type.name()
+        return dtype
+
+    def deserialize_type(self, dtype: DataType) -> Any:
+        return InterfaceType(dtype.attrs["name"])
+
+
+class PyTorchTensorSerde(Serde):
+    def serialize_type(self, type: Any) -> DataType:
+        return torch_dtype("Tensor")
+
+    def deserialize_type(self, dtype: DataType) -> Any:
+        return torch.Tensor
+
+    def serialize(self, value: Any) -> Any:
+        return serialize(value.numpy())
+
+    def deserialize(self, value: Any, context: SerdeContext) -> Any:
+        assert context.dtype == torch_dtype("Tensor")
+        context.dtype = DataType(Namespace("np"), "ndarray")
+        tensor = torch.tensor(deserialize(value, context))
+        context.dtype = torch_dtype("Tensor")
+        return tensor
+
+
+class PyTorchParameterSerde(Serde):
+    def serialize_type(self, type: Any) -> DataType:
+        return torch_dtype("Parameter")
+
+    def deserialize_type(self, dtype: DataType) -> Any:
+        return Parameter
+
+    def serialize(self, value: Any) -> Any:
+        return {
+            "data": serialize(value.data),
+            "requires_grad": value.requires_grad,
+        }
+
+    def deserialize(self, value: Any, context: SerdeContext) -> Any:
+        assert context.dtype == torch_dtype("Parameter")
+        context.dtype = torch_dtype("Tensor")
+        parameter = Parameter(
+            deserialize(value["data"], context),
+            requires_grad=value["requires_grad"],
+        )
+        context.dtype = torch_dtype("Parameter")
+        return parameter
+
+
+@dataclass
+class PyTorchSerdeDispatcher(SerdeDispatcher):
+    def __post_init__(self):
+        for torch_type in _name_to_torch_type.values():
+            self.register_meta_type(type(torch_type), _pytorch_primitive_serde)
+        for dtype in _name_to_dtype.values():
+            self.register_dtype_name(dtype.name, _pytorch_primitive_serde)
+        for torch_type in [
+            ListType,
+            OptionalType,
+            RRefType,
+            FutureType,
+        ]:
+            serde = PyTorchContainerSerde(torch_type)
+            self.register_meta_type(torch_type, serde)
+            self.register_dtype_name(torch_type.__name__, serde)
+        self.register_meta_type(TupleType, PyTorchTupleSerde())
+        self.register_dtype_name("TupleType", PyTorchTupleSerde())
+        self.register_meta_type(DictType, PyTorchDictSerde())
+        self.register_dtype_name("DictType", PyTorchDictSerde())
+        self.register_meta_type(ClassType, PyTorchClassSerde())
+        self.register_dtype_name("ClassType", PyTorchClassSerde())
+        self.register_meta_type(InterfaceType, PyTorchInterfaceSerde())
+        self.register_dtype_name("InterfaceType", PyTorchInterfaceSerde())
+        self.register_type(torch.Tensor, PyTorchTensorSerde())
+        self.register_dtype_name("Tensor", PyTorchTensorSerde())
+        self.register_type(Parameter, PyTorchParameterSerde())
+        self.register_dtype_name("Parameter", PyTorchParameterSerde())
+
+
+_serde_dispatcher = PyTorchSerdeDispatcher()
+
+get_serde_registry().register_namespace(pytorch_type_namespace(), _serde_dispatcher)
+
+
+def import_from_func(func: torch.jit.ScriptFunction) -> SubGraph:
     return import_from_graph(func.graph)
 
 
-def import_from_module(module: Union[torch.nn.Module, str, Path]) -> Graph:
+def import_from_module(module: Union[torch.nn.Module, str, Path]) -> SubGraph:
     if isinstance(module, (str, Path)):
         module = torch.jit.load(module)
     if not isinstance(module, torch.jit.ScriptModule):
@@ -69,7 +257,9 @@ def import_from_module(module: Union[torch.nn.Module, str, Path]) -> Graph:
     return graph
 
 
-def import_from_graph(torch_graph: TorchGraph, params: List[Parameter] = None) -> Graph:
+def import_from_graph(
+    torch_graph: TorchGraph, params: List[Parameter] = None
+) -> SubGraph:
     torch._C._jit_pass_inline(torch_graph)
     torch._C._jit_pass_inline_fork_wait(torch_graph)
     params = params or []
@@ -77,7 +267,7 @@ def import_from_graph(torch_graph: TorchGraph, params: List[Parameter] = None) -
         namespace=pytorch_namespace(),
         inputs=OrderedDict(
             [
-                (str(index), TorchType(input.type()))
+                (str(index), serialize_type(input.type()))
                 for index, input in enumerate(
                     list(torch_graph.inputs())[: -len(params)]
                 )
@@ -85,7 +275,7 @@ def import_from_graph(torch_graph: TorchGraph, params: List[Parameter] = None) -
         ),
         outputs=OrderedDict(
             [
-                (str(index), TorchType(output.type()))
+                (str(index), serialize_type(output.type()))
                 for index, output in enumerate(torch_graph.outputs())
             ]
         ),
@@ -101,7 +291,7 @@ def import_from_graph(torch_graph: TorchGraph, params: List[Parameter] = None) -
                 for attr_name in param_node.attributeNames()
             },
             inputs=[],
-            outputs=OrderedDict([("0", TorchType(input_value.type()))]),
+            outputs=OrderedDict([("0", serialize_type(input_value.type()))]),
         )
         op.attrs["value"] = param
         graph.add_op(op)
@@ -123,13 +313,13 @@ def import_from_graph(torch_graph: TorchGraph, params: List[Parameter] = None) -
             },
             inputs=OrderedDict(
                 [
-                    (str(index), TorchType(input.type()))
+                    (str(index), serialize_type(input.type()))
                     for index, input in enumerate(node.inputs())
                 ]
             ),
             outputs=OrderedDict(
                 [
-                    (str(index), TorchType(output.type()))
+                    (str(index), serialize_type(output.type()))
                     for index, output in enumerate(node.outputs())
                 ]
             ),
@@ -182,7 +372,7 @@ def export_to_graph(graph: SubGraph) -> TorchGraph:
             for attr_name, attr_value in attrs.items():
                 set_ir_attr(node, attr_name, attr_value, op)
             for output_port, output_value in zip(op.output_ports, node.outputs()):
-                output_value.setType(output_port.type.raw)
+                output_value.setType(deserialize_type(output_port.type))
                 port_to_output[output_port] = output_value
             torch_graph.appendNode(node)
     for port in graph.output_ports:

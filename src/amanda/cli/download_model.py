@@ -6,7 +6,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from amanda.tests.utils import root_dir
+from amanda.io.file import root_dir
 
 
 def tf_model_zoo(path: str) -> str:

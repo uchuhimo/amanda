@@ -16,8 +16,6 @@ from amanda.type import DataType, unknown_type
 def parse_ports(
     ports: typing.Union["OrderedDict[str, DataType]", List[str], int]
 ) -> "OrderedDict[str, DataType]":
-    if ports is None:
-        ports = 1
     if isinstance(ports, int):
         ports = [str(index) for index in range(ports)]
     if isinstance(ports, list):
@@ -40,16 +38,21 @@ class Op:
     inputs: InitVar[typing.Union["OrderedDict[str, DataType]", List[str], int]] = None
     outputs: InitVar[typing.Union["OrderedDict[str, DataType]", List[str], int]] = None
 
+    CONTROL_PORT_NAME: typing.ClassVar[str] = "^control"
+    CONTROL_PORT_TYPE: typing.ClassVar[DataType] = DataType(
+        namespace=default_namespace(), name="ControlPort"
+    )
+
     def __post_init__(self, inputs, outputs):
         self.control_input_port = create_control_input_port(self)
         self.control_output_port = create_control_output_port(self)
         self.name_to_input_port = OrderedDict(
             (name, InputPort(self, name, type))
-            for name, type in parse_ports(inputs).items()
+            for name, type in parse_ports(inputs if inputs is not None else 1).items()
         )
         self.name_to_output_port = OrderedDict(
             (name, OutputPort(self, name, type))
-            for name, type in parse_ports(outputs).items()
+            for name, type in parse_ports(outputs if outputs is not None else 1).items()
         )
 
     @property
@@ -59,6 +62,14 @@ class Op:
     @property
     def output_ports(self) -> List["OutputPort"]:
         return list(self.name_to_output_port.values())
+
+    @property
+    def input_port_names(self) -> List[str]:
+        return list(self.name_to_input_port)
+
+    @property
+    def output_port_names(self) -> List[str]:
+        return list(self.name_to_output_port)
 
     @property
     def input_num(self) -> int:
@@ -74,7 +85,10 @@ class Op:
                 raise IndexError
             return self.input_ports[index]
         else:
-            return self.name_to_input_port[index]
+            if index == Op.CONTROL_PORT_NAME:
+                return self.control_input_port
+            else:
+                return self.name_to_input_port[index]
 
     def output_port(self, index: Union[int, str]) -> "OutputPort":
         if isinstance(index, int):
@@ -82,7 +96,10 @@ class Op:
                 raise IndexError
             return self.output_ports[index]
         else:
-            return self.name_to_output_port[index]
+            if index == Op.CONTROL_PORT_NAME:
+                return self.control_output_port
+            else:
+                return self.name_to_output_port[index]
 
     @property
     def control_dependencies(self) -> List["Op"]:
@@ -136,6 +153,10 @@ class Op:
     def __deepcopy__(self, memodict={}):
         return self.deepcopy()
 
+    @property
+    def path(self) -> List[str]:
+        return self.graph.path + [self.name]
+
     def __repr__(self) -> str:
         items = [
             f"name={self.name}",
@@ -147,11 +168,10 @@ class Op:
     def __hash__(self) -> int:
         return id(self)
 
-    def dict(self):
-        result = dict(
+    def dict(self, ignore_attrs: bool = False):
+        result: Dict[str, Any] = dict(
             name=self.name,
             type=self.type,
-            attrs=dict(self.attrs),
             input_ports=[
                 port.name if port.type == unknown_type else f"{port.name}: {port.type}"
                 for port in self.input_ports
@@ -161,8 +181,10 @@ class Op:
                 for port in self.output_ports
             ],
         )
+        if not ignore_attrs:
+            result["attrs"] = dict(self.attrs)
         if self.namespace is not None:
-            result["namespace"] = self.namespace
+            result["namespace"] = self.namespace.full_name
         return result
 
     def json(self):
@@ -197,7 +219,7 @@ class OutputPort:
     type: DataType
 
     def is_control(self) -> bool:
-        return self.name == Edge.CONTROL_PORT_NAME
+        return self.name == Op.CONTROL_PORT_NAME
 
     @property
     def out_edges(self) -> List["Edge"]:
@@ -222,7 +244,7 @@ class OutputPort:
 
 
 def create_control_output_port(op: Op) -> OutputPort:
-    return OutputPort(op=op, name=Edge.CONTROL_PORT_NAME, type=Edge.CONTROL_PORT_TYPE)
+    return OutputPort(op=op, name=Op.CONTROL_PORT_NAME, type=Op.CONTROL_PORT_TYPE)
 
 
 @dataclass(frozen=True)
@@ -232,7 +254,7 @@ class InputPort:
     type: DataType
 
     def is_control(self) -> bool:
-        return self.name == Edge.CONTROL_PORT_NAME
+        return self.name == Op.CONTROL_PORT_NAME
 
     @property
     def in_edges(self) -> List["Edge"]:
@@ -263,7 +285,7 @@ class IoPort(InputPort, OutputPort):
 
 
 def create_control_input_port(op: Op) -> InputPort:
-    return InputPort(op=op, name=Edge.CONTROL_PORT_NAME, type=Edge.CONTROL_PORT_TYPE)
+    return InputPort(op=op, name=Op.CONTROL_PORT_NAME, type=Op.CONTROL_PORT_TYPE)
 
 
 @dataclass
@@ -272,11 +294,6 @@ class Edge:
     dst: InputPort
     graph: "Graph" = None
     attrs: Attributes = field(default_factory=Attributes)
-
-    CONTROL_PORT_NAME: typing.ClassVar[str] = "^control"
-    CONTROL_PORT_TYPE: typing.ClassVar[DataType] = DataType(
-        namespace=default_namespace(), name="ControlPort"
-    )
 
     def is_control_edge(self) -> bool:
         return self.src.is_control() and self.dst.is_control()
@@ -567,20 +584,26 @@ class Graph:
     def __deepcopy__(self, memodict={}):
         return self.deepcopy()
 
+    @property
+    def path(self) -> List[str]:
+        return []
+
     def __hash__(self) -> int:
         return id(self)
 
-    def dict(self):
+    def dict(self, ignore_attrs: bool = False):
         result = dict(
-            attrs=dict(self.attrs),
-            ops=[op.dict() for op in self.ops],
-            edges=[
-                f"{edge.src.op}.{edge.src.name} -> {edge.dst.op}.{edge.dst.name}"
+            ops={op.name: op.dict(ignore_attrs) for op in self.ops},
+            edges={
+                f"{edge.src.op.name}.{edge.src.name} -> "
+                f"{edge.dst.op.name}.{edge.dst.name}"
                 for edge in self.edges
-            ],
+            },
         )
+        if not ignore_attrs:
+            result["attrs"] = dict(self.attrs)
         if self.namespace is not None:
-            result["namespace"] = self.namespace
+            result["namespace"] = self.namespace.full_name
         return result
 
     def json(self):
@@ -633,18 +656,18 @@ class SubGraph(Op, Graph):
 
     def __post_init__(self, inputs, outputs):
         self.control_input_port = IoPort(
-            op=self, name=Edge.CONTROL_PORT_NAME, type=Edge.CONTROL_PORT_TYPE
+            op=self, name=Op.CONTROL_PORT_NAME, type=Op.CONTROL_PORT_TYPE
         )
         self.control_output_port = IoPort(
-            op=self, name=Edge.CONTROL_PORT_NAME, type=Edge.CONTROL_PORT_TYPE
+            op=self, name=Op.CONTROL_PORT_NAME, type=Op.CONTROL_PORT_TYPE
         )
         self.name_to_input_port = OrderedDict(
             (name, IoPort(self, name, type))
-            for name, type in parse_ports(inputs).items()
+            for name, type in parse_ports(inputs if inputs is not None else 0).items()
         )
         self.name_to_output_port = OrderedDict(
             (name, IoPort(self, name, type))
-            for name, type in parse_ports(outputs).items()
+            for name, type in parse_ports(outputs if outputs is not None else 0).items()
         )
         if self.name_to_subgraph is None:
             self.name_to_subgraph = {
@@ -729,6 +752,13 @@ class SubGraph(Op, Graph):
             attrs_copy_func=copy.deepcopy,
         )
 
+    @property
+    def path(self) -> List[str]:
+        if self.graph is None:
+            return []
+        else:
+            return self.graph.path + [self.name]
+
     def __repr__(self) -> str:
         items = [
             f"name={self.name}",
@@ -739,6 +769,31 @@ class SubGraph(Op, Graph):
 
     def __hash__(self) -> int:
         return id(self)
+
+    def dict(self, ignore_attrs: bool = False):
+        result = dict(
+            name=self.name,
+            type=self.type,
+            input_ports=[
+                port.name if port.type == unknown_type else f"{port.name}: {port.type}"
+                for port in self.input_ports
+            ],
+            output_ports=[
+                port.name if port.type == unknown_type else f"{port.name}: {port.type}"
+                for port in self.output_ports
+            ],
+            ops={op.name: op.dict(ignore_attrs) for op in self.ops},
+            edges={
+                f"{edge.src.op.name}.{edge.src.name} -> "
+                f"{edge.dst.op.name}.{edge.dst.name}"
+                for edge in self.edges
+            },
+        )
+        if not ignore_attrs:
+            result["attrs"] = dict(self.attrs)
+        if self.namespace is not None:
+            result["namespace"] = self.namespace.full_name
+        return result
 
 
 def create_subgraph(
@@ -751,7 +806,10 @@ def create_subgraph(
     ops: List[Op] = None,
     edges: List[Edge] = None,
 ) -> SubGraph:
-    name = name or f"{type}_{uuid.uuid4()}"
+    if type is None:
+        name = name or str(uuid.uuid4())
+    else:
+        name = name or f"{type}_{uuid.uuid4()}"
     attrs = attrs or {}
     op = SubGraph(
         type=type,

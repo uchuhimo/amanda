@@ -7,7 +7,7 @@ import torchvision.models as models
 from loguru import logger
 
 import amanda
-from amanda.tests.utils import root_dir
+from amanda.io.file import root_dir
 from amanda.tools.debugging.insert_debug_op_adhoc import modify_graph
 
 op_source = """

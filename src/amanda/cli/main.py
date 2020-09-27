@@ -1,13 +1,14 @@
 import os
 from importlib.util import find_spec
-from typing import List
+from typing import Callable, Dict, List
 
 import click
 
 from amanda.cli.utils import import_from_name
+from amanda.io.file import ensure_dir
 
-import_types = {}
-export_types = {}
+import_types: Dict[str, Callable] = {}
+export_types: Dict[str, Callable] = {}
 
 if find_spec("tensorflow"):
     from amanda.conversion.tensorflow import export_types as tf_export_types
@@ -36,16 +37,6 @@ if find_spec("mmdnn"):
 
     import_types.update(mmdnn_import_types)
     export_types.update(mmdnn_export_types)
-
-
-def ensure_dir(path: str) -> str:
-    path = os.path.abspath(path)
-    if not os.path.exists(os.path.dirname(path)):
-        try:
-            os.makedirs(os.path.dirname(path))
-        except FileExistsError:
-            pass
-    return path
 
 
 @click.command()
@@ -117,7 +108,7 @@ def cli(
     try:
         import_func = import_types[import_type]
         import_path = os.path.abspath(import_path)
-        graph = import_func(import_path)  # type: ignore
+        graph = import_func(import_path)
         graph = graph.to_namespace(namespace)
         if tool is not None:
             updated_graph = tool.instrument(graph)
@@ -125,7 +116,7 @@ def cli(
             updated_graph = graph
         export_func = export_types[export_type]
         export_path = ensure_dir(os.path.abspath(export_path))
-        export_func(updated_graph, export_path)  # type: ignore
+        export_func(updated_graph, export_path)
     finally:
         if tool is not None:
             tool.finish()

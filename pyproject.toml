@@ -68,6 +68,7 @@ more-itertools = "*"
 click = "*"
 typing-extensions = "*"
 protobuf = "*"
+PyYAML = "*"
 immutables = "*"
 loguru = "*"
 dataclasses = { version = "*", python = "< 3.7" }
@@ -75,6 +76,7 @@ typing = { version = "*", python = "< 3.7" }
 contextvars = { version = "*", python = "< 3.7" }
 
 [tool.poetry.dev-dependencies]
+mypy-protobuf = "*"
 numpy = "*"
 scipy = "*"
 tensorflow = "1.15.3"

@@ -1,6 +1,7 @@
 from collections import OrderedDict
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Type, Union, cast
+from typing import Any, Dict, Set, Union, cast
 
 import onnx
 from onnx import defs
@@ -15,6 +16,16 @@ from amanda.graph import (
     SubGraph,
     create_op,
     create_subgraph,
+)
+from amanda.io.serde import (
+    ProtoToBytesSerde,
+    ProtoToDictSerde,
+    SerdeContext,
+    SerdeDispatcher,
+    TypeSerde,
+    deserialize_type,
+    get_serde_registry,
+    serialize_type,
 )
 from amanda.namespace import Namespace, default_namespace
 from amanda.type import DataType
@@ -66,123 +77,122 @@ def to_dtype_enum(dtype: str) -> int:
     return STR_TO_INT_DTYPE[dtype]
 
 
-class OnnxType(DataType):
-    def to_proto(self) -> onnx.TypeProto:
-        pass
+def onnx_dtype(name: str, attrs: Dict[str, Any] = None) -> DataType:
+    return DataType(
+        namespace=onnx_type_namespace(), name=name, attrs=Attributes(attrs or {})
+    )
 
-    @classmethod
-    def from_proto(cls, proto: onnx.TypeProto) -> "OnnxType":
-        impls: Dict[str, Type[OnnxType]] = {
-            "tensor_type": OnnxTensorType,
-            "sequence_type": OnnxSequenceType,
-            "map_type": OnnxMapType,
+
+class OnnxTypeSerde(TypeSerde):
+    def __init__(self):
+        self.dtype = onnx_dtype("Type")
+        self.serde = ProtoToDictSerde(
+            onnx.TypeProto, self.dtype.name, onnx_type_namespace()
+        )
+
+    def serialize_type(self, type: Any) -> DataType:
+        field_name = type.WhichOneof("value")
+        field_to_name = {
+            "tensor_type": "Tensor",
+            "sequence_type": "Sequence",
+            "map_type": "Map",
         }
-        field_name = proto.WhichOneof("value")
-        return impls[field_name].from_proto(getattr(proto, field_name))
+        name = field_to_name[field_name]
+        return onnx_dtype(name, attrs=self.serde.serialize(type)[field_name])
 
-    @classmethod
-    def from_type_str(cls, type_str: str) -> "OnnxType":
-        if type_str.startswith("tensor"):
-            return OnnxTensorType(elem_type=type_str[7:-1])
-        if type_str.startswith("seq"):
-            return OnnxSequenceType(elem_type=OnnxType.from_type_str(type_str[4:-1]))
-        if type_str.startswith("map"):
-            key_type, value_type = type_str[4:-1].split(", ")
-            return OnnxMapType(
-                key_type=key_type, value_type=OnnxType.from_type_str(value_type)
+    def deserialize_type(self, dtype: DataType) -> Any:
+        name_to_field = {
+            "Tensor": "tensor_type",
+            "Sequence": "sequence_type",
+            "Map": "map_type",
+        }
+        field_name = name_to_field[dtype.name]
+        return self.serde.deserialize(
+            {field_name: dtype.attrs}, SerdeContext(dtype=self.dtype)
+        )
+
+
+@dataclass
+class OnnxSerdeDispatcher(SerdeDispatcher):
+    def __post_init__(self):
+        type_serde = OnnxTypeSerde()
+        self.register_meta_type(onnx.TypeProto, type_serde)
+        for name in [
+            "Tensor",
+            "Sequence",
+            "Map",
+        ]:
+            self.register_dtype_name(name, type_serde)
+        for proto_type in [
+            onnx.OperatorSetIdProto,
+        ]:
+            serde = ProtoToDictSerde(
+                proto_type,
+                name=proto_type.__name__,
+                namespace=onnx_type_namespace(),
             )
-        return OnnxTensorType(elem_type=type_str)
+            self.register_type(proto_type, serde)
+            self.register_dtype_name(proto_type.__name__, serde)
+        for proto_type in [
+            onnx.TensorProto,
+        ]:
+            serde = ProtoToBytesSerde(
+                proto_type,
+                name=proto_type.__name__,
+                namespace=onnx_type_namespace(),
+            )
+            self.register_type(proto_type, serde)
+            self.register_dtype_name(proto_type.__name__, serde)
 
 
-class OnnxTensorType(OnnxType):
-    def __init__(
-        self,
-        elem_type: str = None,
-        shape: onnx.TensorShapeProto = None,
-        raw: onnx.TypeProto.Tensor = None,
-    ):
-        super().__init__(
-            namespace=onnx_type_namespace(),
-            name="Tensor",
-            attrs=Attributes(
-                elem_type=elem_type,
-                shape=shape,
-            ),
-            raw=raw,
+_serde_dispatcher = OnnxSerdeDispatcher()
+
+get_serde_registry().register_namespace(onnx_type_namespace(), _serde_dispatcher)
+
+
+def to_proto_dict(dtype: DataType) -> Dict[str, Any]:
+    name_to_field = {
+        "Tensor": "tensor_type",
+        "Sequence": "sequence_type",
+        "Map": "map_type",
+    }
+    return {name_to_field[dtype.name]: dtype.attrs}
+
+
+def from_type_str(type_str: Union[Set[str], str]) -> DataType:
+    if isinstance(type_str, set):
+        types = [from_type_str(type) for type in type_str]
+        if len(types) == 1:
+            return types[0]
+        else:
+            return onnx_dtype("Union", {"types": types})
+    if type_str.startswith("tensor"):
+        return onnx_dtype(
+            "Tensor",
+            attrs={"elem_type": to_dtype_enum(type_str[len("tensor") + 1 : -1])},
         )
-
-    @classmethod
-    def from_proto(cls, proto: onnx.TypeProto.Tensor) -> "OnnxTensorType":
-        return OnnxTensorType(
-            elem_type=to_dtype_str(proto.elem_type),
-            shape=proto.shape,
-            raw=proto,
+    if type_str.startswith("seq"):
+        return onnx_dtype(
+            "Sequence",
+            attrs={
+                "elem_type": to_proto_dict(from_type_str(type_str[len("seq") + 1 : -1]))
+            },
         )
-
-    def to_proto(self) -> onnx.TypeProto:
-        proto = onnx.TypeProto()
-        proto.tensor_type.elem_type = to_dtype_enum(self.attrs["elem_type"])
-        proto.tensor_type.shape.CopyFrom(self.attrs["shape"])
-        return proto
-
-
-class OnnxSequenceType(OnnxType):
-    def __init__(self, elem_type: OnnxType = None, raw: onnx.TypeProto.Sequence = None):
-        super().__init__(
-            namespace=onnx_type_namespace(),
-            name="Sequence",
-            attrs=Attributes(
-                elem_type=elem_type,
-            ),
-            raw=type,
+    if type_str.startswith("map"):
+        key_type, value_type = type_str[len("map") + 1 : -1].split(", ")
+        return onnx_dtype(
+            "Map",
+            attrs={
+                "key_type": to_dtype_enum(key_type),
+                "value_type": to_proto_dict(from_type_str(value_type)),
+            },
         )
-
-    @classmethod
-    def from_proto(cls, proto: onnx.TypeProto.Sequence) -> "OnnxSequenceType":
-        return OnnxSequenceType(
-            elem_type=OnnxType.from_proto(proto.elem_type),
-            raw=proto,
-        )
-
-    def to_proto(self) -> onnx.TypeProto:
-        proto = onnx.TypeProto()
-        proto.sequence_type.elem_type.CopyFrom(self.attrs["elem_type"].to_proto())
-        return proto
+    return onnx_dtype("Tensor", attrs={"elem_type": to_dtype_enum(type_str)})
 
 
-class OnnxMapType(OnnxType):
-    def __init__(
-        self,
-        key_type: str = None,
-        value_type: OnnxType = None,
-        raw: onnx.TypeProto.Map = None,
-    ):
-        super().__init__(
-            namespace=onnx_type_namespace(),
-            name="Map",
-            attrs=Attributes(
-                key_type=key_type,
-                value_type=value_type,
-            ),
-            raw=type,
-        )
-
-    @classmethod
-    def from_proto(cls, proto: onnx.TypeProto.Map) -> "OnnxMapType":
-        return OnnxMapType(
-            key_type=to_dtype_str(proto.key_type),
-            value_type=OnnxType.from_proto(proto.value_type),
-            raw=proto,
-        )
-
-    def to_proto(self) -> onnx.TypeProto:
-        proto = onnx.TypeProto()
-        proto.map_type.key_type = to_dtype_enum(self.attrs["key_type"])
-        proto.map_type.value_type.CopyFrom(self.attrs["value_type"].to_proto())
-        return proto
-
-
-def import_from_model_def(model_def: Union[onnx.ModelProto, str, bytes, Path]) -> Graph:
+def import_from_model_def(
+    model_def: Union[onnx.ModelProto, str, bytes, Path]
+) -> SubGraph:
     model_def = to_proto(model_def, onnx.ModelProto)
     graph_def = model_def.graph
     graph = import_from_graph_def(graph_def)
@@ -201,47 +211,56 @@ def import_from_model_def(model_def: Union[onnx.ModelProto, str, bytes, Path]) -
     return graph
 
 
-def import_from_graph_def(graph_def: Union[onnx.GraphProto, str, bytes, Path]) -> Graph:
+def import_from_graph_def(
+    graph_def: Union[onnx.GraphProto, str, bytes, Path]
+) -> SubGraph:
     graph_def = to_proto(graph_def, onnx.GraphProto)
+    initializers = {initializer.name for initializer in graph_def.initializer}
+    sparse_initializers = {
+        initializer.values.name for initializer in graph_def.sparse_initializer
+    }
+    input_defs: Dict[str, onnx.ValueInfoProto] = {}
     graph = create_subgraph(
         name=getattr(graph_def, "name") if graph_def.HasField("name") else None,
         namespace=onnx_namespace(),
         inputs=OrderedDict(
-            (input_def.name, OnnxType.from_proto(input_def.type))
+            (input_def.name, serialize_type(input_def.type))
             for input_def in graph_def.input
+            if (input_def.name not in initializers)
+            or (input_def.name not in sparse_initializers)
         ),
         outputs=OrderedDict(
-            (output_def.name, OnnxType.from_proto(output_def.type))
+            (output_def.name, serialize_type(output_def.type))
             for output_def in graph_def.output
         ),
     )
     name_to_output_port: Dict[str, OutputPort] = {}
 
     def add_initializer(graph: Graph, initializer: onnx.TensorProto):
+        input_def = input_defs[initializer.name]
         op = create_op(
             name=initializer.name,
             type="Initializer",
             inputs=[],
-            outputs=OrderedDict(
-                value=OnnxTensorType(elem_type=to_dtype_str(initializer.data_type))
-            ),
+            outputs=OrderedDict(value=serialize_type(input_def.type)),
         )
         op.attrs["value"] = initializer
+        if input_def.HasField("doc_string"):
+            op.attrs["doc_string"] = input_def.doc_string
         graph.add_op(op)
         name_to_output_port[op.name] = op.output_port(0)
 
     def add_sparse_initializer(graph: Graph, initializer: onnx.SparseTensorProto):
+        input_def = input_defs[initializer.values.name]
         op = create_op(
             name=initializer.values.name,
             type="SparseInitializer",
             inputs=[],
-            outputs=OrderedDict(
-                value=OnnxTensorType(
-                    elem_type=to_dtype_str(initializer.values.data_type)
-                )
-            ),
+            outputs=OrderedDict(value=serialize_type(input_def.type)),
         )
         op.attrs["value"] = initializer
+        if input_def.HasField("doc_string"):
+            op.attrs["doc_string"] = input_def.doc_string
         graph.add_op(op)
         name_to_output_port[op.name] = op.output_port(0)
 
@@ -262,12 +281,10 @@ def import_from_graph_def(graph_def: Union[onnx.GraphProto, str, bytes, Path]) -
             namespace=onnx_namespace(),
             attrs=attrs,
             inputs=OrderedDict(
-                (input.name, OnnxType.from_type_str(input.typeStr))
-                for input in schema.inputs
+                (input.name, from_type_str(input.types)) for input in schema.inputs
             ),
             outputs=OrderedDict(
-                (output.name, OnnxType.from_type_str(output.typeStr))
-                for output in schema.outputs
+                (output.name, from_type_str(output.types)) for output in schema.outputs
             ),
         )
         if node.HasField("doc_string"):
@@ -293,13 +310,18 @@ def import_from_graph_def(graph_def: Union[onnx.GraphProto, str, bytes, Path]) -
     ]:
         graph.attrs[key] = list(getattr(graph_def, key))
     for input_def in graph_def.input:
-        if input_def.HasField("doc_string"):
-            graph.attrs[
-                f"input_port/{input_def.name}/doc_string"
-            ] = input_def.doc_string
-        name_to_output_port[input_def.name] = cast(
-            OutputPort, graph.input_port(input_def.name)
-        )
+        if (input_def.name not in initializers) and (
+            input_def.name not in sparse_initializers
+        ):
+            if input_def.HasField("doc_string"):
+                graph.attrs[
+                    f"input_port/{input_def.name}/doc_string"
+                ] = input_def.doc_string
+            name_to_output_port[input_def.name] = cast(
+                OutputPort, graph.input_port(input_def.name)
+            )
+        else:
+            input_defs[input_def.name] = input_def
     for output_def in graph_def.output:
         if output_def.HasField("doc_string"):
             graph.attrs[
@@ -331,7 +353,8 @@ def export_to_model_def(
         if key in graph.attrs:
             setattr(model_def, key, graph.attrs[key])
     for key in ["opset_import", "metadata_props"]:
-        getattr(model_def, key).extend(graph.attrs[key])
+        if len(graph.attrs[key]) != 0:
+            getattr(model_def, key).extend(graph.attrs[key])
     if file is not None:
         onnx.save(model_def, str(file))
     return model_def
@@ -345,11 +368,22 @@ def export_to_graph_def(
     graph_def = onnx.GraphProto()
     if graph.name is not None:
         graph_def.name = graph.name
+
+    def add_input(graph_def, name, type):
+        input_def = graph_def.input.add()
+        input_def.name = name
+        input_def.type.CopyFrom(deserialize_type(type))
+        doc_key = f"input_port/{name}/doc_string"
+        if doc_key in graph.attrs:
+            input_def.doc_string = graph.attrs[doc_key]
+
     for op in graph.sorted_ops:
         if op.type == "Initializer":
             graph_def.initializer.append(op.attrs["value"])
+            add_input(graph_def, op.name, op.output_port(0).type)
         elif op.type == "SparseInitializer":
             graph_def.sparse_initializer.append(op.attrs["value"])
+            add_input(graph_def, op.name, op.output_port(0).type)
         else:
             attrs = without_internal_attrs(op.attrs, ["doc_string"])
             node = graph_def.node.add()
@@ -399,15 +433,17 @@ def export_to_graph_def(
         "value_info",
         "quantization_annotation",
     ]:
-        getattr(graph_def, key).extend(graph.attrs[key])
+        if len(graph.attrs[key]) != 0:
+            getattr(graph_def, key).extend(graph.attrs[key])
     for port in graph.input_ports:
-        input_def = graph_def.input.add()
-        input_def.name = port.name
-        input_def.type.CopyFrom(cast(OnnxType, port.type).to_proto())
+        add_input(graph_def, port.name, port.type)
     for port in graph.output_ports:
         output_def = graph_def.output.add()
         output_def.name = port.name
-        output_def.type.CopyFrom(cast(OnnxType, port.type).to_proto())
+        output_def.type.CopyFrom(deserialize_type(port.type))
+        doc_key = f"output_port/{port.name}/doc_string"
+        if doc_key in graph.attrs:
+            output_def.doc_string = graph.attrs[doc_key]
     if file is not None:
         file = Path(file)
         file.write_bytes(graph_def.SerializeToString())

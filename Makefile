@@ -45,7 +45,7 @@ $(STORE_TENSOR_TARGET_LIB): $(STORE_TENSOR_SRCS)
 	$(CXX) $(CFLAGS) -o $@ $^ ${LDFLAGS}
 
 proto:
-	protoc -I src/amanda/io --python_out=src/amanda/io/generated src/amanda/io/*.proto
+	protoc -I src --python_out=src --mypy_out=src src/amanda/io/*.proto
 
 help:
 	@python -c "$$PRINT_HELP_PYSCRIPT" < $(MAKEFILE_LIST)

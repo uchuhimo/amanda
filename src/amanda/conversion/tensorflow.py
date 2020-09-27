@@ -3,14 +3,18 @@ from contextlib import ExitStack
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Callable, Dict, List, Tuple, Union
 
 import google.protobuf.text_format
 import tensorflow as tf
 from tensorflow.core.framework import tensor_pb2, variable_pb2
 from tensorflow.core.framework.op_def_pb2 import OpDef
+from tensorflow.core.framework.versions_pb2 import VersionDef
+from tensorflow.core.protobuf.meta_graph_pb2 import AssetFileDef, SignatureDef
+from tensorflow.core.protobuf.saved_object_graph_pb2 import SavedObjectGraph
 from tensorflow.core.protobuf.saver_pb2 import SaverDef
 from tensorflow.python import tensor_shape, types_pb2
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework.meta_graph import stripped_op_list_for_graph
 from tensorflow.python.framework.op_def_library import (
     _IsListValue,
@@ -27,6 +31,15 @@ from tensorflow.python.util import compat
 from amanda.conversion.utils import diff_graph_def, to_proto, without_internal_attrs
 from amanda.exception import MismatchNamespaceError
 from amanda.graph import Graph, Op, OutputPort, create_graph, create_op
+from amanda.io.serde import (
+    ProtoToDictSerde,
+    Serde,
+    SerdeContext,
+    SerdeDispatcher,
+    TypeSerde,
+    get_serde_registry,
+    serialize_type,
+)
 from amanda.namespace import Namespace, default_namespace
 from amanda.type import DataType
 
@@ -47,12 +60,89 @@ def tf_type_namespace() -> Namespace:
     return _type_namespace
 
 
-class TFDType(DataType):
-    def __init__(self, dtype: tf.DType):
-        super().__init__(namespace=tf_type_namespace(), name=dtype.name, raw=dtype)
+def tf_dtype(name: str):
+    return DataType(tf_type_namespace(), name)
 
-    def __eq__(self, other):
-        return isinstance(other, TFDType) and self.name == other.name
+
+_name_to_dtype = {
+    dtype.name: tf_dtype(dtype.name) for _, dtype in dtypes._INTERN_TABLE.items()
+}
+
+_name_to_tf_dtype = {
+    tf_dtype.name: tf_dtype for _, tf_dtype in dtypes._INTERN_TABLE.items()
+}
+
+
+class TFSerde(TypeSerde):
+    def serialize_type(self, type: Any) -> DataType:
+        return _name_to_dtype[type.name]
+
+    def deserialize_type(self, dtype: DataType) -> Any:
+        return _name_to_tf_dtype[dtype.name]
+
+
+_tf_serde = TFSerde()
+
+
+class TFTensorShapeSerde(Serde):
+    def serialize_type(self, type: Any) -> DataType:
+        return tf_dtype("TensorShape")
+
+    def deserialize_type(self, dtype: DataType) -> Any:
+        return tf.TensorShape
+
+    def serialize(self, value: Any) -> Any:
+        return value.dims if value.dims is None else [dim.value for dim in value.dims]
+
+    def deserialize(self, value: Any, context: SerdeContext) -> Any:
+        return tf.TensorShape(value)
+
+
+class TFDTypeSerde(Serde):
+    def serialize_type(self, type: Any) -> DataType:
+        return tf_dtype("DType")
+
+    def deserialize_type(self, dtype: DataType) -> Any:
+        return tf.DType
+
+    def serialize(self, value: Any) -> Any:
+        return value.name
+
+    def deserialize(self, value: Any, context: SerdeContext) -> Any:
+        return _name_to_tf_dtype[value]
+
+
+@dataclass
+class TFSerdeDispatcher(SerdeDispatcher):
+    def __post_init__(self):
+        for tf_dtype in _name_to_tf_dtype.values():
+            self.register_type(tf_dtype, _tf_serde)
+        for dtype in _name_to_dtype.values():
+            self.register_dtype_name(dtype.name, _tf_serde)
+        for proto_type in [
+            SaverDef,
+            tf.MetaGraphDef.MetaInfoDef,
+            AssetFileDef,
+            SavedObjectGraph,
+            SignatureDef,
+            VersionDef,
+            tensor_pb2.TensorProto,
+            tf.NameAttrList,
+        ]:
+            serde = ProtoToDictSerde(
+                proto_type,
+                name=proto_type.__name__,
+                namespace=tf_type_namespace(),
+            )
+            self.register_type(proto_type, serde)
+            self.register_dtype_name(proto_type.__name__, serde)
+        self.register_type(tf.TensorShape, TFTensorShapeSerde())
+        self.register_dtype_name("TensorShape", TFTensorShapeSerde())
+        self.register_type(tf.DType, TFDTypeSerde())
+        self.register_dtype_name("DType", TFDTypeSerde())
+
+
+get_serde_registry().register_namespace(tf_type_namespace(), TFSerdeDispatcher())
 
 
 def import_from_graph(
@@ -173,10 +263,11 @@ def import_from_graph_def(graph_def: Union[tf.GraphDef, str, bytes, Path]) -> Gr
             name=node.name,
             attrs=attrs,
             inputs=OrderedDict(
-                (name, TFDType(dtype)) for name, dtype in get_input_args(tf_graph, node)
+                (name, serialize_type(dtype))
+                for name, dtype in get_input_args(tf_graph, node)
             ),
             outputs=OrderedDict(
-                (name, TFDType(dtype))
+                (name, serialize_type(dtype))
                 for name, dtype in get_output_args(tf_graph, node)
             ),
         )
@@ -197,6 +288,71 @@ def import_from_graph_def(graph_def: Union[tf.GraphDef, str, bytes, Path]) -> Gr
         if graph_def.HasField(key):
             graph.attrs[key] = getattr(graph_def, key)
     return graph
+
+
+def import_from_pbtxt(file: Union[str, Path]) -> Graph:
+    file = Path(file)
+    graph_def = tf.GraphDef()
+    google.protobuf.text_format.Parse(file.read_text(), graph_def)
+    return import_from_graph_def(graph_def)
+
+
+def extract_meta_graph_fields(graph, meta_graph):
+    new_meta_info_def = tf.MetaGraphDef.MetaInfoDef()
+    new_meta_info_def.CopyFrom(meta_graph.meta_info_def)
+    new_meta_info_def.stripped_op_list.Clear()
+    graph.attrs["meta_info_def"] = new_meta_info_def
+    graph.attrs["signature_def"] = dict(meta_graph.signature_def)
+    graph.attrs["asset_file_def"] = list(meta_graph.asset_file_def)
+    if meta_graph.HasField("object_graph_def"):
+        graph.attrs["object_graph_def"] = meta_graph.object_graph_def
+
+
+def construct_meta_graph_fields(graph, meta_graph, graph_def):
+    meta_graph.meta_info_def.CopyFrom(graph.attrs["meta_info_def"])
+    meta_graph.meta_info_def.stripped_op_list.CopyFrom(
+        stripped_op_list_for_graph(graph_def)
+    )
+    for key, proto in graph.attrs["signature_def"]:
+        meta_graph.signature_def[key].CopyFrom(proto)
+    for proto in graph.attrs["asset_file_def"]:
+        new_proto = meta_graph.asset_file_def.add()
+        new_proto.CopyFrom(proto)
+    if "object_graph_def" in graph.attrs:
+        meta_graph.object_graph_def.CopyFrom(graph.attrs["object_graph_def"])
+
+
+def import_from_meta_graph(
+    meta_graph: Union[tf.MetaGraphDef, str, bytes, Path],
+    checkpoint: Union[str, Path] = None,
+    session: tf.Session = None,
+) -> Graph:
+    meta_graph = to_proto(meta_graph, tf.MetaGraphDef)
+    with tf.Graph().as_default() as tf_graph, ExitStack() as exit_stack:
+        saver = tf.train.import_meta_graph(meta_graph)
+        if checkpoint is not None:
+            if session is None:
+                session = tf.Session()
+                exit_stack.enter_context(session)
+            saver.restore(session, str(checkpoint))
+        graph = import_from_graph(tf_graph, saver.as_saver_def(), session)
+        extract_meta_graph_fields(graph, meta_graph)
+        return graph
+
+
+def import_from_checkpoint(path: Union[str, Path]) -> Graph:
+    path = str(path)
+    return import_from_meta_graph(path + ".meta", path)
+
+
+def import_from_saved_model(path: Union[str, Path], tags: List[str]) -> Graph:
+    path = str(path)
+    with tf.Graph().as_default() as tf_graph:
+        with tf.Session() as session:
+            meta_graph = tf.saved_model.load(session, tags, path)
+            graph = import_from_graph(tf_graph, meta_graph.saver_def, session)
+            extract_meta_graph_fields(graph, meta_graph)
+            return graph
 
 
 def get_dtype_proto(node_def, op_def, arg):
@@ -278,12 +434,12 @@ def from_attr_proto(attr_value: tf.AttrValue) -> Any:
     field_name = attr_value.WhichOneof("value")
     if field_name == "s":
         return attr_value.s
+    elif field_name == "b":
+        return attr_value.b
     elif field_name == "i":
         return attr_value.i
     elif field_name == "f":
         return attr_value.f
-    elif field_name == "b":
-        return attr_value.b
     elif field_name == "type":
         return tf.as_dtype(attr_value.type)
     elif field_name == "shape":
@@ -298,12 +454,12 @@ def from_attr_proto(attr_value: tf.AttrValue) -> Any:
         list_value = attr_value.list
         if len(list_value.s) != 0:
             return [value for value in list_value.s]
+        elif len(list_value.b) != 0:
+            return [value for value in list_value.b]
         elif len(list_value.i) != 0:
             return [value for value in list_value.i]
         elif len(list_value.f) != 0:
             return [value for value in list_value.f]
-        elif len(list_value.b) != 0:
-            return [value for value in list_value.b]
         elif len(list_value.type) != 0:
             return [tf.as_dtype(value) for value in list_value.type]
         elif len(list_value.shape) != 0:
@@ -314,71 +470,6 @@ def from_attr_proto(attr_value: tf.AttrValue) -> Any:
             return [value for value in list_value.func]
         else:
             return []
-
-
-def import_from_pbtxt(file: Union[str, Path]) -> Graph:
-    file = Path(file)
-    graph_def = tf.GraphDef()
-    google.protobuf.text_format.Parse(file.read_text(), graph_def)
-    return import_from_graph_def(graph_def)
-
-
-def extract_meta_graph_fields(graph, meta_graph):
-    new_meta_info_def = tf.MetaGraphDef.MetaInfoDef()
-    new_meta_info_def.CopyFrom(meta_graph.meta_info_def)
-    new_meta_info_def.stripped_op_list.Clear()
-    graph.attrs["meta_info_def"] = new_meta_info_def
-    graph.attrs["signature_def"] = dict(meta_graph.signature_def)
-    graph.attrs["asset_file_def"] = list(meta_graph.asset_file_def)
-    if meta_graph.HasField("object_graph_def"):
-        graph.attrs["object_graph_def"] = meta_graph.object_graph_def
-
-
-def construct_meta_graph_fields(graph, meta_graph, graph_def):
-    meta_graph.meta_info_def.CopyFrom(graph.attrs["meta_info_def"])
-    meta_graph.meta_info_def.stripped_op_list.CopyFrom(
-        stripped_op_list_for_graph(graph_def)
-    )
-    for key, proto in graph.attrs["signature_def"]:
-        meta_graph.signature_def[key].CopyFrom(proto)
-    for proto in graph.attrs["asset_file_def"]:
-        new_proto = meta_graph.asset_file_def.add()
-        new_proto.CopyFrom(proto)
-    if "object_graph_def" in graph.attrs:
-        meta_graph.object_graph_def.CopyFrom(graph.attrs["object_graph_def"])
-
-
-def import_from_meta_graph(
-    meta_graph: Union[tf.MetaGraphDef, str, bytes, Path],
-    checkpoint: Union[str, Path] = None,
-    session: tf.Session = None,
-) -> Graph:
-    meta_graph = to_proto(meta_graph, tf.MetaGraphDef)
-    with tf.Graph().as_default() as tf_graph, ExitStack() as exit_stack:
-        saver = tf.train.import_meta_graph(meta_graph)
-        if checkpoint is not None:
-            if session is None:
-                session = tf.Session()
-                exit_stack.enter_context(session)
-            saver.restore(session, str(checkpoint))
-        graph = import_from_graph(tf_graph, saver.as_saver_def(), session)
-        extract_meta_graph_fields(graph, meta_graph)
-        return graph
-
-
-def import_from_checkpoint(path: Union[str, Path]) -> Graph:
-    path = str(path)
-    return import_from_meta_graph(path + ".meta", path)
-
-
-def import_from_saved_model(path: Union[str, Path], tags: List[str]) -> Graph:
-    path = str(path)
-    with tf.Graph().as_default() as tf_graph:
-        with tf.Session() as session:
-            meta_graph = tf.saved_model.load(session, tags, path)
-            graph = import_from_graph(tf_graph, meta_graph.saver_def, session)
-            extract_meta_graph_fields(graph, meta_graph)
-            return graph
 
 
 def get_tensor_name_by_port(port: OutputPort, compact: bool = False) -> str:
@@ -404,14 +495,6 @@ def export_to_graph(graph: Graph) -> Tuple[tf.Graph, tf.train.Saver, tf.Session]
         else:
             tf.graph_util.import_graph_def(export_to_graph_def(graph))
             saver = tf.train.Saver()
-        for variable in tf_graph.get_collection(tf.GraphKeys.GLOBAL_VARIABLES):
-            variable_def = variable.to_proto()
-            op = graph.get_op(variable.name[: variable.name.rfind(":")])
-            op.attrs["initial_value_name"] = variable_def.initial_value_name
-            op.attrs["initializer_name"] = variable_def.initializer_name
-            op.attrs["snapshot_name"] = variable_def.snapshot_name
-            op.attrs["is_resource"] = variable_def.is_resource
-            op.attrs["trainable"] = variable_def.trainable
         variables = {}
         for op in graph.ops:
             if op.type == "VariableV2":
@@ -774,13 +857,13 @@ def import_from_tf_func(tf_func):
     return amanda_func
 
 
-import_types = {
+import_types: Dict[str, Callable] = {
     "tensorflow_pbtxt": import_from_pbtxt,
     "tensorflow_checkpoint": import_from_checkpoint,
     "tensorflow_saved_model": import_from_saved_model,
 }
 
-export_types = {
+export_types: Dict[str, Callable] = {
     "tensorflow_pbtxt": export_to_pbtxt,
     "tensorflow_checkpoint": export_to_checkpoint,
     "tensorflow_saved_model": export_to_saved_model,

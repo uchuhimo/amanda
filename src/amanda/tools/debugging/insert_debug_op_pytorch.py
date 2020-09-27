@@ -9,7 +9,7 @@ from loguru import logger
 
 import amanda
 from amanda import create_op
-from amanda.tests.utils import root_dir
+from amanda.io.file import root_dir
 
 op_source = """
 #include <torch/script.h>

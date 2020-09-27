@@ -18,7 +18,7 @@ def test_belong_to(namespace):
 
 
 def test_truediv(namespace):
-    assert (namespace / "level3").namespace == "level1/level2/level3"
+    assert (namespace / "level3").full_name == "level1/level2/level3"
 
 
 def test_eq(namespace):

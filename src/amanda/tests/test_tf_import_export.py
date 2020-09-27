@@ -8,6 +8,7 @@ import pytest
 import tensorflow as tf
 from loguru import logger
 
+import amanda
 from amanda import Graph, create_op
 from amanda.conversion.tensorflow import (
     export_to_checkpoint,
@@ -22,7 +23,7 @@ from amanda.conversion.tensorflow import (
     import_from_tf_func,
 )
 from amanda.conversion.utils import diff_graph_def
-from amanda.tests.utils import root_dir
+from amanda.io.file import root_dir
 
 
 @pytest.fixture(
@@ -126,6 +127,22 @@ input_shapes = {
 }
 
 
+def test_tf_serialize_graph(arch_name):
+    original_checkpoint = tf.train.latest_checkpoint(
+        root_dir() / "downloads" / "model" / arch_name
+    )
+    graph_path = root_dir() / "tmp" / "tf_graph" / arch_name / arch_name
+    graph = import_from_checkpoint(original_checkpoint)
+    graph_def = export_to_graph_def(graph)
+    amanda.io.save_to_proto(graph, graph_path)
+    new_graph = amanda.io.load_from_proto(graph_path)
+    # TODO: the model is too large to store in YAML
+    # amanda.io.save_to_yaml(graph, graph_path)
+    # new_graph = amanda.io.load_from_yaml(graph_path)
+    new_graph_def = export_to_graph_def(new_graph)
+    assert diff_graph_def(graph_def, new_graph_def) == {}
+
+
 def test_tf_modify_graph(arch_name):
     input = np.random.rand(*input_shapes[arch_name])
     output, graph_def = run_model(arch_name, model_dir="downloads/model", input=input)
@@ -158,7 +175,7 @@ def check_modified_graph(graph_def, new_graph_def):
     assert np.all([node["op"] == "Identity" for node in inserted_ops.values()])
     inserted_op_names = {node["name"] for node in inserted_ops.values()}
     updated_ops = node_diff[jsondiff.update]
-    for op_name, updated_op in updated_ops.items():
+    for updated_op in updated_ops.values():
         assert [jsondiff.update] == list(updated_op.keys())
         assert ["input"] == list(updated_op[jsondiff.update].keys())
         input_diff = updated_op[jsondiff.update]["input"]

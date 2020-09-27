@@ -16,6 +16,7 @@ loguru
 mmdnn
 more-itertools
 mypy
+mypy-protobuf
 numpy
 onnx
 onnxruntime
@@ -24,6 +25,7 @@ pre-commit
 protobuf
 pytest
 pytest-xdist
+pyyaml
 scipy
 sphinx
 tensorflow==1.15.3

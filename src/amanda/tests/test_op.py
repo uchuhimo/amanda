@@ -3,9 +3,9 @@ from collections import OrderedDict
 
 import pytest
 
-from amanda import Edge, InputPort, OutputPort, create_edge, create_op
+from amanda import InputPort, OutputPort, create_edge, create_op
 from amanda.attributes import Attributes
-from amanda.graph import create_control_edge, create_graph
+from amanda.graph import Op, create_control_edge, create_graph
 from amanda.namespace import default_namespace, internal_namespace
 from amanda.tests.utils import test_namespace
 from amanda.type import DataType, unknown_type
@@ -26,10 +26,10 @@ def test_new_op():
     assert op.graph is None
     assert op.namespace is None
     assert op.control_input_port == InputPort(
-        op, name=Edge.CONTROL_PORT_NAME, type=Edge.CONTROL_PORT_TYPE
+        op, name=Op.CONTROL_PORT_NAME, type=Op.CONTROL_PORT_TYPE
     )
     assert op.control_output_port == OutputPort(
-        op, name=Edge.CONTROL_PORT_NAME, type=Edge.CONTROL_PORT_TYPE
+        op, name=Op.CONTROL_PORT_NAME, type=Op.CONTROL_PORT_TYPE
     )
     assert isinstance(op.attrs, Attributes) and len(op.attrs) == 0
 
@@ -59,14 +59,8 @@ def control_input2():
     return create_op(type="cin2", name="control_input2")
 
 
-class DType(DataType):
-    def __init__(self, dtype: str):
-        super().__init__(
-            namespace=test_namespace(), name="dtype", attrs=Attributes(dtype=dtype)
-        )
-
-    def __eq__(self, other):
-        return isinstance(other, DType) and self.attrs["dtype"] == other.attrs["dtype"]
+def create_dtype(dtype: str) -> DataType:
+    return DataType(test_namespace(), "dtype", Attributes(dtype=dtype))
 
 
 @pytest.fixture
@@ -77,7 +71,7 @@ def simple_op(input1, input2, control_input1, control_input2):
         namespace=default_namespace(),
         attrs=dict(kernel_shape=(3, 3)),
         inputs=["in1", "in2"],
-        outputs=OrderedDict(out1=DType("int32"), out2=unknown_type),
+        outputs=OrderedDict(out1=create_dtype("int32"), out2=unknown_type),
     )
     create_graph(
         ops=[op, input1, input2, control_input1, control_input2],
@@ -101,7 +95,7 @@ def test_new_op_with_args(input1, input2, control_input1, control_input2, simple
         input2.output_port(0).out_edges[0].dst,
     ]
     assert simple_op.output_port("out1").name == "out1"
-    assert simple_op.output_port("out1").type == DType("int32")
+    assert simple_op.output_port("out1").type == create_dtype("int32")
     assert simple_op.output_port("out2").name == "out2"
     assert simple_op.output_port("out2").type == unknown_type
     assert simple_op.control_dependencies == [control_input1, control_input2]

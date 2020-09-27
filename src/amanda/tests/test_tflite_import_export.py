@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import tensorflow as tf
 
-from amanda.tests.utils import root_dir
+from amanda.io.file import root_dir
 
 
 @pytest.fixture(

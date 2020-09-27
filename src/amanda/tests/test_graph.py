@@ -3,7 +3,6 @@ import copy
 import pytest
 
 from amanda import (
-    Edge,
     create_control_edge,
     create_control_input_port,
     create_control_output_port,
@@ -11,7 +10,7 @@ from amanda import (
     create_op,
 )
 from amanda.exception import IrremovableOpError
-from amanda.graph import create_graph
+from amanda.graph import Op, create_graph
 from amanda.namespace import default_namespace, internal_namespace
 
 
@@ -118,10 +117,10 @@ def test_control_edge(op1, op2):
     edge = create_control_edge(op1, op2)
     assert edge.src.op == op1
     assert edge.src == create_control_output_port(op1)
-    assert edge.src.name == Edge.CONTROL_PORT_NAME
+    assert edge.src.name == Op.CONTROL_PORT_NAME
     assert edge.dst.op == op2
     assert edge.dst == create_control_input_port(op2)
-    assert edge.dst.name == Edge.CONTROL_PORT_NAME
+    assert edge.dst.name == Op.CONTROL_PORT_NAME
     assert edge.is_control_edge()
     assert edge.dst.is_control()
 

@@ -5,7 +5,9 @@ import torch.jit
 import torchvision.models as models
 from torchvision.models.detection.generalized_rcnn import GeneralizedRCNN
 
+import amanda
 from amanda.conversion.pytorch import export_to_module, import_from_module
+from amanda.io.file import root_dir
 
 
 @pytest.fixture(
@@ -72,11 +74,17 @@ def test_pytorch_import_export_script(model_and_input):
 
 def test_pytorch_import_export_trace(model_and_input):
     model, x = model_and_input
+    arch_name = type(model).__name__
+    graph_path = root_dir() / "tmp" / "pytorch_graph" / arch_name / arch_name
     # torch.save(model, "model.pth")
     traced_model = torch.jit.trace(model, (x,))
     # torch.jit.save(traced_model, "traced_model.pth")
     output = traced_model(x)
     graph = import_from_module(traced_model)
-    new_model = export_to_module(graph)
+    amanda.io.save_to_proto(graph, graph_path)
+    graph = amanda.io.load_from_proto(graph_path)
+    amanda.io.save_to_yaml(graph, graph_path)
+    new_graph = amanda.io.load_from_yaml(graph_path)
+    new_model = export_to_module(new_graph)
     new_output = new_model(x)
     assert_close(output, new_output, model)

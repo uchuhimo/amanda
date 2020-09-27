@@ -5,7 +5,7 @@ import numpy as np
 import tensorflow as tf
 
 import amanda
-from amanda.tests.utils import root_dir
+from amanda.io.file import root_dir
 from amanda.tools.path.instrumentation import modify_graph
 
 arch_name = "vgg16"

@@ -5,8 +5,8 @@ import amanda
 from amanda import Graph, Namespace, Op, get_global_registry
 from amanda.conversion.pytorch import pytorch_namespace
 from amanda.conversion.tensorflow import tf_namespace
+from amanda.io.file import root_dir
 from amanda.rule import OpMapping, Rule, RuleMapper
-from amanda.tests.utils import root_dir
 
 debugging_namespace = Namespace("debugging")
 

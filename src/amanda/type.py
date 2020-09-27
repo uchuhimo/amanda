@@ -10,7 +10,18 @@ class DataType:
     namespace: Namespace
     name: str
     attrs: Attributes = field(default_factory=Attributes)
-    raw: Any = None
+    _raw: Any = field(default=None, repr=False, hash=False, compare=False)
+
+    @property
+    def raw(self) -> Any:
+        if self._raw is None:
+            from amanda.io.serde import deserialize_type
+
+            self._raw = deserialize_type(self)
+        return self._raw
 
 
-unknown_type = DataType(namespace=default_namespace(), name="Unknown")
+unknown_type = DataType(
+    namespace=default_namespace(),
+    name="Unknown",
+)

@@ -3,8 +3,8 @@ import tensorflow as tf
 from tensorflow.python.framework import load_library
 
 import amanda
+from amanda.io.file import root_dir
 from amanda.tests.test_tf_import_export import run_model
-from amanda.tests.utils import root_dir
 from amanda.tools.debugging.insert_debug_op_adhoc import modify_graph
 
 store_tensor_to_file_ops = load_library.load_op_library(

@@ -6,8 +6,8 @@ import tensorflow as tf
 
 from amanda import Graph, OutputPort
 from amanda.conversion.tensorflow import import_from_tf_func
+from amanda.io.file import root_dir
 from amanda.tests.test_tf_import_export import modify_model, run_model
-from amanda.tests.utils import root_dir
 
 arch_name = "vgg16"
 

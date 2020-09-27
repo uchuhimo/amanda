@@ -3,36 +3,36 @@ from typing import Dict, Optional, Union
 
 
 class Namespace:
-    def __init__(self, namespace: str):
-        assert namespace != ""
-        self.namespace = namespace
+    def __init__(self, full_name: str):
+        assert full_name != ""
+        self.full_name = full_name
 
     def qualified(self, name: str) -> str:
-        return f"/{self.namespace}/{get_base_name(name)}"
+        return f"/{self.full_name}/{get_base_name(name)}"
 
     def belong_to(self, namespace: "Namespace") -> bool:
-        return self.namespace == namespace.namespace or self.namespace.startswith(
-            namespace.namespace + "/"
+        return self.full_name == namespace.full_name or self.full_name.startswith(
+            namespace.full_name + "/"
         )
 
     def __truediv__(self, other: Union["Namespace", str]) -> "Namespace":
         if isinstance(other, str):
-            namespace = other
+            full_name = other
         else:
-            namespace = other.namespace
-        return Namespace(f"{self.namespace}/{namespace}")
+            full_name = other.full_name
+        return Namespace(f"{self.full_name}/{full_name}")
 
     def __eq__(self, other):
-        if isinstance(other, Namespace) and self.namespace == other.namespace:
+        if isinstance(other, Namespace) and self.full_name == other.full_name:
             return True
         else:
             return False
 
     def __hash__(self):
-        return hash(self.namespace)
+        return hash(self.full_name)
 
     def __repr__(self) -> str:
-        return f"Namespace({self.namespace})"
+        return f"Namespace({self.full_name})"
 
 
 def is_qualified(name: str) -> bool:
@@ -55,7 +55,7 @@ def get_base_name(name: str) -> str:
 
 def map_namespace(name: str, source: Namespace, target: Namespace) -> str:
     if is_qualified(name):
-        if get_namespace(name) == target.namespace:
+        if get_namespace(name) == target.full_name:
             return get_base_name(name)
         else:
             return name
@@ -108,21 +108,21 @@ class Registry:
         self.mappers: Dict[str, Dict[str, Mapper]] = {}
 
     def get_mapper(self, source: Namespace, target: Namespace) -> Mapper:
-        return self.mappers[source.namespace][target.namespace]
+        return self.mappers[source.full_name][target.full_name]
 
     def add_mapper(self, source: Namespace, target: Namespace, mapper: Mapper):
-        if source.namespace not in self.mappers:
-            self.mappers[source.namespace] = {}
-        self.mappers[source.namespace][target.namespace] = mapper
+        if source.full_name not in self.mappers:
+            self.mappers[source.full_name] = {}
+        self.mappers[source.full_name][target.full_name] = mapper
 
     def remove_mapper(self, source: Namespace, target: Namespace) -> Optional[Mapper]:
-        if source.namespace not in self.mappers:
+        if source.full_name not in self.mappers:
             return None
-        elif target.namespace not in self.mappers[source.namespace]:
+        elif target.full_name not in self.mappers[source.full_name]:
             return None
         else:
-            mapper = self.mappers[source.namespace][target.namespace]
-            del self.mappers[source.namespace][target.namespace]
+            mapper = self.mappers[source.full_name][target.full_name]
+            del self.mappers[source.full_name][target.full_name]
             return mapper
 
 

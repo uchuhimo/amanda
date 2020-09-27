@@ -2,35 +2,32 @@ syntax = "proto3";
 
 package amanda;
 
-import "value.proto";
-
-message DataTypeDef {
-  string namespace = 1;
-  string name = 2;
-  map<string, Value> attrs = 3;
-  Value raw = 4;
-}
+import "amanda/io/value.proto";
 
 message PortDef {
   string name = 1;
-  DataTypeDef type = 2;
+  DataTypeValue type = 2;
 }
 
 message EdgeDef {
-  string src_op = 1;
-  string src_port = 2;
-  string dst_op = 3;
-  string dst_port = 4;
-  map<string, Value> attrs = 5;
+  SerializedValue src = 1;
+  SerializedValue dst = 2;
+  Struct attrs = 3;
 }
 
 message NodeDef {
-  string name = 1;
-  string type = 2;
-  string namespace = 3;
-  repeated PortDef input_ports = 4;
-  repeated PortDef output_ports = 5;
-  repeated NodeDef ops = 6;
-  repeated EdgeDef edges = 7;
-  map<string, Value> attrs = 8;
+  enum NodeKind {
+    OP = 0;
+    GRAPH = 1;
+    SUBGRAPH = 2;
+  }
+  NodeKind node_kind = 1;
+  string name = 2;
+  string type = 3;
+  string namespace = 4;
+  repeated PortDef input_ports = 5;
+  repeated PortDef output_ports = 6;
+  repeated NodeDef ops = 7;
+  repeated EdgeDef edges = 8;
+  Struct attrs = 9;
 }
