@@ -64,8 +64,8 @@ setup(
     },
     install_requires=[
         'click', 'contextvars; python_version < "3.7"',
-        'dataclasses; python_version < "3.7"', 'immutables', 'loguru',
-        'more-itertools', 'protobuf', 'pyyaml',
+        'dataclasses; python_version < "3.7"', 'h5py', 'immutables', 'loguru',
+        'more-itertools', 'protobuf', 'ruamel.yaml',
         'typing; python_version < "3.7"', 'typing-extensions'
     ],
     extras_require={

@@ -135,10 +135,9 @@ def test_tf_serialize_graph(arch_name):
     graph = import_from_checkpoint(original_checkpoint)
     graph_def = export_to_graph_def(graph)
     amanda.io.save_to_proto(graph, graph_path)
-    new_graph = amanda.io.load_from_proto(graph_path)
-    # TODO: the model is too large to store in YAML
-    # amanda.io.save_to_yaml(graph, graph_path)
-    # new_graph = amanda.io.load_from_yaml(graph_path)
+    graph = amanda.io.load_from_proto(graph_path)
+    amanda.io.save_to_yaml(graph, graph_path)
+    new_graph = amanda.io.load_from_yaml(graph_path)
     new_graph_def = export_to_graph_def(new_graph)
     assert diff_graph_def(graph_def, new_graph_def) == {}
 

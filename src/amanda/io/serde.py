@@ -283,14 +283,11 @@ def graph_namespace() -> Namespace:
 
 @dataclass
 class NodeSerde(Serde):
-    node_class: Type
-
     def serialize_type(self, type: Any) -> DataType:
-        return DataType(graph_namespace(), self.node_class.__name__)
+        return DataType(graph_namespace(), "Node")
 
     def deserialize_type(self, dtype: DataType) -> Any:
-        assert self.node_class.__name__ == dtype.name
-        return self.node_class
+        raise NotImplementedError()
 
     def serialize(self, value: Any) -> Any:
         return value.path
@@ -302,20 +299,16 @@ class NodeSerde(Serde):
             else:
                 return from_path(path[1:], cast(Graph, node).get_op(path[0]))
 
-        assert self.node_class.__name__ == context.dtype.name
         return from_path(value, context.root)
 
 
 @dataclass
 class PortSerde(Serde):
-    port_class: Type
-
     def serialize_type(self, type: Any) -> DataType:
-        return DataType(graph_namespace(), self.port_class.__name__)
+        return DataType(graph_namespace(), "Port")
 
     def deserialize_type(self, dtype: DataType) -> Any:
-        assert self.port_class.__name__ == dtype.name
-        return self.port_class
+        raise NotImplementedError()
 
     def serialize(self, value: Any) -> Any:
         op = value.op
@@ -333,10 +326,10 @@ class PortSerde(Serde):
             }
 
     def deserialize(self, value: Any, context: SerdeContext) -> Any:
-        assert self.port_class.__name__ == context.dtype.name
-        context.dtype.name = "Op"
+        dtype = context.dtype.name
+        context.dtype.name = "Node"
         op = deserialize(value["op"], context)
-        context.dtype.name = self.port_class.__name__
+        context.dtype.name = dtype
         if "input_port" in value:
             return op.input_port(value["input_port"])
         else:
@@ -371,18 +364,14 @@ class EdgeSerde(Serde):
         return graph.get_edge(src, dst)
 
 
-get_graph_dispatcher().register_type(Op, NodeSerde(Op))
-get_graph_dispatcher().register_dtype_name("Op", NodeSerde(Op))
-get_graph_dispatcher().register_type(Graph, NodeSerde(Graph))
-get_graph_dispatcher().register_dtype_name("Graph", NodeSerde(Graph))
-get_graph_dispatcher().register_type(SubGraph, NodeSerde(SubGraph))
-get_graph_dispatcher().register_dtype_name("SubGraph", NodeSerde(SubGraph))
-get_graph_dispatcher().register_type(InputPort, PortSerde(InputPort))
-get_graph_dispatcher().register_dtype_name("InputPort", PortSerde(InputPort))
-get_graph_dispatcher().register_type(OutputPort, PortSerde(OutputPort))
-get_graph_dispatcher().register_dtype_name("OutputPort", PortSerde(OutputPort))
-get_graph_dispatcher().register_type(IoPort, PortSerde(IoPort))
-get_graph_dispatcher().register_dtype_name("IoPort", PortSerde(IoPort))
+get_graph_dispatcher().register_type(Op, NodeSerde())
+get_graph_dispatcher().register_type(Graph, NodeSerde())
+get_graph_dispatcher().register_type(SubGraph, NodeSerde())
+get_graph_dispatcher().register_dtype_name("Node", NodeSerde())
+get_graph_dispatcher().register_type(InputPort, PortSerde())
+get_graph_dispatcher().register_type(OutputPort, PortSerde())
+get_graph_dispatcher().register_type(IoPort, PortSerde())
+get_graph_dispatcher().register_dtype_name("Port", PortSerde())
 get_graph_dispatcher().register_type(Edge, EdgeSerde())
 get_graph_dispatcher().register_dtype_name("Edge", EdgeSerde())
 get_serde_registry().register_namespace(graph_namespace(), get_graph_dispatcher())

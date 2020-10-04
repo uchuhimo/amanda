@@ -216,7 +216,7 @@ def to_node(proto: NodeDef, context: SerdeContext) -> Union[Graph, Op]:
     )
     node: Union[Op, Graph]
     if proto.node_kind == NodeDef.GRAPH:
-        node = create_graph(namespace=namespace)
+        node = create_graph(name=name, namespace=namespace)
     elif proto.node_kind == NodeDef.SUBGRAPH:
         node = create_subgraph(
             type=type,

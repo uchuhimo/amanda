@@ -345,6 +345,7 @@ def create_control_edge(
 
 @dataclass
 class Graph:
+    name: str = "graph"
     name_to_op: Dict[str, Op] = field(default_factory=dict)
     index_to_edge: Dict[typing.Tuple[OutputPort, InputPort], Edge] = field(
         default_factory=dict
@@ -393,9 +394,9 @@ class Graph:
         if not self.is_removable(op):
             raise IrremovableOpError
         assert op.name in self.name_to_op
-        self.name_to_op.pop(op.name)
+        del self.name_to_op[op.name]
         if isinstance(op, SubGraph):
-            self.name_to_subgraph.pop(op.name)
+            del self.name_to_subgraph[op.name]
         op.graph = None
         self.invalidate_cache()
 
@@ -433,7 +434,7 @@ class Graph:
         self.invalidate_cache()
 
     def remove_edge(self, edge: Edge):
-        self.index_to_edge.pop((edge.src, edge.dst))
+        del self.index_to_edge[(edge.src, edge.dst)]
         edge.graph = None
         self.invalidate_cache()
 
@@ -593,6 +594,7 @@ class Graph:
 
     def dict(self, ignore_attrs: bool = False):
         result = dict(
+            name=self.name,
             ops={op.name: op.dict(ignore_attrs) for op in self.ops},
             edges={
                 f"{edge.src.op.name}.{edge.src.name} -> "
@@ -611,7 +613,7 @@ class Graph:
 
     def dump_to_str(self) -> str:
         strs = ["Graph("]
-        fields = []
+        fields = [f"name={self.name}"]
         if self.namespace is not None:
             fields.append(f"namespace={self.namespace}")
         fields = fields + self.attrs.to_item_strings()
@@ -633,13 +635,14 @@ class Graph:
 
 
 def create_graph(
+    name: str = "graph",
     namespace: Namespace = None,
     attrs: Dict[str, Any] = None,
     ops: List[Op] = None,
     edges: List[Edge] = None,
 ) -> Graph:
     attrs = attrs or {}
-    graph = Graph(namespace=namespace, attrs=Attributes(attrs))
+    graph = Graph(name=name, namespace=namespace, attrs=Attributes(attrs))
     for op in ops or []:
         graph.add_op(op)
     for edge in edges or []:

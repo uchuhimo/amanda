@@ -1,5 +1,3 @@
-import os
-import warnings
 from importlib.util import find_spec
 
 from . import io  # noqa: F401
@@ -27,8 +25,6 @@ from .namespace import (  # noqa: F401
 from .type import DataType, unknown_type  # noqa: F401
 
 if find_spec("tensorflow"):
-    os.environ["KMP_WARNINGS"] = "FALSE"
-    warnings.filterwarnings("ignore", category=FutureWarning)
     from .conversion import tensorflow  # noqa: F401
 if find_spec("torch"):
     from .conversion import pytorch  # noqa: F401

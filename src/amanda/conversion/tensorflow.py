@@ -573,7 +573,7 @@ def export_to_graph_def(graph: Graph) -> tf.GraphDef:
                 "trainable",
             ]:
                 if key in attrs:
-                    attrs.pop(key)
+                    del attrs[key]
         for name, attr_value in to_attrs_proto(
             tf_graph._get_op_def(op.type), op.type, attrs
         ).items():
