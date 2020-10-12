@@ -52,10 +52,10 @@ The usage of ``amanda``\ :
    Usage: amanda [OPTIONS] [TOOL_ARGS]...
 
    Options:
-     -i, --import [tensorflow_pbtxt|tensorflow_checkpoint|tensorflow_saved_model|onnx_model|onnx_graph|torchscript|mmdnn]
+     -i, --import [amanda_proto|amanda_yaml|tensorflow_pbtxt|tensorflow_checkpoint|tensorflow_saved_model|torchscript|onnx_model|onnx_graph|mmdnn]
                                      Type of the imported model.  [required]
      -f, --from PATH                 Path of the imported model.  [required]
-     -e, --export [tensorflow_pbtxt|tensorflow_checkpoint|tensorflow_saved_model|onnx_model|onnx_graph|torchscript|mmdnn]
+     -e, --export [amanda_proto|amanda_yaml|tensorflow_pbtxt|tensorflow_checkpoint|tensorflow_saved_model|torchscript|onnx_model|onnx_graph|mmdnn]
                                      Type of the exported model.  [required]
      -t, --to PATH                   Path of the exported model.  [required]
      -ns, --namespace TEXT           Namespace of the graph instrumented by the
@@ -79,6 +79,24 @@ E.g. use a tool to insert debugging ops into a TensorFlow graph from a checkpoin
    amanda-run amanda.tools.debugging.insert_debug_op_tensorflow.run_model --model-dir tmp/modified_model/vgg16
 
 The modified model will be saved into ``tmp/modified_model/vgg16``\ , and the debugging information will be stored into ``tmp/debug_info/vgg16``.
+
+E.g. convert a TensorFlow model to an Amanda graph:
+
+.. code-block:: bash
+
+   amanda --import tensorflow_checkpoint --from downloads/model/vgg16/imagenet_vgg16.ckpt \
+          --export amanda_yaml --to tmp/amanda_graph/vgg16/imagenet_vgg16
+
+The Amanda graph will be saved into ``tmp/amanda_graph/vgg16``.
+
+E.g. convert an Amanda graph to a TensorFlow model:
+
+.. code-block:: bash
+
+   amanda --import amanda_yaml --from tmp/amanda_graph/vgg16/imagenet_vgg16 \
+          --export tensorflow_checkpoint --to tmp/tf_model/vgg16/imagenet_vgg16.ckpt
+
+The TensorFlow model will be saved into ``tmp/tf_model/vgg16``.
 
 Import a model (from TensorFlow/ONNX/...)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -6,9 +6,14 @@ import click
 
 from amanda.cli.utils import import_from_name
 from amanda.io.file import ensure_dir
+from amanda.io.file import export_types as amanda_export_types
+from amanda.io.file import import_types as amanda_import_types
 
 import_types: Dict[str, Callable] = {}
 export_types: Dict[str, Callable] = {}
+
+import_types.update(amanda_import_types)
+export_types.update(amanda_export_types)
 
 if find_spec("tensorflow"):
     from amanda.conversion.tensorflow import export_types as tf_export_types
@@ -109,7 +114,8 @@ def cli(
         import_func = import_types[import_type]
         import_path = os.path.abspath(import_path)
         graph = import_func(import_path)
-        graph = graph.to_namespace(namespace)
+        if namespace != "":
+            graph = graph.to_namespace(namespace)
         if tool is not None:
             updated_graph = tool.instrument(graph)
         else:

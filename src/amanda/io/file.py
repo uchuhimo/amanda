@@ -3,7 +3,7 @@ import hashlib
 import os
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, List, Union
+from typing import Any, Callable, Dict, List, Union
 
 import h5py
 import numpy as np
@@ -228,6 +228,16 @@ yaml.constructor.add_constructor("!node", ref_constructor)
 yaml.constructor.add_constructor("!in", ref_constructor)
 yaml.constructor.add_constructor("!out", ref_constructor)
 yaml.constructor.add_constructor("!edge", ref_constructor)
+
+import_types: Dict[str, Callable] = {
+    "amanda_proto": load_from_proto,
+    "amanda_yaml": load_from_yaml,
+}
+
+export_types: Dict[str, Callable] = {
+    "amanda_proto": save_to_proto,
+    "amanda_yaml": save_to_yaml,
+}
 
 
 def ensure_dir(path: str) -> str:
