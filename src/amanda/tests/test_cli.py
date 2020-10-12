@@ -33,6 +33,38 @@ def test_main():
     assert result.exit_code == 0
 
 
+def test_export_to_amanda():
+    args = [
+        "--import",
+        "tensorflow_checkpoint",
+        "--from",
+        "downloads/model/vgg16/imagenet_vgg16.ckpt",
+        "--export",
+        "amanda_yaml",
+        "--to",
+        "tmp/amanda_graph/vgg16/imagenet_vgg16",
+    ]
+    runner = CliRunner()
+    result = runner.invoke(main.cli, list(args))
+    assert result.exit_code == 0
+
+
+def test_import_from_amanda():
+    args = [
+        "--import",
+        "amanda_yaml",
+        "--from",
+        "tmp/amanda_graph/vgg16/imagenet_vgg16",
+        "--export",
+        "tensorflow_checkpoint",
+        "--to",
+        "tmp/tf_model/vgg16/imagenet_vgg16.ckpt",
+    ]
+    runner = CliRunner()
+    result = runner.invoke(main.cli, list(args))
+    assert result.exit_code == 0
+
+
 def test_download():
     args = ["tf", "--model", "vgg16", "--root-dir", "downloads"]
     runner = CliRunner()
