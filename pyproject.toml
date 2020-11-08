@@ -72,6 +72,7 @@ protobuf = "*"
 h5py = "*"
 immutables = "*"
 loguru = "*"
+guppy3 = "*"
 dataclasses = { version = "*", python = "< 3.7" }
 typing = { version = "*", python = "< 3.7" }
 contextvars = { version = "*", python = "< 3.7" }
@@ -99,6 +100,8 @@ mypy = "*"
 pre-commit = "*"
 pytest = "*"
 pytest-xdist = "*"
+pytest-dependency = "*"
+pytest-profiling = "*"
 filelock = "*"
 tox="*"
 coverage= { version = "*", extras = [ "toml" ] }

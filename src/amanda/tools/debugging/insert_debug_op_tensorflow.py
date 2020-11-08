@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import click
 import numpy as np
 import tensorflow as tf
@@ -7,7 +5,7 @@ from tensorflow.python.framework import load_library
 
 import amanda
 from amanda import create_op
-from amanda.io.file import root_dir
+from amanda.io.file import ensure_dir, root_dir
 from amanda.tests.test_tf_import_export import run_model as run_model_from
 from amanda.tool import Tool
 
@@ -27,9 +25,6 @@ assert original_checkpoint_dir is not None
 modified_checkpoint_dir = root_dir() / "tmp" / "modified_model" / arch_name / arch_name
 store_dir = root_dir() / "tmp" / "debug_info" / arch_name
 
-if not Path(store_dir).exists():
-    Path(store_dir).mkdir(mode=0o755, parents=True, exist_ok=True)
-
 
 def run_original_model(input):
     output, _ = run_model_from(arch_name, model_dir="downloads/model", input=input)
@@ -47,7 +42,8 @@ def verify_output(output, new_output):
     np.testing.assert_allclose(output, new_output, atol=1.0e-5)
 
 
-def modify_graph(graph: amanda.Graph):
+def modify_graph(graph: amanda.Graph, store_dir=store_dir):
+    store_dir = ensure_dir(store_dir, is_file=False)
     for op in graph.ops:
         for output_port in op.output_ports:
             if not output_port.type.raw._is_ref_dtype:
@@ -69,8 +65,11 @@ def modify_graph(graph: amanda.Graph):
 
 
 class DebuggingTool(Tool):
+    def __init__(self, store_dir=store_dir):
+        self.store_dir = store_dir
+
     def instrument(self, graph: amanda.Graph) -> amanda.Graph:
-        modify_graph(graph)
+        modify_graph(graph, self.store_dir)
         return graph
 
 

@@ -8,6 +8,7 @@ dephell[full]
 filelock
 fissix
 flake8
+guppy3
 h5py
 immutables
 ipython
@@ -25,6 +26,8 @@ pip>=19.3
 pre-commit
 protobuf
 pytest
+pytest-dependency
+pytest-profiling
 pytest-xdist
 ruamel.yaml
 scipy

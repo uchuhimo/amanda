@@ -58,7 +58,7 @@ tf_arch_names = [
     # "inception_resnet_v2",
     # "nasnet-a_large",
     # "facenet",
-    # "rnn_lstm_gru_stacked",
+    "rnn_lstm_gru_stacked",
 ]
 
 

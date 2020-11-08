@@ -64,8 +64,8 @@ setup(
     },
     install_requires=[
         'click', 'contextvars; python_version < "3.7"',
-        'dataclasses; python_version < "3.7"', 'h5py', 'immutables', 'loguru',
-        'more-itertools', 'protobuf', 'ruamel.yaml',
+        'dataclasses; python_version < "3.7"', 'guppy3', 'h5py', 'immutables',
+        'loguru', 'more-itertools', 'protobuf', 'ruamel.yaml',
         'typing; python_version < "3.7"', 'typing-extensions'
     ],
     extras_require={
@@ -73,8 +73,9 @@ setup(
             "black", "bump2version", "coverage[toml]", "dephell[full]",
             "filelock", "fissix", "flake8", "ipython", "isort[pyproject]",
             "jsondiff", "mmdnn", "mypy", "mypy-protobuf", "numpy", "onnx",
-            "onnxruntime", "pip>=19.3", "pre-commit", "pytest", "pytest-xdist",
-            "scipy", "sphinx", "tensorflow==1.15.3", "torch==1.6.0",
+            "onnxruntime", "pip>=19.3", "pre-commit", "pytest",
+            "pytest-dependency", "pytest-profiling", "pytest-xdist", "scipy",
+            "sphinx", "tensorflow==1.15.3", "torch==1.6.0",
             "torchvision==0.7.0", "tox", "twine", "watchdog", "wget", "wheel"
         ]
     },

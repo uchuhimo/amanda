@@ -240,11 +240,12 @@ export_types: Dict[str, Callable] = {
 }
 
 
-def ensure_dir(path: str) -> str:
-    path = os.path.abspath(path)
-    if not os.path.exists(os.path.dirname(path)):
+def ensure_dir(path: Union[str, Path], is_file: bool = True) -> str:
+    path = os.path.abspath(str(path))
+    dirname = os.path.dirname(path) if is_file else path
+    if not os.path.exists(dirname):
         try:
-            os.makedirs(os.path.dirname(path))
+            os.makedirs(dirname)
         except FileExistsError:
             pass
     return path

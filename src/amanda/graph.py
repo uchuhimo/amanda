@@ -225,7 +225,7 @@ class OutputPort:
     def out_edges(self) -> List["Edge"]:
         graph: Graph
         if isinstance(self.op, SubGraph) and (
-            self in self.op.input_ports or self == self.op.control_output_port
+            self in self.op.input_ports or self is self.op.control_output_port
         ):
             graph = self.op
         else:
@@ -233,7 +233,7 @@ class OutputPort:
         if graph is None:
             return []
         else:
-            return [edge for edge in graph.edges if edge.src == self]
+            return [edge for edge in graph.edges if edge.src is self]
 
     @property
     def out_ops(self) -> List[Op]:
@@ -260,7 +260,7 @@ class InputPort:
     def in_edges(self) -> List["Edge"]:
         graph: Graph
         if isinstance(self.op, SubGraph) and (
-            self in self.op.output_ports or self == self.op.control_input_port
+            self in self.op.output_ports or self is self.op.control_input_port
         ):
             graph = self.op
         else:
@@ -268,7 +268,7 @@ class InputPort:
         if graph is None:
             return []
         else:
-            return [edge for edge in graph.edges if edge.dst == self]
+            return [edge for edge in graph.edges if edge.dst is self]
 
     @property
     def in_ops(self) -> List[Op]:

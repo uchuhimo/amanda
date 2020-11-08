@@ -1,0 +1,16 @@
+- src_namespace: "debugging"
+  dst_namespace: "amanda/tensorflow"
+  rules:
+    convert_debug_op:
+      src_matcher:
+        ops:
+          $debug_op:
+            type: "amanda::store_tensor_to_file"
+      dst_mapper:
+        ops:
+          $debug_op:
+            type: "StoreTensorToFile"
+            attrs:
+              store_dir: tmp/debug_info_adhoc/vgg16
+              T: ${debug_op.output_port(0).type.raw}
+              file_name: ${(debug_op.name + "_" + debug_op.output_port(0).name).replace("/", "_")}

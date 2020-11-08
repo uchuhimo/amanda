@@ -1,4 +1,6 @@
 import os
+import shutil
+import tempfile
 from pathlib import Path
 
 import google.protobuf.text_format
@@ -11,12 +13,15 @@ from loguru import logger
 import amanda
 from amanda import Graph, create_op
 from amanda.conversion.tensorflow import (
+    AmandaHook,
     export_to_checkpoint,
+    export_to_graph,
     export_to_graph_def,
     export_to_pbtxt,
     export_to_saved_model,
     get_diff_after_conversion,
     import_from_checkpoint,
+    import_from_graph,
     import_from_graph_def,
     import_from_pbtxt,
     import_from_saved_model,
@@ -107,6 +112,65 @@ def run_model(arch_name, model_dir, input):
             return output, graph.as_graph_def()
 
 
+def run_model_with_estimator(arch_name, model_dir, input, hook=None):
+    checkpoint_dir = root_dir() / model_dir / arch_name
+    if not checkpoint_dir.exists():
+        raise FileNotFoundError(f"{checkpoint_dir} is not existed")
+    checkpoint_file = tf.train.latest_checkpoint(checkpoint_dir)
+    if checkpoint_file is None:
+        raise FileNotFoundError(
+            f"cannot find checkpoint in {checkpoint_dir}, "
+            f"only find: {os.listdir(checkpoint_dir)}"
+        )
+
+    def model_fn(features, labels, mode):
+        tf.train.import_meta_graph(
+            checkpoint_file + ".meta", input_map={"input:0": features}
+        )
+        logits = tf.get_default_graph().get_tensor_by_name("Output:0")
+        cross_entropy = tf.losses.sparse_softmax_cross_entropy(
+            logits=logits, labels=labels
+        )
+        weight_decay = 1e-4
+        loss = cross_entropy + weight_decay * tf.add_n(
+            [tf.nn.l2_loss(v) for v in tf.trainable_variables()]
+        )
+        if mode == tf.estimator.ModeKeys.TRAIN:
+            global_step = tf.train.get_or_create_global_step()
+            learning_rate = 1e-4
+            optimizer = tf.train.MomentumOptimizer(
+                learning_rate=learning_rate, momentum=0.9
+            )
+            update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+            train_op = tf.group(optimizer.minimize(loss, global_step), update_ops)
+        else:
+            train_op = None
+        return tf.estimator.EstimatorSpec(
+            mode=mode,
+            loss=loss,
+            train_op=train_op,
+        )
+
+    def input_fn():
+        labels = np.array([0])
+        dataset = tf.data.Dataset.from_tensor_slices((input.astype(np.float32), labels))
+        return dataset.batch(1)
+
+    warm_start = tf.estimator.WarmStartSettings(ckpt_to_initialize_from=checkpoint_file)
+    model_dir = tempfile.mkdtemp()
+    try:
+        estimator = tf.estimator.Estimator(
+            model_fn=model_fn,
+            model_dir=model_dir,
+            warm_start_from=warm_start,
+        )
+        estimator.train(
+            input_fn=input_fn, hooks=[hook] if hook is not None else None, steps=1
+        )
+    finally:
+        shutil.rmtree(model_dir)
+
+
 input_shapes = {
     "vgg16": (1, 224, 224, 3),
     "vgg19": (1, 224, 224, 3),
@@ -164,6 +228,20 @@ def test_tf_modify_graph_with_tf_func(arch_name):
     np.testing.assert_allclose(output, new_output)
 
 
+def test_tf_modify_graph_with_hook(arch_name):
+    from amanda.tools.debugging.insert_debug_op_tensorflow import DebuggingTool
+
+    input = np.random.rand(*input_shapes[arch_name])
+    run_model(arch_name, model_dir="downloads/model", input=input)
+    store_dir = root_dir() / "tmp" / "debug_info_with_hook" / arch_name
+    run_model_with_estimator(
+        arch_name,
+        model_dir="downloads/model",
+        input=input,
+        hook=AmandaHook(DebuggingTool(store_dir)),
+    )
+
+
 def check_modified_graph(graph_def, new_graph_def):
     graph_diff = diff_graph_def(graph_def, new_graph_def)
     assert [jsondiff.update] == list(graph_diff.keys())
@@ -200,6 +278,16 @@ def test_tf_import_export_graph_def(arch_name):
     with tf.Graph().as_default() as tf_graph:
         tf.train.import_meta_graph(checkpoint_file + ".meta")
     assert get_diff_after_conversion(tf_graph.as_graph_def()) == {}
+
+
+def test_tf_import_export_graph(arch_name):
+    checkpoint_dir = root_dir() / "downloads" / "model" / arch_name
+    checkpoint_file = tf.train.latest_checkpoint(checkpoint_dir)
+    with tf.Graph().as_default() as tf_graph:
+        tf.train.import_meta_graph(checkpoint_file + ".meta")
+    graph = import_from_graph(tf_graph)
+    new_tf_graph, _, _ = export_to_graph(graph)
+    assert diff_graph_def(tf_graph.as_graph_def(), new_tf_graph.as_graph_def()) == {}
 
 
 def test_tf_import_export_saved_model(arch_name, tmp_path):

@@ -1,3 +1,4 @@
+import gc
 from collections import OrderedDict
 from contextlib import ExitStack
 from dataclasses import dataclass
@@ -40,7 +41,9 @@ from amanda.io.serde import (
     get_serde_registry,
     serialize_type,
 )
+from amanda.lang import replace_all_refs
 from amanda.namespace import Namespace, default_namespace
+from amanda.tool import Tool
 from amanda.type import DataType
 
 _namespace = default_namespace() / Namespace("tensorflow")
@@ -309,15 +312,18 @@ def extract_meta_graph_fields(graph, meta_graph):
 
 
 def construct_meta_graph_fields(graph, meta_graph, graph_def):
-    meta_graph.meta_info_def.CopyFrom(graph.attrs["meta_info_def"])
+    if "meta_info_def" in graph.attrs:
+        meta_graph.meta_info_def.CopyFrom(graph.attrs["meta_info_def"])
     meta_graph.meta_info_def.stripped_op_list.CopyFrom(
         stripped_op_list_for_graph(graph_def)
     )
-    for key, proto in graph.attrs["signature_def"]:
-        meta_graph.signature_def[key].CopyFrom(proto)
-    for proto in graph.attrs["asset_file_def"]:
-        new_proto = meta_graph.asset_file_def.add()
-        new_proto.CopyFrom(proto)
+    if "signature_def" in graph.attrs:
+        for key, proto in graph.attrs["signature_def"]:
+            meta_graph.signature_def[key].CopyFrom(proto)
+    if "asset_file_def" in graph.attrs:
+        for proto in graph.attrs["asset_file_def"]:
+            new_proto = meta_graph.asset_file_def.add()
+            new_proto.CopyFrom(proto)
     if "object_graph_def" in graph.attrs:
         meta_graph.object_graph_def.CopyFrom(graph.attrs["object_graph_def"])
 
@@ -480,11 +486,10 @@ def get_tensor_name_by_port(port: OutputPort, compact: bool = False) -> str:
         return f"{port.op.name}:{port_index}"
 
 
-def export_to_graph(graph: Graph) -> Tuple[tf.Graph, tf.train.Saver, tf.Session]:
-    if not graph.namespace.belong_to(tf_namespace()):
-        raise MismatchNamespaceError(expect=tf_namespace(), actual=graph.namespace)
-    tf_graph: tf.Graph
-    with tf.Graph().as_default() as tf_graph:
+def export_to_graph(
+    graph: Graph, session: tf.Session = None
+) -> Tuple[tf.Graph, tf.train.Saver, tf.Session]:
+    def export_fn(tf_graph, session):
         if "saver_def" in graph.attrs:
             meta_graph = tf.MetaGraphDef()
             graph_def = export_to_graph_def(graph)
@@ -493,8 +498,8 @@ def export_to_graph(graph: Graph) -> Tuple[tf.Graph, tf.train.Saver, tf.Session]
             construct_meta_graph_fields(graph, meta_graph, graph_def)
             saver = tf.train.import_meta_graph(meta_graph)
         else:
-            tf.graph_util.import_graph_def(export_to_graph_def(graph))
-            saver = tf.train.Saver()
+            tf.graph_util.import_graph_def(export_to_graph_def(graph), name="")
+            saver = None
         variables = {}
         for op in graph.ops:
             if op.type == "VariableV2":
@@ -529,7 +534,6 @@ def export_to_graph(graph: Graph) -> Tuple[tf.Graph, tf.train.Saver, tf.Session]
                     )
                 else:
                     tf_collection.extend(collection)
-        session = tf.Session()
         initialized_variables = {
             f"{op.name}:0": op.attrs["value"]
             for op in graph.ops
@@ -542,8 +546,20 @@ def export_to_graph(graph: Graph) -> Tuple[tf.Graph, tf.train.Saver, tf.Session]
             variables[name].initializer.inputs[1]: value
             for name, value in initialized_variables.items()
         }
-        session.run(initializers, feed_dict)
+        if len(initializers) != 0:
+            session.run(initializers, feed_dict)
         return tf_graph, saver, session
+
+    if not graph.namespace.belong_to(tf_namespace()):
+        raise MismatchNamespaceError(expect=tf_namespace(), actual=graph.namespace)
+    if session is not None:
+        tf_graph = session.graph
+        with tf_graph.as_default():
+            return export_fn(tf_graph, session)
+    else:
+        with tf.Graph().as_default() as tf_graph:
+            session = tf.Session()
+            return export_fn(tf_graph, session)
 
 
 def export_to_graph_def(graph: Graph) -> tf.GraphDef:
@@ -563,7 +579,7 @@ def export_to_graph_def(graph: Graph) -> tf.GraphDef:
             node.device = op.attrs["device"]
         if "experimental_debug_info" in op.attrs:
             node.experimental_debug_info.CopyFrom(op.attrs["experimental_debug_info"])
-        if op.type == "VariableV2" and "value" in attrs:
+        if op.type == "VariableV2":
             for key in [
                 "value",
                 "initial_value_name",
@@ -777,6 +793,24 @@ def to_attrs_proto(
 
         attr_protos[key] = attr_value
     return attr_protos
+
+
+class AmandaHook(tf.train.SessionRunHook):
+    def __init__(self, tool: Tool):
+        self.tool = tool
+
+    def begin(self):
+        tf_graph = tf.get_default_graph()
+        graph = import_from_graph(tf_graph)
+        new_graph = self.tool.instrument(graph)
+        new_tf_graph, _, session = export_to_graph(new_graph)
+        session.close()
+        new_tf_graph._device_function_stack = tf_graph._device_function_stack
+        gc.collect()
+        replace_all_refs(tf_graph, new_tf_graph)
+
+    def end(self, session):
+        self.tool.finish()
 
 
 _py_funcs: List[Any] = []

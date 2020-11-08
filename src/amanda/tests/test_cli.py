@@ -1,3 +1,4 @@
+import pytest
 from click.testing import CliRunner
 
 from amanda.cli import download, main
@@ -33,6 +34,7 @@ def test_main():
     assert result.exit_code == 0
 
 
+@pytest.mark.dependency()
 def test_export_to_amanda():
     args = [
         "--import",
@@ -49,6 +51,7 @@ def test_export_to_amanda():
     assert result.exit_code == 0
 
 
+@pytest.mark.dependency(depends=["test_export_to_amanda"])
 def test_import_from_amanda():
     args = [
         "--import",
