@@ -5,6 +5,7 @@ from typing import Callable, Dict, List
 import click
 
 from amanda.cli.utils import import_from_name
+from amanda.event import EventContext, on_graph_loaded, update_graph
 from amanda.io.file import ensure_dir
 from amanda.io.file import export_types as amanda_export_types
 from amanda.io.file import import_types as amanda_import_types
@@ -110,22 +111,26 @@ def cli(
             tool = tool_class()
     else:
         tool = None
-    try:
-        import_func = import_types[import_type]
-        import_path = os.path.abspath(import_path)
-        graph = import_func(import_path)
-        if namespace != "":
-            graph = graph.to_namespace(namespace)
-        if tool is not None:
-            updated_graph = tool.instrument(graph)
-        else:
-            updated_graph = graph
-        export_func = export_types[export_type]
-        export_path = ensure_dir(os.path.abspath(export_path))
-        export_func(updated_graph, export_path)
-    finally:
-        if tool is not None:
-            tool.finish()
+    import_func = import_types[import_type]
+    import_path = os.path.abspath(import_path)
+    graph = import_func(import_path)
+    if namespace != "":
+        graph = graph.to_namespace(namespace)
+    updated_graph = graph
+    if tool is not None:
+        context = EventContext()
+        context["graph"] = graph
+        if tool.is_registered(on_graph_loaded):
+
+            def update_graph_fn(context):
+                nonlocal updated_graph
+                updated_graph = context["new_graph"]
+
+            context.register_event(update_graph, update_graph_fn)
+            tool.get_callback(on_graph_loaded)(context)
+    export_func = export_types[export_type]
+    export_path = ensure_dir(os.path.abspath(export_path))
+    export_func(updated_graph, export_path)
 
 
 if __name__ == "__main__":

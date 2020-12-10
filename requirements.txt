@@ -33,8 +33,8 @@ ruamel.yaml
 scipy
 sphinx
 tensorflow==1.15.3
-torch==1.6.0
-torchvision==0.7.0
+torch==1.7.0
+torchvision==0.8.1
 tox
 twine
 typing; python_version < "3.7"

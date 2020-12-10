@@ -66,11 +66,15 @@ def modify_graph(graph: amanda.Graph, store_dir=store_dir):
 
 class DebuggingTool(Tool):
     def __init__(self, store_dir=store_dir):
+        super().__init__()
         self.store_dir = store_dir
+        self.register_event(amanda.event.on_graph_loaded, self.on_graph_loaded)
 
-    def instrument(self, graph: amanda.Graph) -> amanda.Graph:
+    def on_graph_loaded(self, context: amanda.EventContext) -> None:
+        graph = context["graph"]
         modify_graph(graph, self.store_dir)
-        return graph
+        context["new_graph"] = graph
+        context.trigger(amanda.event.update_graph)
 
 
 @click.command()

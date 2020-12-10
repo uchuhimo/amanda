@@ -417,6 +417,12 @@ def from_ir_attr(node: TorchNode, attr_name: str) -> Any:
         return node.g(attr_name)
     elif attr_kind == "gs":
         return node.gs(attr_name)
+    # elif attr_kind == "ty":
+    #     return node.ty(attr_name)
+    # elif attr_kind == "tys":
+    #     return node.tys(attr_name)
+    # elif attr_kind == "ival":
+    #     return node.ival(attr_name)
     else:
         raise RuntimeError(f"cannot import from attr {attr_name} in node {node}")
 
@@ -462,6 +468,12 @@ def set_ir_attr(node: TorchNode, attr_name: str, attr_value: Any, op: Op) -> Non
         node.g_(attr_name, attr_value)
     elif attr_kind == "gs":
         node.gs_(attr_name, attr_value)
+    # elif attr_kind == "ty":
+    #     node.ty_(attr_name, attr_value)
+    # elif attr_kind == "tys":
+    #     node.tys_(attr_name, attr_value)
+    # elif attr_kind == "ival":
+    #     node.ival_(attr_name, attr_value)
     else:
         raise RuntimeError(
             f"cannot export {attr_value} to attr {attr_name} in node {node}"

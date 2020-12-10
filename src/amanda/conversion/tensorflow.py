@@ -4,6 +4,7 @@ from contextlib import ExitStack
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from types import MethodType
 from typing import Any, Callable, Dict, List, Tuple, Union
 
 import google.protobuf.text_format
@@ -29,7 +30,9 @@ from tensorflow.python.framework.op_def_library import (
 )
 from tensorflow.python.util import compat
 
+from amanda.adapter import Adapter, get_adapter_registry
 from amanda.conversion.utils import diff_graph_def, to_proto, without_internal_attrs
+from amanda.event import EventContext, on_graph_loaded, update_graph
 from amanda.exception import MismatchNamespaceError
 from amanda.graph import Graph, Op, OutputPort, create_graph, create_op
 from amanda.io.serde import (
@@ -43,7 +46,6 @@ from amanda.io.serde import (
 )
 from amanda.lang import replace_all_refs
 from amanda.namespace import Namespace, default_namespace
-from amanda.tool import Tool
 from amanda.type import DataType
 
 _namespace = default_namespace() / Namespace("tensorflow")
@@ -796,22 +798,93 @@ def to_attrs_proto(
 
 
 class AmandaHook(tf.train.SessionRunHook):
-    def __init__(self, tool: Tool):
-        self.tool = tool
+    def __init__(self, context: EventContext):
+        self.context = context
 
     def begin(self):
-        tf_graph = tf.get_default_graph()
-        graph = import_from_graph(tf_graph)
-        new_graph = self.tool.instrument(graph)
-        new_tf_graph, _, session = export_to_graph(new_graph)
-        session.close()
-        new_tf_graph._device_function_stack = tf_graph._device_function_stack
-        gc.collect()
-        replace_all_refs(tf_graph, new_tf_graph)
+        if self.context.is_registered(on_graph_loaded):
+            tf_graph = tf.get_default_graph()
+            graph = import_from_graph(tf_graph)
 
-    def end(self, session):
-        self.tool.finish()
+            def replace_graph_refs(context):
+                new_graph = context["new_graph"]
+                new_tf_graph, _, session = export_to_graph(new_graph)
+                session.close()
+                if new_tf_graph != tf_graph:
+                    new_tf_graph._device_function_stack = (
+                        tf_graph._device_function_stack
+                    )
+                    gc.collect()
+                    replace_all_refs(tf_graph, new_tf_graph)
 
+            self.context["graph"] = graph
+            self.context.register_event(update_graph, replace_graph_refs)
+            self.context.trigger(on_graph_loaded)
+
+
+class EstimatorAdapter(Adapter[tf.estimator.Estimator]):
+    def adapt(
+        self, target: tf.estimator.Estimator, context: EventContext
+    ) -> tf.estimator.Estimator:
+        def train_with_tools(
+            target_self,
+            input_fn,
+            hooks=None,
+            steps=None,
+            max_steps=None,
+            saving_listeners=None,
+        ):
+            return train(
+                input_fn,
+                [amanda_hook] if hooks is None else [amanda_hook, *hooks],
+                steps,
+                max_steps,
+                saving_listeners,
+            )
+
+        def predict_with_tools(
+            target_self,
+            input_fn,
+            predict_keys=None,
+            hooks=None,
+            checkpoint_path=None,
+            yield_single_examples=True,
+        ):
+            return predict(
+                input_fn,
+                predict_keys,
+                [amanda_hook] if hooks is None else [amanda_hook, *hooks],
+                checkpoint_path,
+                yield_single_examples,
+            )
+
+        def evaluate_with_tools(
+            target_self,
+            input_fn,
+            steps=None,
+            hooks=None,
+            checkpoint_path=None,
+            name=None,
+        ):
+            return evaluate(
+                input_fn,
+                steps,
+                [amanda_hook] if hooks is None else [amanda_hook, *hooks],
+                checkpoint_path,
+                name,
+            )
+
+        amanda_hook = AmandaHook(context)
+        train = target.train
+        target.train = MethodType(train_with_tools, target)
+        predict = target.predict
+        target.predict = MethodType(predict_with_tools, target)
+        evaluate = target.evaluate
+        target.evaluate = MethodType(evaluate_with_tools, target)
+        return target
+
+
+get_adapter_registry().register_adapter(tf.estimator.Estimator, EstimatorAdapter())
 
 _py_funcs: List[Any] = []
 

@@ -53,7 +53,7 @@ setup(
         'amanda.tests.tensorflow.models',
         'amanda.tests.tensorflow.models.mobilenet', 'amanda.tools',
         'amanda.tools.byteps', 'amanda.tools.byteps.tensorflow',
-        'amanda.tools.debugging', 'amanda.tools.path'
+        'amanda.tools.debugging', 'amanda.tools.path', 'amanda.tools.pruning'
     ],
     package_dir={"": "src"},
     package_data={
@@ -75,8 +75,8 @@ setup(
             "jsondiff", "mmdnn", "mypy", "mypy-protobuf", "numpy", "onnx",
             "onnxruntime", "pip>=19.3", "pre-commit", "pytest",
             "pytest-dependency", "pytest-profiling", "pytest-xdist", "scipy",
-            "sphinx", "tensorflow==1.15.3", "torch==1.6.0",
-            "torchvision==0.7.0", "tox", "twine", "watchdog", "wget", "wheel"
+            "sphinx", "tensorflow==1.15.3", "torch==1.7.0",
+            "torchvision==0.8.1", "tox", "twine", "watchdog", "wget", "wheel"
         ]
     },
 )
