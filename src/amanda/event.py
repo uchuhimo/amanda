@@ -20,14 +20,20 @@ class EventContext(dict):
         super(EventContext, self).__init__()
         self._event_to_callback: Dict[Event, EventCallback] = {}
 
-    def trigger(self, event: Event) -> None:
+    def with_parameters(self, parameters) -> "EventContext":
+        context = EventContext()
+        context._event_to_callback = self._event_to_callback
+        context.update(parameters)
+        return context
+
+    def trigger(self, event: Event, **kwargs) -> None:
         from amanda.tool import get_tools
 
         if event in self._event_to_callback:
-            return self.get_callback(event)(self)
+            return self.get_callback(event)(self.with_parameters(kwargs))
         for tool in get_tools():
             if tool.is_registered(event):
-                return tool.get_callback(event)(self)
+                return tool.get_callback(event)(self.with_parameters(kwargs))
 
     def register_event(self, event: Event, callback: EventCallback) -> None:
         self._event_to_callback[event] = callback

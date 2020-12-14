@@ -33,8 +33,7 @@ class PruningTool(amanda.Tool):
             self.weights[op.name] = weight
             mask = self.masks[op.name]
             op.attrs["weight"] = weight * mask
-            context["new_op"] = op
-            context.trigger(amanda.event.update_op)
+            context.trigger(amanda.event.update_op, op=op)
 
     def compute_sparse_masks(self):
         for name, mask in self.masks.items():
