@@ -66,7 +66,7 @@ def modify_graph(graph: amanda.Graph, store_dir=store_dir):
 
 class DebuggingTool(Tool):
     def __init__(self, store_dir=store_dir):
-        super().__init__()
+        super().__init__(namespace="amanda/tensorflow")
         self.store_dir = store_dir
         self.register_event(amanda.event.on_graph_loaded, self.on_graph_loaded)
 

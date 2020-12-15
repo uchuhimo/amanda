@@ -124,7 +124,7 @@ def cli(
 
             def update_graph_fn(context):
                 nonlocal updated_graph
-                updated_graph = context["new_graph"]
+                updated_graph = context["graph"]
 
             context.register_event(update_graph, update_graph_fn)
             tool.get_callback(on_graph_loaded)(context)

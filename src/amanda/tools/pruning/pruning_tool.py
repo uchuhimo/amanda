@@ -6,6 +6,7 @@ from amanda.tools.pruning.sparse_masklib import create_mask
 
 class PruningTool(amanda.Tool):
     def __init__(self, mask_calculator="m4n2_1d"):
+        super(PruningTool, self).__init__(namespace="amanda/pytorch")
         self.register_event(amanda.event.before_op_executed, self.prune_weights)
 
         self.masks = {}
@@ -27,13 +28,12 @@ class PruningTool(amanda.Tool):
 
     def prune_weights(self, context: amanda.EventContext):
         op = context["op"]
-        if op.type in self.whitelist and op.name not in self.masks:
-            weight = op.attrs["weight"]
-            self.masks[op.name] = torch.ones_like(weight).bool()
-            self.weights[op.name] = weight
-            mask = self.masks[op.name]
-            op.attrs["weight"] = weight * mask
-            context.trigger(amanda.event.update_op, op=op)
+        if op.type in self.whitelist:
+            if op.name not in self.masks:
+                weight = op.attrs["weight"]
+                self.masks[op.name] = torch.ones_like(weight).bool()
+                self.weights[op.name] = weight
+            op.attrs["weight"].set_(self.weights[op.name] * self.masks[op.name])
 
     def compute_sparse_masks(self):
         for name, mask in self.masks.items():
