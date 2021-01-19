@@ -31,7 +31,7 @@ from tensorflow.python.framework.op_def_library import (
 from tensorflow.python.util import compat
 
 from amanda.adapter import Adapter, get_adapter_registry
-from amanda.conversion.utils import diff_graph_def, to_proto, without_internal_attrs
+from amanda.conversion.utils import to_proto, without_internal_attrs
 from amanda.event import EventContext, on_graph_loaded
 from amanda.exception import MismatchNamespaceError
 from amanda.graph import Graph, Op, OutputPort, create_graph, create_op
@@ -641,12 +641,6 @@ def export_to_saved_model(
             saver=saver,
         )
     builder.save()
-
-
-def get_diff_after_conversion(graph_def: tf.GraphDef) -> Dict[str, Any]:
-    graph = import_from_graph_def(graph_def)
-    new_graph_def = export_to_graph_def(graph)
-    return diff_graph_def(graph_def, new_graph_def)
 
 
 def to_attrs_proto(

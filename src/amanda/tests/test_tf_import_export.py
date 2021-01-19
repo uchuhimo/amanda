@@ -18,7 +18,6 @@ from amanda.conversion.tensorflow import (
     export_to_graph_def,
     export_to_pbtxt,
     export_to_saved_model,
-    get_diff_after_conversion,
     import_from_checkpoint,
     import_from_graph,
     import_from_graph_def,
@@ -26,8 +25,8 @@ from amanda.conversion.tensorflow import (
     import_from_saved_model,
     import_from_tf_func,
 )
-from amanda.conversion.utils import diff_graph_def
 from amanda.io.file import root_dir
+from amanda.tests.utils import diff_graph_def, get_diff_after_conversion
 
 
 @pytest.fixture(

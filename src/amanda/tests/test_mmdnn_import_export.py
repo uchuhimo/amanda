@@ -4,8 +4,8 @@ from mmdnn.conversion.tensorflow.tensorflow_parser import TensorflowParser
 
 import amanda
 from amanda.conversion.mmdnn import export_to_graph_def, import_from_graph_def
-from amanda.conversion.utils import diff_graph_def
 from amanda.io.file import root_dir
+from amanda.tests.utils import diff_graph_def
 
 
 @pytest.fixture(

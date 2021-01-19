@@ -7,13 +7,9 @@ from onnx import numpy_helper
 
 import amanda
 from amanda.conversion.onnx import export_to_model_def, import_from_model_def
-from amanda.conversion.utils import (
-    diff_graph_def,
-    diff_proto,
-    repeated_fields_to_dict,
-    to_proto,
-)
+from amanda.conversion.utils import repeated_fields_to_dict, to_proto
 from amanda.io.file import ensure_dir, root_dir
+from amanda.tests.utils import diff_graph_def, diff_proto
 
 
 @pytest.fixture(params=["mobilenetv2-1.0", "resnet18-v1-7"])
