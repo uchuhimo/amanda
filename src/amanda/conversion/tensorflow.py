@@ -32,7 +32,7 @@ from tensorflow.python.util import compat
 
 from amanda.adapter import Adapter, get_adapter_registry
 from amanda.conversion.utils import diff_graph_def, to_proto, without_internal_attrs
-from amanda.event import EventContext, on_graph_loaded, update_graph
+from amanda.event import EventContext, on_graph_loaded
 from amanda.exception import MismatchNamespaceError
 from amanda.graph import Graph, Op, OutputPort, create_graph, create_op
 from amanda.io.serde import (
@@ -805,26 +805,21 @@ class AmandaHook(tf.train.SessionRunHook):
         if self.context.is_registered(on_graph_loaded):
             tf_graph = tf.get_default_graph()
             graph = import_from_graph(tf_graph)
-
-            def replace_graph_refs(context):
-                new_graph = context["graph"]
-                new_tf_graph, _, session = export_to_graph(new_graph)
-                session.close()
-                if new_tf_graph != tf_graph:
-                    new_tf_graph._device_function_stack = (
-                        tf_graph._device_function_stack
-                    )
-                    gc.collect()
-                    replace_all_refs(tf_graph, new_tf_graph)
-
-            self.context.register_event(update_graph, replace_graph_refs)
             self.context.trigger(on_graph_loaded, graph=graph)
+            new_graph = self.context["graph"]
+            new_tf_graph, _, session = export_to_graph(new_graph)
+            session.close()
+            if new_tf_graph != tf_graph:
+                new_tf_graph._device_function_stack = tf_graph._device_function_stack
+                gc.collect()
+                replace_all_refs(tf_graph, new_tf_graph)
 
 
-class EstimatorAdapter(Adapter[tf.estimator.Estimator]):
-    def adapt(
-        self, target: tf.estimator.Estimator, context: EventContext
-    ) -> tf.estimator.Estimator:
+class EstimatorAdapter(Adapter):
+    def __init__(self):
+        super(EstimatorAdapter, self).__init__(namespace="tensorflow")
+
+    def apply(self, target: tf.estimator.Estimator, context: EventContext) -> None:
         def train_with_tools(
             target_self,
             input_fn,
@@ -880,7 +875,6 @@ class EstimatorAdapter(Adapter[tf.estimator.Estimator]):
         target.predict = MethodType(predict_with_tools, target)
         evaluate = target.evaluate
         target.evaluate = MethodType(evaluate_with_tools, target)
-        return target
 
 
 get_adapter_registry().register_adapter(tf.estimator.Estimator, EstimatorAdapter())

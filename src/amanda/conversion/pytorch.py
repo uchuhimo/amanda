@@ -33,7 +33,9 @@ from torch._C import (
 from torch._C import Value as TorchValue
 from torch.nn import Parameter
 
+from amanda import Adapter, EventContext, get_adapter_registry
 from amanda.conversion.utils import without_internal_attrs
+from amanda.event import after_op_executed, before_op_executed
 from amanda.exception import MismatchNamespaceError
 from amanda.graph import InputPort, Op, OutputPort, SubGraph, create_op, create_subgraph
 from amanda.io.serde import (
@@ -479,6 +481,50 @@ def set_ir_attr(node: TorchNode, attr_name: str, attr_value: Any, op: Op) -> Non
             f"cannot export {attr_value} to attr {attr_name} in node {node}"
         )
 
+
+def module_to_op(module: torch.nn.Module) -> Op:
+    return create_op(
+        type=type(module).__module__ + "." + type(module).__name__,
+        namespace=pytorch_namespace(),
+        attrs={
+            "raw": module,
+            **dict(module.named_children()),
+            **dict(module.named_parameters()),
+            **dict(module.named_buffers()),
+        },
+    )
+
+
+class ModuleAdapter(Adapter):
+    def __init__(self):
+        super(ModuleAdapter, self).__init__(namespace="pytorch")
+
+    def apply(self, target: torch.nn.Module, context: EventContext) -> None:
+        def add_hook(module: torch.nn.Module):
+            def forward_pre_hook(module, input):
+                context.trigger(
+                    before_op_executed, op=module_to_op(module), input=input
+                )
+                return context["input"]
+
+            def forward_hook(module, input, output):
+                context.trigger(
+                    after_op_executed,
+                    op=module_to_op(module),
+                    input=input,
+                    output=output,
+                )
+                return context["output"]
+
+            if context.is_registered(before_op_executed):
+                module.register_forward_pre_hook(forward_pre_hook)
+            if context.is_registered(after_op_executed):
+                module.register_forward_hook(forward_hook)
+
+        target.apply(add_hook)
+
+
+get_adapter_registry().register_adapter(torch.nn.Module, ModuleAdapter())
 
 import_types = {
     "torchscript": import_from_module,

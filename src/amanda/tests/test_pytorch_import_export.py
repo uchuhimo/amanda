@@ -108,6 +108,23 @@ def test_pytorch_import_export_trace(model_and_input):
     assert_close(output, new_output, model)
 
 
+class TestTool(amanda.Tool):
+    def __init__(self):
+        super(TestTool, self).__init__(namespace="amanda/pytorch")
+        self.register_event(amanda.event.before_op_executed, self.test)
+
+    def test(self, context: amanda.EventContext):
+        op = context["op"]
+        print(op.type)
+
+
+def test_pytorch_with_hook(model_and_input):
+    model, x = model_and_input
+    tool = TestTool()
+    amanda.apply(model, tool)
+    model(x)
+
+
 @pytest.mark.skip
 def test_pytorch_graph_callback(model_and_input):
     import torch.autograd.profiler as profiler

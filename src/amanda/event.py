@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Callable, Dict
+from typing import Callable, Iterable
 
 
 @dataclass(frozen=True)
@@ -9,44 +9,28 @@ class Event:
 
 on_graph_loaded = Event("on_graph_loaded")
 before_op_executed = Event("before_op_executed")
-update_graph = Event("update_graph")
-update_op = Event("update_op")
+after_op_executed = Event("after_op_executed")
 
 EventCallback = Callable[["EventContext"], None]
 
 
 class EventContext(dict):
-    def __init__(self):
-        super(EventContext, self).__init__()
-        self._event_to_callback: Dict[Event, EventCallback] = {}
+    from amanda.tool import Tool
 
-    def with_parameters(self, parameters) -> "EventContext":
-        context = EventContext()
-        context._event_to_callback = self._event_to_callback
-        context.update(parameters)
-        return context
+    def __init__(self, tools: Iterable[Tool]):
+        super(EventContext, self).__init__()
+        from amanda.tool import Tool
+
+        self.tools: Iterable[Tool] = tools
 
     def trigger(self, event: Event, **kwargs) -> None:
-        from amanda.tool import get_tools
-
-        if event in self._event_to_callback:
-            return self.get_callback(event)(self.with_parameters(kwargs))
-        for tool in get_tools():
+        self.update(**kwargs)
+        for tool in self.tools:
             if tool.is_registered(event):
-                return tool.get_callback(event)(self.with_parameters(kwargs))
-
-    def register_event(self, event: Event, callback: EventCallback) -> None:
-        self._event_to_callback[event] = callback
-
-    def get_callback(self, event: Event) -> EventCallback:
-        return self._event_to_callback[event]
+                return tool.get_callback(event)(self)
 
     def is_registered(self, event: Event) -> bool:
-        from amanda.tool import get_tools
-
-        if event in self._event_to_callback:
-            return True
-        for tool in get_tools():
+        for tool in self.tools:
             if tool.is_registered(event):
                 return True
         return False

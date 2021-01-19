@@ -111,7 +111,7 @@ def run_model(arch_name, model_dir, input):
             return output, graph.as_graph_def()
 
 
-def run_model_with_estimator(arch_name, model_dir, input):
+def run_model_with_estimator(arch_name, model_dir, input, tool):
     checkpoint_dir = root_dir() / model_dir / arch_name
     if not checkpoint_dir.exists():
         raise FileNotFoundError(f"{checkpoint_dir} is not existed")
@@ -163,7 +163,7 @@ def run_model_with_estimator(arch_name, model_dir, input):
             model_dir=model_dir,
             warm_start_from=warm_start,
         )
-        estimator = amanda.adapt(estimator)
+        amanda.apply(estimator, tool)
         estimator.train(input_fn=input_fn, steps=1)
     finally:
         shutil.rmtree(model_dir)
@@ -232,12 +232,12 @@ def test_tf_modify_graph_with_hook(arch_name):
     input = np.random.rand(*input_shapes[arch_name])
     run_model(arch_name, model_dir="downloads/model", input=input)
     store_dir = root_dir() / "tmp" / "debug_info_with_hook" / arch_name
-    with amanda.apply(DebuggingTool(store_dir)):
-        run_model_with_estimator(
-            arch_name,
-            model_dir="downloads/model",
-            input=input,
-        )
+    run_model_with_estimator(
+        arch_name,
+        model_dir="downloads/model",
+        input=input,
+        tool=DebuggingTool(store_dir),
+    )
 
 
 def check_modified_graph(graph_def, new_graph_def):

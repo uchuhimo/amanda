@@ -5,7 +5,7 @@ from typing import Callable, Dict, List
 import click
 
 from amanda.cli.utils import import_from_name
-from amanda.event import EventContext, on_graph_loaded, update_graph
+from amanda.event import EventContext, on_graph_loaded
 from amanda.io.file import ensure_dir
 from amanda.io.file import export_types as amanda_export_types
 from amanda.io.file import import_types as amanda_import_types
@@ -118,16 +118,11 @@ def cli(
         graph = graph.to_namespace(namespace)
     updated_graph = graph
     if tool is not None:
-        context = EventContext()
+        context = EventContext(tools=[tool])
         context["graph"] = graph
         if tool.is_registered(on_graph_loaded):
-
-            def update_graph_fn(context):
-                nonlocal updated_graph
-                updated_graph = context["graph"]
-
-            context.register_event(update_graph, update_graph_fn)
             tool.get_callback(on_graph_loaded)(context)
+            updated_graph = context["graph"]
     export_func = export_types[export_type]
     export_path = ensure_dir(os.path.abspath(export_path))
     export_func(updated_graph, export_path)

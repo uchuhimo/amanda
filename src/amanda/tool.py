@@ -3,13 +3,12 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Dict, List
 
-from amanda import Namespace
 from amanda.event import Event, EventCallback
 
 
 @dataclass
 class Tool:
-    namespace: Namespace
+    namespace: str
     _event_to_callback: Dict[Event, EventCallback] = field(default_factory=dict)
 
     def register_event(self, event: Event, callback: EventCallback) -> None:

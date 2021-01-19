@@ -1,15 +1,17 @@
-from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Dict, Generic, Type, TypeVar
+from typing import Any, Dict, Type, TypeVar
 
 from amanda.event import EventContext
+from amanda.tool import Tool
 
 T = TypeVar("T")
 
 
-class Adapter(ABC, Generic[T]):
-    @abstractmethod
-    def adapt(self, target: T, context: EventContext) -> T:
+@dataclass
+class Adapter:
+    namespace: str
+
+    def apply(self, target: Any, context: EventContext) -> None:
         ...
 
 
@@ -34,9 +36,9 @@ def get_adapter_registry() -> AdapterRegistry:
     return _registry
 
 
-def adapt(target: T, context: EventContext = None) -> T:
+def apply(target: T, *tools: Tool) -> None:
     return (
         get_adapter_registry()
         .dispatch_type(type(target))
-        .adapt(target, context or EventContext())
+        .apply(target, EventContext(tools=tools))
     )

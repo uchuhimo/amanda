@@ -73,7 +73,6 @@ class DebuggingTool(Tool):
     def on_graph_loaded(self, context: amanda.EventContext) -> None:
         graph = context["graph"]
         modify_graph(graph, self.store_dir)
-        context.trigger(amanda.event.update_graph, graph=graph)
 
 
 @click.command()
