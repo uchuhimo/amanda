@@ -482,8 +482,9 @@ def set_ir_attr(node: TorchNode, attr_name: str, attr_value: Any, op: Op) -> Non
         )
 
 
-def module_to_op(module: torch.nn.Module) -> Op:
+def module_to_op(module: torch.nn.Module, name: str) -> Op:
     return create_op(
+        name=name,
         type=type(module).__module__ + "." + type(module).__name__,
         namespace=pytorch_namespace(),
         attrs={
@@ -500,17 +501,17 @@ class ModuleAdapter(Adapter):
         super(ModuleAdapter, self).__init__(namespace="pytorch")
 
     def apply(self, target: torch.nn.Module, context: EventContext) -> None:
-        def add_hook(module: torch.nn.Module):
+        def add_hook(module: torch.nn.Module, name: str):
             def forward_pre_hook(module, input):
                 context.trigger(
-                    before_op_executed, op=module_to_op(module), input=input
+                    before_op_executed, op=module_to_op(module, name), input=input
                 )
                 return context["input"]
 
             def forward_hook(module, input, output):
                 context.trigger(
                     after_op_executed,
-                    op=module_to_op(module),
+                    op=module_to_op(module, name),
                     input=input,
                     output=output,
                 )
@@ -521,7 +522,12 @@ class ModuleAdapter(Adapter):
             if context.is_registered(after_op_executed):
                 module.register_forward_hook(forward_hook)
 
-        target.apply(add_hook)
+        def apply_hook(fn, module: torch.nn.Module, name: str):
+            for child_name, module in module.named_children():
+                apply_hook(fn, module, f"{name}.{child_name}")
+            fn(self, name)
+
+        apply_hook(add_hook, target, "model")
 
 
 get_adapter_registry().register_adapter(torch.nn.Module, ModuleAdapter())
