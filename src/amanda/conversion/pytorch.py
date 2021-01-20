@@ -525,7 +525,7 @@ class ModuleAdapter(Adapter):
         def apply_hook(fn, module: torch.nn.Module, name: str):
             for child_name, module in module.named_children():
                 apply_hook(fn, module, f"{name}.{child_name}")
-            fn(self, name)
+            fn(module, name)
 
         apply_hook(add_hook, target, "model")
 
