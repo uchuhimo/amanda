@@ -798,6 +798,7 @@ class AmandaHook(tf.train.SessionRunHook):
     def after_create_session(self, session, coord):
         if self.context.is_registered(on_graph_loaded):
             tf_graph = session.graph
+            tf_graph._finalized = False
             graph = import_from_graph(tf_graph, session=session)
             self.context.trigger(on_graph_loaded, graph=graph)
             new_graph = self.context["graph"]
@@ -805,8 +806,11 @@ class AmandaHook(tf.train.SessionRunHook):
             session.close()
             if new_tf_graph != tf_graph:
                 new_tf_graph._device_function_stack = tf_graph._device_function_stack
+                new_tf_graph.finalize()
                 gc.collect()
                 replace_all_refs(tf_graph, new_tf_graph)
+            else:
+                tf_graph.finalize()
 
 
 class EstimatorAdapter(Adapter):
