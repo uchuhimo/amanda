@@ -23,8 +23,8 @@ repos:
       hooks:
           - id: mypy
             pass_filenames: false
-    - repo: https://github.com/mverteuil/precommit-dephell
-      rev: master
-      hooks:
-        - id: dephell
-        - id: pyproject-toml-to-requirements-txt
+    # - repo: https://github.com/mverteuil/precommit-dephell
+    #   rev: master
+    #   hooks:
+    #     - id: dephell
+    #     - id: pyproject-toml-to-requirements-txt
