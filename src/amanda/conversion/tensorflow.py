@@ -795,7 +795,7 @@ class AmandaHook(tf.train.SessionRunHook):
     def __init__(self, context: EventContext):
         self.context = context
 
-    def begin(self):
+    def after_create_session(self, session, coord):
         if self.context.is_registered(on_graph_loaded):
             tf_graph = tf.get_default_graph()
             graph = import_from_graph(tf_graph)

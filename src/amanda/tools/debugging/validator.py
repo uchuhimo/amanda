@@ -22,7 +22,7 @@ def store_as_numpy(input: np.array, store_dir: str, file_name: str):
     return input
 
 
-def modify_graph(graph: Graph):
+def modify_graph_with_tf_func(graph: Graph):
     store_dir = root_dir() / "tmp" / "validation_info" / arch_name
     for op in graph.ops:
         for output_port in op.output_ports:
@@ -35,6 +35,7 @@ def modify_graph(graph: Graph):
                     file_name=full_name,
                 )
                 token = _py_funcs.insert(func)
+                amanda.tensorflow._py_funcs.append(func)
                 debug_op = amanda.create_op(
                     type="PyFunc",
                     name=full_name,
@@ -54,7 +55,7 @@ def modify_graph(graph: Graph):
                     graph.remove_edge(edge)
 
 
-def modify_graph_with_tf_func(graph: Graph):
+def modify_graph(graph: Graph):
     store_dir = root_dir() / "tmp" / "validation_info" / arch_name
     for op in graph.ops:
         for output_port in op.output_ports:
@@ -76,10 +77,10 @@ def modify_graph_with_tf_func(graph: Graph):
                     graph.remove_edge(edge)
 
 
-def main(arch_name):
+def main(arch_name, modify_graph_func):
     input = np.random.rand(1, 224, 224, 3)
     output, _ = run_model(arch_name, model_dir="downloads/model", input=input)
-    modify_model(arch_name, "modified_model_with_py_func", modify_graph)
+    modify_model(arch_name, "modified_model_with_py_func", modify_graph_func)
     new_output, _ = run_model(
         arch_name, model_dir="tmp/modified_model_with_py_func", input=input
     )
@@ -87,6 +88,7 @@ def main(arch_name):
 
 
 if __name__ == "__main__":
-    main("vgg16")
+    # main("vgg16", modify_graph)
+    main("vgg16", modify_graph_with_tf_func)
     # modify_model("facenet", "modified_graph", modify_graph_with_primitive_api)
     # modify_model("nasnet-a_large", "modified_graph", modify_graph_with_primitive_api)

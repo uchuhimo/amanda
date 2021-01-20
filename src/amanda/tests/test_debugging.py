@@ -8,7 +8,11 @@ from amanda.tools.debugging import (
 
 
 def test_validator():
-    validator.main("vgg16")
+    validator.main("vgg16", validator.modify_graph)
+
+
+def test_validator_with_tf_func():
+    validator.main("vgg16", validator.modify_graph_with_tf_func)
 
 
 def test_insert_debug_op_tensorflow():
