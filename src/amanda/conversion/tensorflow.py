@@ -523,11 +523,11 @@ def export_to_graph(
                     tf_collection.extend(
                         [variables[f"{op.name}:0"] for op in collection]
                     )
-                elif isinstance(collection[0], Op):
+                elif len(collection) > 0 and isinstance(collection[0], Op):
                     tf_collection.extend(
                         [tf_graph.get_operation_by_name(op.name) for op in collection]
                     )
-                elif isinstance(collection[0], OutputPort):
+                elif len(collection) > 0 and isinstance(collection[0], OutputPort):
                     tf_collection.extend(
                         [
                             tf_graph.get_tensor_by_name(get_tensor_name_by_port(port))
