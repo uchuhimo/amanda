@@ -172,11 +172,11 @@ def import_from_graph(
                 graph.get_op(variable.name[: variable.name.rfind(":")])
                 for variable in collection
             ]
-        elif isinstance(collection[0], tf.Operation):
+        elif len(collection) > 0 and isinstance(collection[0], tf.Operation):
             graph.attrs[f"collection/{name}"] = [
                 graph.get_op(tf_op.name) for tf_op in collection
             ]
-        elif isinstance(collection[0], tf.Tensor):
+        elif len(collection) > 0 and isinstance(collection[0], tf.Tensor):
             graph.attrs[f"collection/{name}"] = [
                 graph.get_op(tf_tensor.op.name).output_port(tf_tensor.value_index)
                 for tf_tensor in collection

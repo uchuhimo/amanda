@@ -3,7 +3,9 @@ from pathlib import Path
 
 import numpy as np
 import tensorflow as tf
+from tensorflow.python.ops.script_ops import _py_funcs
 
+import amanda
 from amanda import Graph, OutputPort
 from amanda.conversion.tensorflow import import_from_tf_func
 from amanda.io.file import root_dir
@@ -26,12 +28,46 @@ def modify_graph(graph: Graph):
         for output_port in op.output_ports:
             if not output_port.type.raw._is_ref_dtype:
                 edges = output_port.out_edges
-                debug_output: OutputPort = import_from_tf_func(tf.py_func)(graph)(
-                    partial(
-                        store_as_numpy,
-                        store_dir=store_dir,
-                        file_name=f"{op.name}_{output_port.name}",
+                full_name = f"{op.name}_{output_port.name}"
+                func = partial(
+                    store_as_numpy,
+                    store_dir=store_dir,
+                    file_name=full_name,
+                )
+                token = _py_funcs.insert(func)
+                debug_op = amanda.create_op(
+                    type="PyFunc",
+                    name=full_name,
+                    inputs=["input/0"],
+                    outputs=["output/0"],
+                    attrs=dict(
+                        token=token,
+                        Tin=[output_port.type.raw],
+                        Tout=[output_port.type.raw],
                     ),
+                )
+                graph.add_op(debug_op)
+                debug_output = debug_op.output_port(0)
+                graph.create_edge(output_port, debug_op.input_port(0))
+                for edge in edges:
+                    graph.create_edge(debug_output, edge.dst)
+                    graph.remove_edge(edge)
+
+
+def modify_graph_with_tf_func(graph: Graph):
+    store_dir = root_dir() / "tmp" / "validation_info" / arch_name
+    for op in graph.ops:
+        for output_port in op.output_ports:
+            if not output_port.type.raw._is_ref_dtype:
+                edges = output_port.out_edges
+                full_name = f"{op.name}_{output_port.name}"
+                func = partial(
+                    store_as_numpy,
+                    store_dir=store_dir,
+                    file_name=full_name,
+                )
+                debug_output: OutputPort = import_from_tf_func(tf.py_func)(graph)(
+                    func,
                     [output_port],
                     output_port.type.raw,
                 )
