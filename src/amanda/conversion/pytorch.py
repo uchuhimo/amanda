@@ -1,3 +1,4 @@
+import gc
 import types
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -35,7 +36,11 @@ from torch.nn import Parameter
 
 from amanda import Adapter, EventContext, get_adapter_registry
 from amanda.conversion.utils import without_internal_attrs
-from amanda.event import after_op_executed, before_op_executed
+from amanda.event import (
+    after_subgraph_executed,
+    before_subgraph_executed,
+    on_graph_loaded,
+)
 from amanda.exception import MismatchNamespaceError
 from amanda.graph import InputPort, Op, OutputPort, SubGraph, create_op, create_subgraph
 from amanda.io.serde import (
@@ -49,6 +54,7 @@ from amanda.io.serde import (
     serialize,
     serialize_type,
 )
+from amanda.lang import replace_all_refs
 from amanda.namespace import Namespace, default_namespace
 from amanda.type import DataType
 
@@ -504,23 +510,21 @@ class ModuleAdapter(Adapter):
         def add_hook(module: torch.nn.Module, name: str):
             def forward_pre_hook(module, input):
                 context.trigger(
-                    before_op_executed, op=module_to_op(module, name), input=input
+                    before_subgraph_executed, op=module_to_op(module, name), input=input
                 )
                 return context["input"]
 
             def forward_hook(module, input, output):
                 context.trigger(
-                    after_op_executed,
+                    after_subgraph_executed,
                     op=module_to_op(module, name),
                     input=input,
                     output=output,
                 )
                 return context["output"]
 
-            if context.is_registered(before_op_executed):
-                module.register_forward_pre_hook(forward_pre_hook)
-            if context.is_registered(after_op_executed):
-                module.register_forward_hook(forward_hook)
+            module.register_forward_pre_hook(forward_pre_hook)
+            module.register_forward_hook(forward_hook)
 
         def apply_hook(fn, module: torch.nn.Module, name: str):
             for child_name, module in module.named_children():
@@ -530,6 +534,21 @@ class ModuleAdapter(Adapter):
         apply_hook(add_hook, target, "model")
 
 
+class ScriptModuleAdapter(Adapter):
+    def __init__(self):
+        super(ScriptModuleAdapter, self).__init__(namespace="pytorch")
+
+    def apply(self, target: torch.jit.ScriptModule, context: EventContext) -> None:
+        module = target
+        graph = import_from_module(module)
+        context.trigger(on_graph_loaded, graph=graph)
+        new_graph = context["graph"]
+        new_module = export_to_module(new_graph)
+        gc.collect()
+        replace_all_refs(module, new_module)
+
+
+get_adapter_registry().register_adapter(torch.jit.ScriptModule, ScriptModuleAdapter())
 get_adapter_registry().register_adapter(torch.nn.Module, ModuleAdapter())
 
 import_types = {

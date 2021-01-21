@@ -35,5 +35,6 @@ if find_spec("onnx"):
     from .conversion import onnx  # noqa: F401
 if find_spec("mmdnn"):
     from .conversion import mmdnn  # noqa: F401
+from .conversion.checkpoint import Checkpoint  # noqa: F401
 
 __version__ = "0.1.0"

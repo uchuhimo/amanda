@@ -14,6 +14,10 @@ class Tool:
     def register_event(self, event: Event, callback: EventCallback) -> None:
         self._event_to_callback[event] = callback
 
+    def unregister_event(self, event: Event) -> None:
+        if self.is_registered(event):
+            del self._event_to_callback[event]
+
     def get_callback(self, event: Event) -> EventCallback:
         return self._event_to_callback[event]
 

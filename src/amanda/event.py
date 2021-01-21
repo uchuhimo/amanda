@@ -8,6 +8,8 @@ class Event:
 
 
 on_graph_loaded = Event("on_graph_loaded")
+before_subgraph_executed = Event("before_subgraph_executed")
+after_subgraph_executed = Event("after_subgraph_executed")
 before_op_executed = Event("before_op_executed")
 after_op_executed = Event("after_op_executed")
 
@@ -27,7 +29,7 @@ class EventContext(dict):
         self.update(**kwargs)
         for tool in self.tools:
             if tool.is_registered(event):
-                return tool.get_callback(event)(self)
+                tool.get_callback(event)(self)
 
     def is_registered(self, event: Event) -> bool:
         for tool in self.tools:
