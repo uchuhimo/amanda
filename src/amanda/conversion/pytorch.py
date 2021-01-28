@@ -4,6 +4,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Union, cast
+from functools import partial
 
 import torch
 import torch._C
@@ -39,7 +40,11 @@ from amanda.conversion.utils import without_internal_attrs
 from amanda.event import (
     after_subgraph_executed,
     before_subgraph_executed,
+    after_backward_subgraph_executed,
     on_graph_loaded,
+    after_graph_executed,
+    before_graph_executed,
+    after_backward_graph_executed,
 )
 from amanda.exception import MismatchNamespaceError
 from amanda.graph import InputPort, Op, OutputPort, SubGraph, create_op, create_subgraph
@@ -508,29 +513,66 @@ class ModuleAdapter(Adapter):
 
     def apply(self, target: torch.nn.Module, context: EventContext) -> None:
         def add_hook(module: torch.nn.Module, name: str):
-            def forward_pre_hook(module, input):
+            def subgraph_forward_pre_hook(module, input):
                 context.trigger(
-                    before_subgraph_executed, op=module_to_op(module, name), input=input
+                    before_subgraph_executed, subgraph=module_to_op(module, name), input=input
                 )
                 return context["input"]
 
-            def forward_hook(module, input, output):
+            def subgraph_forward_hook(module, input, output):
                 context.trigger(
                     after_subgraph_executed,
-                    op=module_to_op(module, name),
+                    subgraph=module_to_op(module, name),
                     input=input,
                     output=output,
                 )
                 return context["output"]
 
-            module.register_forward_pre_hook(forward_pre_hook)
-            module.register_forward_hook(forward_hook)
+            def subgraph_backward_hook(module, grad_input, grad_output):
+                context.trigger(
+                    after_backward_subgraph_executed,
+                    subgraph=module_to_op(module, name),
+                    grad_input=grad_input,
+                    grad_output=grad_output,
+                )
+                return context["grad_input"]
+
+            module.register_forward_pre_hook(subgraph_forward_pre_hook)
+            module.register_forward_hook(subgraph_forward_hook)
+            # module.register_backward_hook(subgraph_backward_hook)
 
         def apply_hook(fn, module: torch.nn.Module, name: str):
             for child_name, module in module.named_children():
                 apply_hook(fn, module, f"{name}.{child_name}")
             fn(module, name)
 
+        def graph_forward_pre_hook(module, input):
+            context.trigger(
+                before_graph_executed, graph=module_to_op(module, "model"), input=input
+            )
+            return context["input"]
+
+        def graph_forward_hook(module, input, output):
+            context.trigger(
+                after_graph_executed,
+                graph=module_to_op(module, "model"),
+                input=input,
+                output=output,
+            )
+            return context["output"]
+
+        def graph_backward_hook(module, grad_input, grad_output):
+            context.trigger(
+                after_backward_graph_executed,
+                graph=module_to_op(module, "model"),
+                grad_input=grad_input,
+                grad_output=grad_output,
+            )
+            return context["grad_input"]
+
+        # target.register_forward_pre_hook(graph_forward_pre_hook)
+        # target.register_forward_hook(graph_forward_hook)
+        # target.register_backward_hook(graph_backward_hook)
         apply_hook(add_hook, target, "model")
 
 

@@ -8,8 +8,8 @@ from amanda.event import EventContext, on_graph_loaded
 
 @dataclass
 class Checkpoint:
-    path: str
     type: str
+    path: str
 
 
 class CheckpointAdapter(Adapter):

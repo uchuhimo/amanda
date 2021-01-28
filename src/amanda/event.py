@@ -8,8 +8,12 @@ class Event:
 
 
 on_graph_loaded = Event("on_graph_loaded")
+before_graph_executed = Event("before_graph_executed")
+after_graph_executed = Event("after_graph_executed")
+after_backward_graph_executed = Event("after_backward_graph_executed")
 before_subgraph_executed = Event("before_subgraph_executed")
 after_subgraph_executed = Event("after_subgraph_executed")
+after_backward_subgraph_executed = Event("after_backward_subgraph_executed")
 before_op_executed = Event("before_op_executed")
 after_op_executed = Event("after_op_executed")
 

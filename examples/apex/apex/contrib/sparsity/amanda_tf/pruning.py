@@ -11,50 +11,37 @@ class MLP:
     def __init__(self, args):
         self.fc1 = tf.layers.Dense(args.hidden_features, activation=tf.nn.relu)
         self.fc2 = tf.layers.Dense(args.hidden_features, activation=tf.nn.relu)
-        self.fc3 = tf.layers.Dense(args.output_features)
+        self.fc3 = tf.layers.Dense(args.hidden_features, activation=tf.nn.relu)
+        self.fc4 = tf.layers.Dense(args.output_features)
+        self.bn1 = tf.layers.BatchNormalization()
+        self.bn2 = tf.layers.BatchNormalization()
+        self.bn3 = tf.layers.BatchNormalization()
 
     def __call__(self, inputs, training=False):
         y = self.fc1(inputs)
+        y = self.bn1(y, training=training)
         y = self.fc2(y)
-        return self.fc3(y)
+        y = self.bn2(y, training=training)
+        y = self.fc3(y)
+        y = self.bn3(y, training=training)
+        return self.fc4(y)
 
 def model_fn(features, labels, mode, params, args):
     """The model_fn argument for creating an Estimator."""
     model = MLP(args)
     image = features
 
-    # Generate a summary node for the images
-    # tf.summary.image("images", features, max_outputs=6)
-
-    logits = model(image, training=False)
+    logits = model(image, training=(mode == tf.estimator.ModeKeys.TRAIN))
     predictions = {
         "classes": tf.argmax(logits, axis=1),
         "probabilities": tf.nn.softmax(logits, name="softmax_tensor"),
     }
 
-    # Calculate loss, which includes softmax cross entropy and L2 regularization.
-    cross_entropy = tf.losses.mean_squared_error(labels, logits)
-
-    # Create a tensor named cross_entropy for logging purposes.
-    tf.identity(cross_entropy, name="cross_entropy")
-    tf.summary.scalar("cross_entropy", cross_entropy)
-
-    # If no loss_filter_fn is passed, assume we want the default behavior,
-    # which is that batch_normalization variables are excluded from loss.
-    def loss_filter_fn(name):
-        return "batch_normalization" not in name
-
-    weight_decay = 1e-4
-    # Add weight decay to the loss.
-    loss = cross_entropy + weight_decay * tf.add_n(
-        [tf.nn.l2_loss(v) for v in tf.trainable_variables() if loss_filter_fn(v.name)]
-    )
+    loss = tf.losses.mean_squared_error(labels, logits)
 
     if mode == tf.estimator.ModeKeys.TRAIN:
         global_step = tf.train.get_or_create_global_step()
-        optimizer = tf.train.MomentumOptimizer(
-            learning_rate=0.001, momentum=0.9
-        )
+        optimizer = tf.train.AdamOptimizer()
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         train_op = tf.group(optimizer.minimize(loss, global_step), update_ops)
     else:
@@ -79,47 +66,49 @@ def train_loop(args, classifier, step, num_steps):
     step += num_steps
     return step
 
+def get_checkpoint(estimator):
+    return amanda.Checkpoint("tensorflow_checkpoint", estimator.latest_checkpoint())
+
 def main(args):
-    classifier = tf.estimator.Estimator(
+    estimator = tf.estimator.Estimator(
         model_fn=partial(model_fn, args=args),
     )
     weight_name = "dense_2/kernel"
-
-    print(classifier.latest_checkpoint())
 
     pruning_tool = PruningTool(mask_calculator="m4n2_1d", whitelist=["MatMul"])
 
     step = 0
 
+    pruning_tool.init_masks()
+
     # train for a few steps with dense weights
-    step = train_loop(args, classifier, step, args.num_dense_steps)
-    print("DENSE :: ",classifier.get_variable_value(weight_name))
+    step = train_loop(args, estimator, step, args.num_dense_steps)
+    print("DENSE :: ",estimator.get_variable_value(weight_name))
+    amanda.apply(get_checkpoint(estimator), pruning_tool)
+    print(estimator.latest_checkpoint())
 
-    print(classifier.latest_checkpoint())
-
-    amanda.apply(classifier, pruning_tool)
     # simulate sparsity by inserting zeros into existing dense weights
-    pruning_tool.compute_sparse_masks()
+    pruning_tool.compute_masks()
+    amanda.apply(get_checkpoint(estimator), pruning_tool)
+    print(estimator.latest_checkpoint())
 
     # train for a few steps with sparse weights
-    print("SPARSE :: ",classifier.get_variable_value(weight_name))
-    step = train_loop(args, classifier, step, args.num_sparse_steps)
+    print("SPARSE :: ",estimator.get_variable_value(weight_name))
+    step = train_loop(args, estimator, step, args.num_sparse_steps)
+    print(estimator.latest_checkpoint())
 
     # recompute sparse masks
-    pruning_tool.compute_sparse_masks()
+    pruning_tool.compute_masks()
+    amanda.apply(get_checkpoint(estimator), pruning_tool)
 
     # train for a few steps with sparse weights
-    print("SPARSE :: ",classifier.get_variable_value(weight_name))
-    step = train_loop(args, classifier, step, args.num_sparse_steps_2)
-    # pruning_tool.mask_weights()
+    print("SPARSE :: ",estimator.get_variable_value(weight_name))
+    step = train_loop(args, estimator, step, args.num_sparse_steps_2)
 
-    # turn off sparsity
-    print("SPARSE :: ",classifier.get_variable_value(weight_name))
-    pruning_tool.restore_pruned_weights()
+    pruning_tool.remove_masks()
+    amanda.apply(get_checkpoint(estimator), pruning_tool)
 
-    # train for a few steps with dense weights
-    print("DENSE :: ",classifier.get_variable_value(weight_name))
-    step = train_loop(args, classifier, step, args.num_dense_steps_2)
+    print("SPARSE :: ",estimator.get_variable_value(weight_name))
 
 if __name__ == '__main__':
     class Args:

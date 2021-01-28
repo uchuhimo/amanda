@@ -46,32 +46,29 @@ def main(args):
 
     step = 0
 
+    pruning_tool.init_masks()
+
     # train for a few steps with dense weights
-    print("DENSE :: ",one_ll)
     step = train_loop(args, model, optimizer, step, args.num_dense_steps)
+    print("DENSE :: ",one_ll)
 
     # simulate sparsity by inserting zeros into existing dense weights
-    pruning_tool.compute_sparse_masks()
+    pruning_tool.compute_masks()
 
     # train for a few steps with sparse weights
     print("SPARSE :: ",one_ll)
     step = train_loop(args, model, optimizer, step, args.num_sparse_steps)
 
     # recompute sparse masks
-    pruning_tool.compute_sparse_masks()
+    pruning_tool.compute_masks()
 
     # train for a few steps with sparse weights
     print("SPARSE :: ",one_ll)
     step = train_loop(args, model, optimizer, step, args.num_sparse_steps_2)
-    pruning_tool.mask_weights()
 
-    # turn off sparsity
+    pruning_tool.remove_masks()
+    
     print("SPARSE :: ",one_ll)
-    pruning_tool.restore_pruned_weights()
-
-    # train for a few steps with dense weights
-    print("DENSE :: ",one_ll)
-    step = train_loop(args, model, optimizer, step, args.num_dense_steps_2)
 
 if __name__ == '__main__':
     class Args:
