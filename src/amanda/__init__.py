@@ -1,6 +1,6 @@
 from importlib.util import find_spec
 
-from . import event, io  # noqa: F401
+from . import event, import_hook, io  # noqa: F401
 from .adapter import Adapter, apply, get_adapter_registry  # noqa: F401
 from .attributes import Attributes  # noqa: F401
 from .event import Event, EventContext  # noqa: F401
@@ -35,6 +35,7 @@ if find_spec("onnx"):
     from .conversion import onnx  # noqa: F401
 if find_spec("mmdnn"):
     from .conversion import mmdnn  # noqa: F401
+
 from .conversion.checkpoint import Checkpoint  # noqa: F401
 
 __version__ = "0.1.0"

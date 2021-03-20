@@ -9,6 +9,7 @@ from types import (
     MemberDescriptorType,
     MethodType,
 )
+from typing import List, Type
 
 import guppy
 from guppy.heapy import Path
@@ -132,3 +133,9 @@ def replace_all_refs(old, new):
             logger.warning(f"Unknown relation: {relation}, {type(source)}, {source}")
             continue
         func(source, relation.r, old, new)
+
+
+def get_superclasses(cls: Type) -> List[str]:
+    return [
+        f"{superclass.__module__}.{superclass.__name__}" for superclass in cls.__mro__
+    ]

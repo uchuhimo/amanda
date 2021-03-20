@@ -125,6 +125,25 @@ def test_pytorch_with_hook(model_and_input):
     model(x)
 
 
+class NewTestTool(amanda.Tool):
+    def __init__(self):
+        super(NewTestTool, self).__init__(namespace="amanda/pytorch")
+        self.register_event(amanda.event.before_op_executed, self.test)
+
+    def test(self, context: amanda.EventContext):
+        op = context["op"]
+        print(op)
+
+
+def test_pytorch_with_new_hook(model_and_input):
+    model, x = model_and_input
+    tool = NewTestTool()
+    from amanda.conversion.pytorch_updater import apply
+
+    with apply(tool):
+        model(x)
+
+
 @pytest.mark.skip
 def test_pytorch_graph_callback(model_and_input):
     import torch.autograd.profiler as profiler
