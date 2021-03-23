@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 from functools import wraps
 from typing import List
+import inspect
 
 from amanda.event import EventContext, after_op_executed, before_op_executed
 from amanda.import_hook import (
@@ -78,6 +79,87 @@ class FunctionalUpdater(MatchedFunctionUpdater):
             return True
         return not name.startswith("_")
 
+class ListenerFunctionalUpdater(MatchedFunctionUpdater):
+    def __init__(self, modules: List[str], submodules: List[str]):
+        super().__init__(module="", decorator=function_wrapper)
+        self.modules = modules
+        self.submodules = submodules
+
+    def is_match(self, name: str) -> bool:
+        return name in self.modules
+
+    def is_match_func(self, module: str, name: str, func) -> bool:
+        pass
+
+    def update_module(self, module, submodule_name, func_name):
+        func = module.__dict__[submodule_name].__dict__[func_name]
+        if hasattr(func, "updated") and func.updated:
+            return
+        new_func = self.decorator(func)
+        new_func.original = func
+        new_func.updated = True
+        module.__dict__[submodule_name].__dict__[func_name] = new_func
+
+    def update_class(self, module, submodule_name, func_name):
+        func = module.__dict__[submodule_name].__dict__[func_name]
+        if hasattr(func, "updated") and func.updated:
+            return
+        new_func = self.decorator(func)
+        new_func.original = func
+        new_func.updated = True
+        setattr(module.__dict__[submodule_name], func_name, new_func)
+
+    def update(self, module) -> None:
+        submodules = dict(module.__dict__)
+        for submodule_key in submodules:
+            if submodule_key in self.submodules:
+
+                if not inspect.ismodule(module.__dict__[submodule_key]) and type(module.__dict__[submodule_key]) == type:
+                    module.__dict__[submodule_key] = type(submodule_key, (module.__dict__[submodule_key],), dict(module.__dict__[submodule_key].__dict__))
+                    funcs = dict(module.__dict__[submodule_key].__dict__)
+                    for func_key in funcs:
+                        if func_key.startswith("__"):
+                            continue
+                        print(module.__name__, submodule_key, func_key)
+
+                        self.update_class(module, submodule_key, func_key)
+                elif not inspect.ismodule(module.__dict__[submodule_key]) and type(module.__dict__[submodule_key]) != type:
+                    submodule_cls_key = module.__dict__[submodule_key].__class__.__name__
+                    module.__dict__[submodule_cls_key] = type(submodule_cls_key, (object,), dict(module.__dict__[submodule_cls_key].__dict__))
+                    funcs = dict(module.__dict__[submodule_cls_key].__dict__)
+                    for func_key in funcs:
+                        if func_key.startswith("__"):
+                            continue
+                        print(module.__name__, submodule_cls_key, func_key)
+                        
+
+                        self.update_class(module, submodule_cls_key, func_key)
+                    module.__dict__[submodule_key] = module.__dict__[submodule_cls_key]()
+
+                else:
+                    funcs = dict(module.__dict__[submodule_key].__dict__)
+
+                    for func_key in funcs:
+                        if func_key.startswith("__"):
+                            continue
+                        BLACK_LIST = [
+                            'avg_pool2d',
+                            'avg_pool3d',
+                            'hardtanh_',
+                            'elu_',
+                            'leaky_relu_',
+                            'log_sigmoid',
+                            'softplus',
+                            'softshrink',
+                            'one_hot',
+                        ]
+                        if func_key in BLACK_LIST:
+                            continue
+                        print(module.__name__, submodule_key, func_key)
+                        # if func_key in TORCH_DISPATCH_OPS:
+                        self.update_module(module, submodule_key, func_key)
+
+
 
 class FakeUpdater(MatchedFunctionUpdater):
     def __init__(self):
@@ -139,13 +221,27 @@ class GradFnUpdater(MethodUpdater):
 
 def register_import_hook() -> None:
     # register_updater(FakeUpdater())
+    # register_updater(
+    #     FunctionalUpdater(
+    #         modules=[
+    #             "torch.nn.functional",
+    #             "torch.nn.quantized.functional",
+    #             # "torch.nn.init",
+    #             "torch._C._nn",
+    #         ]
+    #     )
+    # )
     register_updater(
-        FunctionalUpdater(
+        ListenerFunctionalUpdater(
             modules=[
-                "torch.nn.functional",
-                "torch.nn.quantized.functional",
-                # "torch.nn.init",
-                "torch._C._nn",
+                "torch._C",
+            ],
+            submodules=[
+                # "_nn",
+                "_fft",
+                "_linalg",
+                # "_TensorBase",
+                "_VariableFunctions",
             ]
         )
     )
