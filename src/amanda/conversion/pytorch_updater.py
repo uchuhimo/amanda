@@ -142,28 +142,19 @@ class ListenerFunctionalUpdater(MatchedFunctionUpdater):
         @wraps(_add_docstr)
         def wrapper(func, doc_str):
             if hasattr(func, 'updated') and func.updated:
-                # func.original = _add_docstr(func.original, doc_str)
-                # setattr(func, 'original', _add_docstr(getattr(func, 'original'), doc_str))
-                # func.origianl = _add_docstr(getattr(func, 'original'), doc_str)
                 func.__dict__['original'] = _add_docstr(getattr(func, 'original'), doc_str)
-                # func.__dict__['__doc__'] = func.original.__doc__
                 return func
             else:
                 return _add_docstr(func, doc_str)
-        
         return wrapper
 
     def update(self, module) -> None:
-        # if module.__name__ == "_add_docstr":
-        #     import IPython
-        #     IPython.embed()
 
         global TORCH_OP_LIST
         submodules = dict(module.__dict__)
         for submodule_key in submodules:
             if submodule_key == "_add_docstr":
                 module.__dict__[submodule_key] = self.add_docstr_wrapper(module.__dict__[submodule_key])
-                # print("_add_docstr wrapped")
                 continue
 
             if submodule_key in self.submodules:
@@ -172,9 +163,7 @@ class ListenerFunctionalUpdater(MatchedFunctionUpdater):
                     module.__dict__[submodule_key] = type(submodule_key, (module.__dict__[submodule_key],), dict(module.__dict__[submodule_key].__dict__))
                     funcs = dict(module.__dict__[submodule_key].__dict__)
                     for func_key in funcs:
-                        if func_key.startswith("__"):
-                            continue
-                        if not func_key in TORCH_OP_LIST:
+                        if func_key.startswith("__") or not func_key in TORCH_OP_LIST:
                             continue
                         # print(module.__name__, submodule_key, func_key)
                         self.update_class(module, submodule_key, func_key)
@@ -184,23 +173,17 @@ class ListenerFunctionalUpdater(MatchedFunctionUpdater):
                     funcs = dict(module.__dict__[submodule_cls_key].__dict__)
                     module.__dict__[submodule_key] = module.__dict__[submodule_cls_key]()
                     for func_key in funcs:
-                        if func_key.startswith("__"):
-                            continue
-                        if not func_key in TORCH_OP_LIST:
-                            continue                        
+                        if func_key.startswith("__") or not func_key in TORCH_OP_LIST:
+                            continue                     
                         # print(module.__name__, submodule_cls_key, func_key)
                         self.update_object(module, submodule_key, submodule_cls_key, func_key)
 
                 else:
                     funcs = dict(module.__dict__[submodule_key].__dict__)
-
                     for func_key in funcs:
-                        if func_key.startswith("__"):
+                        if func_key.startswith("__") or not func_key in TORCH_OP_LIST:
                             continue
-                        if not func_key in TORCH_OP_LIST:
-                            continue                        
                         # print(module.__name__, submodule_key, func_key)
-                        # if func_key in TORCH_DISPATCH_OPS:
                         self.update_module(module, submodule_key, func_key)
 
 

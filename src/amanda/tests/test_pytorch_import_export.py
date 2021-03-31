@@ -128,11 +128,28 @@ def test_pytorch_with_hook(model_and_input):
 class NewTestTool(amanda.Tool):
     def __init__(self):
         super(NewTestTool, self).__init__(namespace="amanda/pytorch")
-        self.register_event(amanda.event.before_op_executed, self.test)
+        # self.register_event(amanda.event.before_op_executed, self.test)
+        self.register_event(amanda.event.before_op_executed, self.pruning_weight)
+
 
     def test(self, context: amanda.EventContext):
         op = context["op"]
         print(op)
+
+    def pruning_weight(self, context):
+
+        def threshold_tensor(t: torch.Tensor, thresh=0, value=0)->None:
+            with torch.no_grad():
+                t[t<thresh] = value
+
+        if 'conv' in context["op"].__name__:
+            # input
+            # threshold_tensor(context["args"][0], 0.5, 0)
+            # weight
+            threshold_tensor(context["args"][1], 0.5, 0)
+            # bias
+            threshold_tensor(context["args"][2], 0.5, 0)
+
 
 
 def test_pytorch_with_new_hook(model_and_input):
@@ -141,7 +158,9 @@ def test_pytorch_with_new_hook(model_and_input):
     from amanda.conversion.pytorch_updater import apply
 
     with apply(tool):
-        model(x)
+        y = model(x)
+        y.backward(torch.zeros(y.shape))
+        
 
 
 @pytest.mark.skip
