@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 from functools import wraps
 from typing import List
+from types import MethodType
 import inspect
 
 from amanda.event import EventContext, after_op_executed, before_op_executed
@@ -13,6 +14,8 @@ from amanda.import_hook import (
 from amanda.lang import get_superclasses
 from amanda.tool import Tool
 
+
+from amanda.conversion import listener
 
 def function_wrapper(func, pass_type=None):
     @wraps(func)
@@ -79,6 +82,21 @@ class FunctionalUpdater(MatchedFunctionUpdater):
             return True
         return not name.startswith("_")
 
+TORCH_OP_LIST = set()
+
+def listener_callback(op_name: str)->str:
+    def remove_namespace(name: str) -> str :
+        pos = name.find("::")
+        if not pos == -1:
+            return name[pos+2:]
+        else: 
+            return name
+
+    global TORCH_OP_LIST
+    TORCH_OP_LIST.add(remove_namespace(op_name))
+    return op_name
+
+
 class ListenerFunctionalUpdater(MatchedFunctionUpdater):
     def __init__(self, modules: List[str], submodules: List[str]):
         super().__init__(module="", decorator=function_wrapper)
@@ -92,7 +110,7 @@ class ListenerFunctionalUpdater(MatchedFunctionUpdater):
         pass
 
     def update_module(self, module, submodule_name, func_name):
-        func = module.__dict__[submodule_name].__dict__[func_name]
+        func = getattr(module.__dict__[submodule_name], func_name)
         if hasattr(func, "updated") and func.updated:
             return
         new_func = self.decorator(func)
@@ -101,17 +119,53 @@ class ListenerFunctionalUpdater(MatchedFunctionUpdater):
         module.__dict__[submodule_name].__dict__[func_name] = new_func
 
     def update_class(self, module, submodule_name, func_name):
-        func = module.__dict__[submodule_name].__dict__[func_name]
+        func = getattr(module.__dict__[submodule_name], func_name)
         if hasattr(func, "updated") and func.updated:
             return
         new_func = self.decorator(func)
         new_func.original = func
         new_func.updated = True
         setattr(module.__dict__[submodule_name], func_name, new_func)
+        
+    def update_object(self, module, submodule_name, submodule_cls_name, func_name):
+        func = getattr(module.__dict__[submodule_cls_name], func_name)
+        if hasattr(func, "updated") and func.updated:
+            return
+        new_func = self.decorator(func)
+        new_func.original = func
+        new_func.updated = True
+        setattr(module.__dict__[submodule_cls_name], func_name, new_func)
+        setattr(module.__dict__[submodule_name], func_name, new_func)
+
+
+    def add_docstr_wrapper(self, _add_docstr):
+        @wraps(_add_docstr)
+        def wrapper(func, doc_str):
+            if hasattr(func, 'updated') and func.updated:
+                # func.original = _add_docstr(func.original, doc_str)
+                # setattr(func, 'original', _add_docstr(getattr(func, 'original'), doc_str))
+                # func.origianl = _add_docstr(getattr(func, 'original'), doc_str)
+                func.__dict__['original'] = _add_docstr(getattr(func, 'original'), doc_str)
+                # func.__dict__['__doc__'] = func.original.__doc__
+                return func
+            else:
+                return _add_docstr(func, doc_str)
+        
+        return wrapper
 
     def update(self, module) -> None:
+        # if module.__name__ == "_add_docstr":
+        #     import IPython
+        #     IPython.embed()
+
+        global TORCH_OP_LIST
         submodules = dict(module.__dict__)
         for submodule_key in submodules:
+            if submodule_key == "_add_docstr":
+                module.__dict__[submodule_key] = self.add_docstr_wrapper(module.__dict__[submodule_key])
+                # print("_add_docstr wrapped")
+                continue
+
             if submodule_key in self.submodules:
 
                 if not inspect.ismodule(module.__dict__[submodule_key]) and type(module.__dict__[submodule_key]) == type:
@@ -120,21 +174,22 @@ class ListenerFunctionalUpdater(MatchedFunctionUpdater):
                     for func_key in funcs:
                         if func_key.startswith("__"):
                             continue
-                        print(module.__name__, submodule_key, func_key)
-
+                        if not func_key in TORCH_OP_LIST:
+                            continue
+                        # print(module.__name__, submodule_key, func_key)
                         self.update_class(module, submodule_key, func_key)
                 elif not inspect.ismodule(module.__dict__[submodule_key]) and type(module.__dict__[submodule_key]) != type:
                     submodule_cls_key = module.__dict__[submodule_key].__class__.__name__
                     module.__dict__[submodule_cls_key] = type(submodule_cls_key, (object,), dict(module.__dict__[submodule_cls_key].__dict__))
                     funcs = dict(module.__dict__[submodule_cls_key].__dict__)
+                    module.__dict__[submodule_key] = module.__dict__[submodule_cls_key]()
                     for func_key in funcs:
                         if func_key.startswith("__"):
                             continue
-                        print(module.__name__, submodule_cls_key, func_key)
-                        
-
-                        self.update_class(module, submodule_cls_key, func_key)
-                    module.__dict__[submodule_key] = module.__dict__[submodule_cls_key]()
+                        if not func_key in TORCH_OP_LIST:
+                            continue                        
+                        # print(module.__name__, submodule_cls_key, func_key)
+                        self.update_object(module, submodule_key, submodule_cls_key, func_key)
 
                 else:
                     funcs = dict(module.__dict__[submodule_key].__dict__)
@@ -142,20 +197,9 @@ class ListenerFunctionalUpdater(MatchedFunctionUpdater):
                     for func_key in funcs:
                         if func_key.startswith("__"):
                             continue
-                        BLACK_LIST = [
-                            'avg_pool2d',
-                            'avg_pool3d',
-                            'hardtanh_',
-                            'elu_',
-                            'leaky_relu_',
-                            'log_sigmoid',
-                            'softplus',
-                            'softshrink',
-                            'one_hot',
-                        ]
-                        if func_key in BLACK_LIST:
-                            continue
-                        print(module.__name__, submodule_key, func_key)
+                        if not func_key in TORCH_OP_LIST:
+                            continue                        
+                        # print(module.__name__, submodule_key, func_key)
                         # if func_key in TORCH_DISPATCH_OPS:
                         self.update_module(module, submodule_key, func_key)
 
@@ -237,10 +281,10 @@ def register_import_hook() -> None:
                 "torch._C",
             ],
             submodules=[
-                # "_nn",
+                "_nn",
                 "_fft",
                 "_linalg",
-                # "_TensorBase",
+                "_TensorBase",
                 "_VariableFunctions",
             ]
         )
@@ -248,6 +292,8 @@ def register_import_hook() -> None:
     # register_updater(ModuleUpdater())
     # register_updater(GradFnUpdater())
 
+def register_listener():
+    listener.HookRegisterer(listener_callback)
 
 _tool: Tool = None
 

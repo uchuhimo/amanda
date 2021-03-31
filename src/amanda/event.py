@@ -32,7 +32,7 @@ class EventContext(dict):
     def trigger(self, event: Event, **kwargs) -> None:
         self.update(**kwargs)
         for tool in self.tools:
-            if tool.is_registered(event):
+            if tool and tool.is_registered(event):
                 tool.get_callback(event)(self)
 
     def is_registered(self, event: Event) -> bool:

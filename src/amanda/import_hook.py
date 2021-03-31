@@ -162,9 +162,11 @@ def init() -> None:
     if importlib.util.find_spec("torch"):
         from .conversion.pytorch_updater import (
             register_import_hook as pytorch_register_import_hook,
+            register_listener as pytorch_register_listener,
         )
 
         pytorch_register_import_hook()
+        pytorch_register_listener()
     init_import_hook()
     _inited = True
 
