@@ -4,7 +4,7 @@ from typing import List
 from types import MethodType
 import inspect
 
-from amanda.event import EventContext, after_op_executed, before_op_executed
+from amanda.event import EventContext, after_op_executed, before_op_executed, before_backward_op_executed, after_backward_op_executed
 from amanda.import_hook import (
     MatchedClassUpdater,
     MatchedFunctionUpdater,
@@ -27,14 +27,23 @@ def function_wrapper(func, pass_type=None):
             args=args,
             kwargs=kwargs,
         )
+        context.registry_backward_callback(
+            after_backward_op_executed,
+            args=args,
+            kwargs=kwargs,
+        )        
         output = func(*args, **kwargs)
         context.trigger(
             after_op_executed,
             op=func,
             output=output,
         )
-        return context["output"]
+        context.registry_backward_callback(
+            before_backward_op_executed,
+            output=output,
+        )
 
+        return context["output"]
     return wrapper
 
 
