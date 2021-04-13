@@ -16,6 +16,8 @@ from amanda.tool import Tool
 def function_wrapper(func, pass_type=None):
     @wraps(func)
     def wrapper(*args, **kwargs):
+        if _tool is None:
+            return func(*args, **kwargs)
         context = EventContext(tools=[_tool])
         context.trigger(
             before_op_executed,
