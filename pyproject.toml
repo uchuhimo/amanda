@@ -63,7 +63,7 @@ classifiers=[
 ]
 
 [tool.poetry.dependencies]
-python = ">= 3.6.1, < 4"
+python = ">= 3.6.2, < 4"
 more-itertools = "*"
 click = "*"
 typing-extensions = "*"
@@ -81,9 +81,9 @@ contextvars = { version = "*", python = "< 3.7" }
 mypy-protobuf = "*"
 numpy = "*"
 scipy = "*"
-tensorflow = "1.15.3"
-torch = "1.7.0"
-torchvision = "0.8.1"
+tensorflow = "1.15.5"
+torch = "1.8.1"
+torchvision = "0.9.1"
 mmdnn = "*"
 onnx = "*"
 onnxruntime = "*"

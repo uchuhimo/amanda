@@ -541,11 +541,18 @@ def export_to_graph(
             for op in graph.ops
             if op.type == "VariableV2" and "value" in op.attrs
         }
+
+        def as_op(initializer):
+            if isinstance(initializer, tf.Tensor):
+                return initializer.op
+            else:
+                return initializer
+
         initializers = [
-            variables[name].initializer for name in initialized_variables.keys()
+            as_op(variables[name].initializer) for name in initialized_variables.keys()
         ]
         feed_dict = {
-            variables[name].initializer.inputs[1]: value
+            as_op(variables[name].initializer).inputs[1]: value
             for name, value in initialized_variables.items()
         }
         if len(initializers) != 0:
