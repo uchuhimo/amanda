@@ -84,13 +84,18 @@ def onnx_model_zoo(path: str) -> str:
 # for a complete list of architecture name supported, see
 # https://github.com/onnx/models
 onnx_arch_map = {
-    "mobilenetv2-1.0": {
+    "mobilenetv2-7": {
         "url": onnx_model_zoo(
             "vision/classification/mobilenet/model/mobilenetv2-7.tar.gz"
         )
     },
     "resnet18-v1-7": {
         "url": onnx_model_zoo("vision/classification/resnet/model/resnet18-v1-7.tar.gz")
+    },
+    "squeezenet1.1": {
+        "url": onnx_model_zoo(
+            "vision/classification/squeezenet/model/squeezenet1.1-7.tar.gz"
+        ),
     },
 }
 
@@ -106,6 +111,9 @@ def download_onnx_model(arch_name, model_dir, root=None):
         directory=str(full_model_dir) + "/",
         auto_unzip=True,
     )
+    if "raw_name" in onnx_arch_map[arch_name]:
+        raw_path = full_model_dir / onnx_arch_map[arch_name]["raw_name"]
+        raw_path.rename(full_model_dir / arch_name)
 
 
 def download_all_onnx_models(root=None):
