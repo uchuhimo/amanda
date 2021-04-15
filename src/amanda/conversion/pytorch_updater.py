@@ -31,7 +31,7 @@ def function_wrapper(func, pass_type=None):
             after_backward_op_executed,
             args=args,
             kwargs=kwargs,
-        )        
+        )
         output = func(*args, **kwargs)
         context.trigger(
             after_op_executed,
@@ -174,7 +174,9 @@ class ListenerFunctionalUpdater(MatchedFunctionUpdater):
                     for func_key in funcs:
                         if func_key.startswith("__") or not func_key in TORCH_OP_LIST:
                             continue
-                        # print(module.__name__, submodule_key, func_key)
+                        if func_key == 'data':
+                            print(f'skip "data" of {submodule_key}')
+                            continue
                         self.update_class(module, submodule_key, func_key)
                 elif not inspect.ismodule(module.__dict__[submodule_key]) and type(module.__dict__[submodule_key]) != type:
                     submodule_cls_key = module.__dict__[submodule_key].__class__.__name__
@@ -183,10 +185,9 @@ class ListenerFunctionalUpdater(MatchedFunctionUpdater):
                     module.__dict__[submodule_key] = module.__dict__[submodule_cls_key]()
                     for func_key in funcs:
                         if func_key.startswith("__") or not func_key in TORCH_OP_LIST:
-                            continue                     
+                            continue     
                         # print(module.__name__, submodule_cls_key, func_key)
                         self.update_object(module, submodule_key, submodule_cls_key, func_key)
-
                 else:
                     funcs = dict(module.__dict__[submodule_key].__dict__)
                     for func_key in funcs:

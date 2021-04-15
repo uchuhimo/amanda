@@ -41,6 +41,7 @@ class EventContext(dict):
         from amanda.tool import Tool
 
         self.tools: Iterable[Tool] = tools
+        self.bw_hooks = []
 
     def trigger(self, event: Event, **kwargs) -> None:
         self.update(**kwargs)
@@ -56,18 +57,11 @@ class EventContext(dict):
             self[context_key] = grad
         if self.all_grad_updated(event):
             self.trigger(event)
-        #     print('[trigger]', self['op'].__name__, key_pair)
-        #     print(self[context_key])
-        # else:
-        #     print('[not trigger]', self['op'].__name__, key_pair)
+            # self.remove_bw_hooks()
 
 
     def registry_backward_callback(self, event: Event, **kwargs) -> None:
         def register_bw_hook(context, event, key_pair, grad):
-            # context.trigger(
-            #     event,
-            #     **{grad_key:grad},
-            # )
             context.bw_callback(event, key_pair, grad)
 
         for key,value in kwargs.items():
@@ -75,27 +69,27 @@ class EventContext(dict):
                 self['grad_args'] = [None for i in range(len(value))]
                 for args_index, args_value in enumerate(value):
                     if hasattr(args_value, 'register_hook') and args_value.requires_grad:
-                        args_value.register_hook(lambda grad,args_index=args_index: register_bw_hook(self, event, ('grad_args', args_index), grad))
+                        hook = args_value.register_hook(lambda grad,args_index=args_index: register_bw_hook(self, event, ('grad_args', args_index), grad))
+                        self.bw_hooks.append(hook)
                         self['grad_args'][args_index] = event
-                        # print('[registry]', self['op'].__name__, args_index)
                     else:
                         self['grad_args'][args_index] = None
-                    # break
                 continue
 
             if key == 'kwargs':
                 self['grad_kwargs'] = dict()
                 for args_index, args_value in value.items():
                     if hasattr(args_value, 'register_hook') and args_value.requires_grad:
-                        args_value.register_hook(lambda grad,args_index=args_index: register_bw_hook(self, event, ('grad_kwargs', args_index), grad))
+                        hook = args_value.register_hook(lambda grad,args_index=args_index: register_bw_hook(self, event, ('grad_kwargs', args_index), grad))
+                        self.bw_hooks.append(hook)
                         self['grad_kwargs'][args_index] = event
                     else:
                         self['grad_kwargs'][args_index] = None
-                    # break
                 continue
 
             if hasattr(value, 'register_hook') and value.requires_grad:
-                value.register_hook(lambda grad: register_bw_hook(self, event, ('grad_'+key, None), grad))
+                hook = value.register_hook(lambda grad: register_bw_hook(self, event, ('grad_'+key, None), grad))
+                self.bw_hooks.append(hook)
                 self.update({'grad_'+key:event})
             else:
                 self.update({'grad_'+key:None})
@@ -105,15 +99,15 @@ class EventContext(dict):
         for key, value in self.items():
             if key == 'grad_args':
                 for args_value in value:
-                    if args_value == event:
+                    if isinstance(args_value, Event) and args_value == event:
                         return False
                 continue
             if key == 'grad_kwargs':
                 for args_value in value.values():
-                    if args_value == event:
+                    if isinstance(args_value, Event) and args_value == event:
                         return False
                 continue
-            if key.startswith('grad_') and value == event:
+            if key.startswith('grad_') and isinstance(value, Event) and value == event:
                 return False
         return True
 
@@ -124,3 +118,7 @@ class EventContext(dict):
             if tool.is_registered(event):
                 return True
         return False
+
+    def remove_bw_hooks(self):
+        for handle in self.bw_hooks:
+            handle.remove()
