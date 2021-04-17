@@ -27,21 +27,12 @@ def function_wrapper(func, pass_type=None):
             args=args,
             kwargs=kwargs,
         )
-        # context.registry_backward_callback(
-        #     after_backward_op_executed,
-        #     args=args,
-        #     kwargs=kwargs,
-        # )
         output = func(*args, **kwargs)
         context.trigger(
             after_op_executed,
             op=func,
             output=output,
         )
-        # context.registry_backward_callback(
-        #     before_backward_op_executed,
-        #     output=output,
-        # )
         context.registry_bw_events(output)
 
         return context["output"]
@@ -290,8 +281,6 @@ def register_listener():
     listener.HookRegisterer(listener_callback)
 
 _tool: Tool = None
-
-_handle = []
 
 @contextmanager
 def apply(tool: Tool):
