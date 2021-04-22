@@ -3,7 +3,6 @@ from contextlib import contextmanager
 from functools import wraps
 from typing import List
 
-from amanda.conversion.listener.build.listener import HookRegisterer
 from amanda.event import EventContext, after_op_executed, before_op_executed
 from amanda.import_hook import (
     MatchedClassUpdater,
@@ -33,6 +32,8 @@ def function_wrapper(func, pass_type=None):
             op=func,
             output=output,
         )
+        context.registry_bw_events(output)
+
         return context["output"]
 
     return wrapper
@@ -178,7 +179,9 @@ class ListenerFunctionalUpdater(MatchedFunctionUpdater):
                     for func_key in funcs:
                         if func_key.startswith("__") or func_key not in TORCH_OP_LIST:
                             continue
-                        # print(module.__name__, submodule_key, func_key)
+                        if func_key == "data":
+                            print(f'skip "data" of {submodule_key}')
+                            continue
                         self.update_class(module, submodule_key, func_key)
                 elif (
                     not inspect.ismodule(module.__dict__[submodule_key])
@@ -203,7 +206,6 @@ class ListenerFunctionalUpdater(MatchedFunctionUpdater):
                         self.update_object(
                             module, submodule_key, submodule_cls_key, func_key
                         )
-
                 else:
                     funcs = dict(module.__dict__[submodule_key].__dict__)
                     for func_key in funcs:
@@ -302,7 +304,9 @@ def register_import_hook() -> None:
 
 
 def register_listener():
-    HookRegisterer(listener_callback)
+    from amanda.conversion import listener
+
+    listener.HookRegisterer(listener_callback)
 
 
 _tool: Tool = None
