@@ -6,6 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 from types import MethodType
 from typing import Any, Callable, Dict, List, Tuple, Union
+from amanda.tool import get_tools
 
 import google.protobuf.text_format
 import tensorflow as tf
@@ -819,6 +820,25 @@ class AmandaHook(tf.train.SessionRunHook):
             else:
                 tf_graph.finalize()
 
+class GraphHook(tf.train.SessionRunHook):
+    def after_create_session(self, session, coord):
+        tools = get_tools()
+        context = EventContext(tools=[tools])
+        tf_graph = session.graph
+        tf_graph._finalized = False
+        graph = import_from_graph(tf_graph, session=session)
+        context.trigger(on_graph_loaded, graph=graph)
+        new_graph = context["graph"]
+        new_tf_graph, _, session = export_to_graph(new_graph)
+        session.close()
+        if new_tf_graph != tf_graph:
+            new_tf_graph._device_function_stack = tf_graph._device_function_stack
+            new_tf_graph.finalize()
+            gc.collect()
+            replace_all_refs(tf_graph, new_tf_graph)
+        else:
+            tf_graph.finalize()
+
 
 class EstimatorAdapter(Adapter):
     def __init__(self):
@@ -880,6 +900,63 @@ class EstimatorAdapter(Adapter):
         target.predict = MethodType(predict_with_tools, target)
         evaluate = target.evaluate
         target.evaluate = MethodType(evaluate_with_tools, target)
+
+def inject_hook(target: tf.estimator.Estimator) -> None:
+    def train_with_tools(
+        target_self,
+        input_fn,
+        hooks=None,
+        steps=None,
+        max_steps=None,
+        saving_listeners=None,
+    ):
+        return train(
+            input_fn,
+            [amanda_hook] if hooks is None else [amanda_hook, *hooks],
+            steps,
+            max_steps,
+            saving_listeners,
+        )
+
+    def predict_with_tools(
+        target_self,
+        input_fn,
+        predict_keys=None,
+        hooks=None,
+        checkpoint_path=None,
+        yield_single_examples=True,
+    ):
+        return predict(
+            input_fn,
+            predict_keys,
+            [amanda_hook] if hooks is None else [amanda_hook, *hooks],
+            checkpoint_path,
+            yield_single_examples,
+        )
+
+    def evaluate_with_tools(
+        target_self,
+        input_fn,
+        steps=None,
+        hooks=None,
+        checkpoint_path=None,
+        name=None,
+    ):
+        return evaluate(
+            input_fn,
+            steps,
+            [amanda_hook] if hooks is None else [amanda_hook, *hooks],
+            checkpoint_path,
+            name,
+        )
+
+    amanda_hook = GraphHook()
+    train = target.train
+    target.train = MethodType(train_with_tools, target)
+    predict = target.predict
+    target.predict = MethodType(predict_with_tools, target)
+    evaluate = target.evaluate
+    target.evaluate = MethodType(evaluate_with_tools, target)
 
 
 get_adapter_registry().register_adapter(tf.estimator.Estimator, EstimatorAdapter())

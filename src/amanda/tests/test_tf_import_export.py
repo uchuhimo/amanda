@@ -162,7 +162,10 @@ def run_model_with_estimator(arch_name, model_dir, input, tool):
             model_dir=model_dir,
             warm_start_from=warm_start,
         )
-        amanda.apply(estimator, tool)
+        if tool is not None:
+            amanda.apply(estimator, tool)
+        else:
+            amanda.tensorflow.inject_hook(estimator)
         estimator.train(input_fn=input_fn, steps=1)
     finally:
         shutil.rmtree(model_dir)
@@ -237,6 +240,29 @@ def test_tf_modify_graph_with_hook(arch_name):
         input=input,
         tool=DebuggingTool(store_dir),
     )
+
+class TestTool(amanda.Tool):
+    def __init__(self):
+        super(TestTool, self).__init__(namespace="amanda/tensorflow")
+        self.register_event(amanda.event.before_op_executed, self.test)
+
+    def test(self, context: amanda.EventContext):
+        op = context["op"]
+        print(op.type)
+
+def test_tf_modify_graph_with_new_hook(arch_name):
+    from amanda.tools.debugging.insert_debug_op_tensorflow import DebuggingTool
+
+    input = np.random.rand(*input_shapes[arch_name])
+    run_model(arch_name, model_dir="downloads/model", input=input)
+    store_dir = root_dir() / "tmp" / "debug_info_with_new_hook" / arch_name
+    tool = TestTool()
+    with amanda.tool.apply(tool):
+        run_model_with_estimator(
+            arch_name,
+            model_dir="downloads/model",
+            input=input,
+        )
 
 
 def check_modified_graph(graph_def, new_graph_def):
