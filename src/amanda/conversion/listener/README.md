@@ -4,8 +4,7 @@
 ```
 mkdir build
 cd build
-cmake -DCMAKE_PREFIX_PATH=`python -c "import torch;print(torch.utils.cmake_prefix_path)"` ..
-cd ../
+cmake -DCMAKE_PREFIX_PATH=`python -c "import torch;print(torch.utils.cmake_prefix_path)"` -DCMAKE_PREFIX_PATH=`python -m pybind11 --cmakedir` ..
 make listener
 ```
 

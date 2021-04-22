@@ -78,6 +78,7 @@ typing = { version = "*", python = "< 3.7" }
 contextvars = { version = "*", python = "< 3.7" }
 
 [tool.poetry.dev-dependencies]
+pybind11 = "*"
 mypy-protobuf = "*"
 numpy = "*"
 scipy = "*"
