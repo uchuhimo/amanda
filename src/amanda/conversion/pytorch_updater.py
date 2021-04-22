@@ -304,9 +304,9 @@ def register_import_hook() -> None:
 
 
 def register_listener():
-    from amanda.conversion import listener
+    from amanda.conversion.listener.build.listener import HookRegisterer
 
-    listener.HookRegisterer(listener_callback)
+    HookRegisterer(listener_callback)
 
 
 _tool: Tool = None
