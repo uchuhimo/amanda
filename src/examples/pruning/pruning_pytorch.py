@@ -1,4 +1,3 @@
-import amanda
 import torch
 import os
 import torchvision
@@ -7,56 +6,15 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-from amanda.conversion.pytorch_updater import apply
+from timeit import default_timer as timer
 
+import torch.nn.utils.prune as prune
 from vector_wise_sparsity import create_mask
 
-
-class PruneTool(amanda.Tool):
-
-    def __init__(self):
-        super(PruneTool, self).__init__(namespace="amanda/pytorch")
-        self.register_event(amanda.event.before_op_executed, self.mask_forward_weight)
-        self.register_event(amanda.event.after_backward_op_executed, self.mask_backward_gradient)
-
-        self.conv_cnt = 0
-        self.conv_masks = []
-
-    def compute_mask(self, tensor):
-        print(f"compute mask for {tensor.shape}")
-        return create_mask(tensor)
-
-    def get_mask(self, tensor):
-        if self.conv_cnt <= len(self.conv_masks):
-            return self.conv_masks[self.conv_cnt-1]
-        else:
-            mask = self.compute_mask(tensor)
-            self.conv_masks.append(mask)
-            return mask
-
-    def mask_forward_weight(self, context):
-        if 'conv2d' in context['op'].__name__ and context['args'][1].shape[1]%4==0:
-            self.conv_cnt += 1
-
-            weight = context['args'][1]
-            mask = self.get_mask(weight)
-            with torch.no_grad():
-                weight.data = torch.mul(weight, mask)
-                context['mask'] = mask
-
-    def mask_backward_gradient(self, context):
-        if 'conv2d' in context['op'].__name__ and context['args'][1].shape[1]%4==0:
-            weight_grad = context['input_grad'][1]
-            mask = context['mask']
-            with torch.no_grad():
-                weight_grad.data = torch.mul(weight_grad, mask)
-                
-
-    def reset_cnt(self):
-        self.conv_cnt = 0
-
-
-
+class VectorWisePruningMethod(prune.BasePruningMethod):
+    def compute_mask(self, t, default_mask):
+        mask = create_mask(t)
+        return mask    
 
 def main():
 
@@ -94,7 +52,8 @@ def main():
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    model = torchvision.models.resnet50(num_classes=100).to(device)
+    model = torchvision.models.vgg16(num_classes=100).to(device)
+    # model = torchvision.models.resnet50(num_classes=100).to(device)
     
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate,
@@ -108,35 +67,41 @@ def main():
     total_step = len(train_loader)
     curr_lr = learning_rate
 
-    tool = PruneTool()
 
+    # for name, module in model.named_modules():
+    #     if name == 'conv1' or name=='features.0': # skip input layer with input dim=3
+    #         continue 
+    #     if isinstance(module, torch.nn.Conv2d):
+    #         VectorWisePruningMethod.apply(module, 'weight')
 
     for epoch in range(num_epochs):
 
 
         for i, (images, labels) in enumerate(train_loader):
             
+            start = timer()
+
+            model.train()
+            images = images.to(device)
+            labels = labels.to(device)
 
 
-            with apply(tool):
-                
-                tool.reset_cnt()
+            # Forward pass
+            outputs = model(images)
+            loss = criterion(outputs, labels)
 
-
-                model.train()
-                images = images.to(device)
-                labels = labels.to(device)
-
-
-                # Forward pass
-                outputs = model(images)
-                loss = criterion(outputs, labels)
-
-                # Backward and optimize
-                optimizer.zero_grad()
-                loss.backward()
+            # Backward and optimize
+            optimizer.zero_grad()
+            loss.backward()
 
             optimizer.step()
+
+            end = timer()
+            print(end-start)
+
+            if (i==16):
+                return
+
 
             if (i+1) % 100 == 0:
                 print ("Epoch [{}/{}], Step [{}/{}] Loss: {:.4f}"
@@ -170,6 +135,36 @@ def main():
     # Save the model checkpoint
         torch.save(model.state_dict(), f'{save_path}/epoch_{epoch}.ckpt')
 
+def main_transformer():
+    import transformers
+
+    device = 'cuda'
+
+    config = transformers.BertConfig.from_pretrained('bert-base-uncased')
+    model = transformers.BertForMaskedLM(config).to(device)
+
+    rand_input = torch.randint(0,100,(8,512)).to(device)
+
+
+    # for name, module in model.named_modules():
+    #     if name == 'conv1': # skip input layer with input dim=3
+    #         continue 
+    #     if isinstance(module, torch.nn.Conv2d) or isinstance(module, torch.nn.Linear):
+    #         print(f'pruning {name}')
+    #         VectorWisePruningMethod.apply(module, 'weight')
+
+    for i in range(16):
+
+        start = timer()
+
+        model_output = model(rand_input)
+
+        model_output[0].backward(torch.rand_like(model_output[0]))
+
+        end = timer()
+
+        print(end-start)
 
 if __name__ == "__main__":
     main()
+    # main_transformer()

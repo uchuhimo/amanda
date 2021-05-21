@@ -70,6 +70,7 @@ class EventContext(dict):
         def before_bw_op_hook(context, output):
             context.trigger(before_backward_op_executed, output_grad=output)
             before_bw_op_hook_handle.remove()
+            # return context['output_grad']
         
         def after_bw_op_hook(context, input, output):
             context.trigger(after_backward_op_executed, input_grad=input, output_grad=output)
@@ -78,6 +79,21 @@ class EventContext(dict):
         if hasattr(output, 'register_hook') and output.requires_grad:
             before_bw_op_hook_handle = output.register_hook(lambda output: before_bw_op_hook(self, output))
 
-        if hasattr(output, 'grad_fn') and output.grad_fn:
-            after_bw_op_hook_handle = output.grad_fn.register_hook(lambda input,output: after_bw_op_hook(self, input, output))
+        if hasattr(output, 'grad_fn'): # skip ops with non-tensor output
+            if output.grad_fn.__class__.__name__ == 'UnsafeViewBackward': # check for broadcast case
+                """ check for broadcast case
+                not considering broadcast of input tensors now
+                """
+                # print(f"Bypass broadcast for {self['op'].__name__}, to {output.grad_fn.next_functions[0][0]}")
+                if output.grad_fn.next_functions[0][0]:
+                    after_bw_op_hook_handle = output.grad_fn.next_functions[0][0].register_hook(lambda input,output: after_bw_op_hook(self, input, self['output_grad']))
+            elif output.grad_fn.__class__.__name__ == 'AddBackward0': # check for bias
+                # print(f"Bypass bias for {self['op'].__name__}, to {output.grad_fn.next_functions[0][0]}")
+                if output.grad_fn.next_functions[0][0]:
+                    after_bw_op_hook_handle = output.grad_fn.next_functions[0][0].register_hook(lambda input,output: after_bw_op_hook(self, input, self['output_grad']))
+            else:
+                if output.grad_fn:
+                    after_bw_op_hook_handle = output.grad_fn.register_hook(lambda input,output: after_bw_op_hook(self, input, output))
+        else:
+            pass
             
