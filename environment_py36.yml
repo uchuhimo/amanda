@@ -1,8 +1,0 @@
-name: amanda_py36
-dependencies:
-    - python=3.6.2
-    - pip>=19.3
-    - six==1.15.0
-    - markdown==3.2.2
-    - pip:
-        - poetry==1.1.5

@@ -7,7 +7,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 
-from vector_wise_sparsity import create_mask
+from .vector_wise_sparsity import create_mask
 
 from apex.contrib.sparsity import ASP
 
@@ -45,18 +45,18 @@ def main():
                                             download=True, transform=transform_test)
     test_loader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
                                             shuffle=False, num_workers=4)
-    
-    
+
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model = torchvision.models.vgg16(num_classes=100).to(device)
     # model = torchvision.models.resnet50(num_classes=100).to(device)
-    
+
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate,
                       momentum=0.9, weight_decay=5e-4)
     # For updating learning rate
-    def update_lr(optimizer, lr):    
+    def update_lr(optimizer, lr):
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
 
@@ -70,7 +70,7 @@ def main():
 
 
         for i, (images, labels) in enumerate(train_loader):
-            
+
             start = timer()
 
 
@@ -124,7 +124,7 @@ def main():
                 correct += (predicted == labels).sum().item()
 
             print('Accuracy of the model on the test images: {} %'.format(100 * correct / total))
-        
+
 
     # Save the model checkpoint
         torch.save(model.state_dict(), f'{save_path}/epoch_{epoch}.ckpt')
@@ -161,4 +161,4 @@ def main_transformer():
 
 if __name__ == "__main__":
     main()
-    # main_transformer() 
+    # main_transformer()

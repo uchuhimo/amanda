@@ -8,10 +8,7 @@ from amanda.tests.test_tf_import_export import run_model
 from amanda.tools.debugging.insert_debug_op_adhoc import modify_graph
 
 store_tensor_to_file_ops = load_library.load_op_library(
-    str(
-        root_dir()
-        / "cc/tensorflow/store_tensor_to_file/ops/store_tensor_to_file_ops.so"
-    )
+    str(root_dir() / "cc/build/store_tensor_to_file_op.so")
 )
 store_tensor_to_file = store_tensor_to_file_ops.store_tensor_to_file
 

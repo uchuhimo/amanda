@@ -5,20 +5,21 @@ import sys
 
 import torch
 
-from vector_wise_sparsity import create_mask
+from .vector_wise_sparsity import create_mask
 
 from timeit import default_timer as timer
 
-from treelstm import TreeLSTM, calculate_evaluation_orders
+from .treelstm import TreeLSTM, calculate_evaluation_orders
 import torch.nn.utils.prune as prune
 
 class VectorWisePruningMethod(prune.BasePruningMethod):
     def compute_mask(self, t, default_mask):
         # mask = create_mask(t)
         mask = torch.rand_like(t)
-        return mask    
+        return mask
 
 if 'amanda' in sys.modules:
+    import amanda
     class PruneTool(amanda.Tool):
 
         def __init__(self):
@@ -62,7 +63,7 @@ if 'amanda' in sys.modules:
                 # print(context['input_grad'][0].shape, context['input_grad'][1].shape)
                 with torch.no_grad():
                     weight_grad.data = torch.mul(weight_grad, mask)
-                    
+
 
         def reset_cnt(self):
             self.conv_cnt = 0
@@ -128,7 +129,7 @@ if __name__ == '__main__':
 
     # for name, module in model.named_modules():
     #     if name == 'conv1' or name=='features.0': # skip input layer with input dim=3
-    #         continue 
+    #         continue
     #     if isinstance(module, torch.nn.Conv2d) or isinstance(module, torch.nn.Linear):
     #         VectorWisePruningMethod.apply(module, 'weight')
 
@@ -144,8 +145,8 @@ if __name__ == '__main__':
 
         # with apply(tool):
         if True:
-            
-            if hasattr(tool, 'reset_cnt'):
+
+            if tool is not None and hasattr(tool, 'reset_cnt'):
                 tool.reset_cnt()
 
             start = timer()

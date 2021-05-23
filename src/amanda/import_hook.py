@@ -3,11 +3,16 @@ import importlib.util
 import inspect
 import sys
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import wraps
 from importlib._bootstrap_external import FileLoader
 from typing import Callable, List, Type
 
 import _imp
+from loguru import logger
+
+from amanda.threading import ThreadLocalStack
 
 
 class Updater(ABC):
@@ -130,6 +135,15 @@ class HookedLoader(FileLoader):
                 updater.update(module)
 
 
+def log_func(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        logger.info(f"hook {func}")
+        return func(*args, **kwargs)
+
+    return wrapper
+
+
 class SourceFileLoader(HookedLoader, importlib.machinery.SourceFileLoader):
     pass
 
@@ -152,6 +166,59 @@ def init_import_hook() -> None:
     sys.path_hooks.insert(0, path_hook)
 
 
+class InstScopeHook:
+    def begin(self, is_enabled: bool) -> None:
+        ...
+
+    def end(self, is_enabled: bool) -> None:
+        ...
+
+
+_inst_scope_hooks: List[InstScopeHook] = []
+
+
+class Handler:
+    def __init__(self, hook) -> None:
+        self.hook = hook
+
+    def unregister(self):
+        _inst_scope_hooks.remove(self.hook)
+
+
+def register_inst_scope_hook(hook: InstScopeHook) -> Handler:
+    _inst_scope_hooks.append(hook)
+    return Handler(hook)
+
+
+_enabled = ThreadLocalStack()
+
+
+@contextmanager
+def disabled():
+    _enabled.push(False)
+    for hook in _inst_scope_hooks:
+        hook.begin(False)
+    yield
+    for hook in _inst_scope_hooks:
+        hook.end(False)
+    _enabled.pop()
+
+
+@contextmanager
+def enabled():
+    _enabled.push(True)
+    for hook in _inst_scope_hooks:
+        hook.begin(True)
+    yield
+    for hook in _inst_scope_hooks:
+        hook.end(True)
+    _enabled.pop()
+
+
+def is_enabled() -> bool:
+    return _enabled.top() or _enabled.top() is None
+
+
 _inited: bool = False
 
 
@@ -162,11 +229,19 @@ def init() -> None:
     if importlib.util.find_spec("torch"):
         from .conversion.pytorch_updater import (
             register_import_hook as pytorch_register_import_hook,
+        )
+        from .conversion.pytorch_updater import (
             register_listener as pytorch_register_listener,
         )
 
         pytorch_register_import_hook()
         pytorch_register_listener()
+    if importlib.util.find_spec("tensorflow"):
+        from .conversion.tensorflow_updater import (
+            register_import_hook as tensorflow_register_import_hook,
+        )
+
+        tensorflow_register_import_hook()
     init_import_hook()
     _inited = True
 

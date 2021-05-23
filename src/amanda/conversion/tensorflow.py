@@ -5,10 +5,10 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from types import MethodType
-from typing import Any, Callable, Dict, List, Tuple, Union
-from amanda.tool import get_tools
+from typing import Any, Callable, Dict, List, Set, Tuple, Union
 
 import google.protobuf.text_format
+import numpy as np
 import tensorflow as tf
 from tensorflow.core.framework import tensor_pb2, variable_pb2
 from tensorflow.core.framework.op_def_pb2 import OpDef
@@ -17,7 +17,8 @@ from tensorflow.core.protobuf.meta_graph_pb2 import AssetFileDef, SignatureDef
 from tensorflow.core.protobuf.saved_object_graph_pb2 import SavedObjectGraph
 from tensorflow.core.protobuf.saver_pb2 import SaverDef
 from tensorflow.python import tensor_shape, types_pb2
-from tensorflow.python.framework import dtypes
+from tensorflow.python.eager.context import eager_mode
+from tensorflow.python.framework import dtypes, ops
 from tensorflow.python.framework.meta_graph import stripped_op_list_for_graph
 from tensorflow.python.framework.op_def_library import (
     _IsListValue,
@@ -29,13 +30,23 @@ from tensorflow.python.framework.op_def_library import (
     _MakeTensor,
     _MakeType,
 )
-from tensorflow.python.util import compat
+from tensorflow.python.ops.script_ops import EagerFunc, _maybe_copy_to_context_device
+from tensorflow.python.ops.script_ops import _py_funcs as tf_py_funcs
+from tensorflow.python.util import compat, function_utils
 
 from amanda.adapter import Adapter, get_adapter_registry
 from amanda.conversion.utils import to_proto, without_internal_attrs
-from amanda.event import EventContext, on_graph_loaded
+from amanda.event import (
+    EventContext,
+    after_backward_op_executed,
+    after_op_executed,
+    before_backward_op_executed,
+    before_op_executed,
+    on_graph_loaded,
+)
 from amanda.exception import MismatchNamespaceError
 from amanda.graph import Graph, Op, OutputPort, create_graph, create_op
+from amanda.import_hook import InstScopeHook, is_enabled, register_inst_scope_hook
 from amanda.io.serde import (
     ProtoToDictSerde,
     Serde,
@@ -47,6 +58,7 @@ from amanda.io.serde import (
 )
 from amanda.lang import replace_all_refs
 from amanda.namespace import Namespace, default_namespace
+from amanda.tool import Tool, get_tools
 from amanda.type import DataType
 
 _namespace = default_namespace() / Namespace("tensorflow")
@@ -158,7 +170,12 @@ def import_from_graph(
 ) -> Graph:
     graph_def = tf_graph.as_graph_def()
     graph = import_from_graph_def(graph_def)
-    for variable in tf_graph.get_collection(tf.GraphKeys.GLOBAL_VARIABLES):
+    variables = set(
+        variable
+        for key in tf.GraphKeys._VARIABLE_COLLECTIONS
+        for variable in tf_graph.get_collection(key)
+    )
+    for variable in variables:
         variable_def = variable.to_proto()
         op = graph.get_op(variable.name[: variable.name.rfind(":")])
         op.attrs["initial_value_name"] = variable_def.initial_value_name
@@ -820,24 +837,376 @@ class AmandaHook(tf.train.SessionRunHook):
             else:
                 tf_graph.finalize()
 
-class GraphHook(tf.train.SessionRunHook):
-    def after_create_session(self, session, coord):
-        tools = get_tools()
-        context = EventContext(tools=[tools])
-        tf_graph = session.graph
-        tf_graph._finalized = False
-        graph = import_from_graph(tf_graph, session=session)
-        context.trigger(on_graph_loaded, graph=graph)
-        new_graph = context["graph"]
-        new_tf_graph, _, session = export_to_graph(new_graph)
-        session.close()
-        if new_tf_graph != tf_graph:
-            new_tf_graph._device_function_stack = tf_graph._device_function_stack
-            new_tf_graph.finalize()
-            gc.collect()
-            replace_all_refs(tf_graph, new_tf_graph)
+
+class NoGradEagerFunc(EagerFunc):
+    def __call__(self, device, token, args):
+        with eager_mode():
+            ret = self._func(*args)
+            # copy the returned tensors to the PyFunc op's device if necessary.
+            device_name = device
+            if device_name is None:
+                # "None" here means "CPU", from the nullptr convention with C++ device
+                # pointers.
+                device_name = "/job:localhost/replica:0/task:0/device:CPU:0"
+            with ops.device(device):
+                if isinstance(ret, (tuple, list)):
+                    outputs = [
+                        _maybe_copy_to_context_device(
+                            self._convert(x, dtype=dtype), device_name
+                        )
+                        for (x, dtype) in zip(ret, self._out_dtypes)
+                    ]
+                elif ret is None:
+                    outputs = None
+                else:
+                    outputs = _maybe_copy_to_context_device(
+                        self._convert(ret, dtype=self._out_dtypes[0]), device_name
+                    )
+        return outputs
+
+
+def before_op_executed_hook(context: EventContext):
+    def hook_fn(*inputs):
+        context.trigger(
+            before_op_executed,
+            inputs=list(inputs),
+        )
+        if len(inputs) == 0:
+            return None
+        elif len(inputs) == 1:
+            return context["inputs"][0]
         else:
-            tf_graph.finalize()
+            return context["inputs"]
+
+    return hook_fn
+
+
+def after_op_executed_hook(context, input_size: int):
+    def hook_fn(*args):
+        inputs = args[:input_size]
+        outputs = args[input_size:]
+        context.trigger(
+            after_op_executed,
+            inputs=list(inputs),
+            outputs=list(outputs),
+        )
+        if len(outputs) == 0:
+            return None
+        elif len(outputs) == 1:
+            return context["outputs"][0]
+        else:
+            return context["outputs"]
+
+    return hook_fn
+
+
+def before_backward_op_executed_hook(
+    context: EventContext, input_size: int, output_size: int
+):
+    def hook_fn(*args):
+        inputs = args[:input_size]
+        outputs = args[input_size : input_size + output_size]
+        grad_outputs = args[input_size + output_size :]
+        context.trigger(
+            before_backward_op_executed,
+            inputs=list(inputs),
+            outputs=list(outputs),
+            grad_outputs=list(grad_outputs),
+        )
+        if len(grad_outputs) == 0:
+            return None
+        elif len(grad_outputs) == 1:
+            return context["grad_outputs"][0]
+        else:
+            return context["grad_outputs"]
+
+    return hook_fn
+
+
+def after_backward_op_executed_hook(
+    context: EventContext, input_size: int, output_size: int, grad_output_size: int
+):
+    def hook_fn(*args):
+        inputs = args[:input_size]
+        outputs = args[input_size : input_size + output_size]
+        grad_outputs = args[
+            input_size + output_size : input_size + output_size + grad_output_size
+        ]
+        grad_inputs = args[input_size + output_size + grad_output_size :]
+        context.trigger(
+            after_backward_op_executed,
+            inputs=list(inputs),
+            outputs=list(outputs),
+            grad_outputs=list(grad_outputs),
+            grad_inputs=list(grad_inputs),
+        )
+        if len(grad_inputs) == 0:
+            return None
+        elif len(grad_inputs) == 1:
+            return context["grad_inputs"][0]
+        else:
+            return context["grad_inputs"]
+
+    return hook_fn
+
+
+def insert_hooks(graph: Graph, tools: List[Tool], forward_ops: Set[str] = None):
+    forward_ops = forward_ops or set()
+    op_names = np.array([op.name for op in graph.ops])
+    before_op_executed_tools = [
+        tool for tool in tools if tool.is_registered(before_op_executed)
+    ]
+    after_op_executed_tools = [
+        tool for tool in tools if tool.is_registered(after_op_executed)
+    ]
+    before_backward_op_executed_tools = [
+        tool for tool in tools if tool.is_registered(before_backward_op_executed)
+    ]
+    after_backward_op_executed_tools = [
+        tool for tool in tools if tool.is_registered(after_backward_op_executed)
+    ]
+    for op in graph.ops:
+        if op.name not in forward_ops:
+            continue
+        if op.type in ["VariableV2", "Merge"]:
+            continue
+
+        input_ports = [
+            port for port in op.input_ports if not port.type.raw._is_ref_dtype
+        ]
+        input_size = len(input_ports)
+        Tin = [port.type.raw for port in input_ports]
+        output_ports = [
+            port for port in op.output_ports if not port.type.raw._is_ref_dtype
+        ]
+        output_size = len(output_ports)
+        Tout = [port.type.raw for port in output_ports]
+        if len(before_op_executed_tools) != 0:
+            context = EventContext(tools=before_op_executed_tools)
+            context["op"] = op
+            func = NoGradEagerFunc(before_op_executed_hook(context), Tin, False)
+            token = tf_py_funcs.insert(func)
+            _py_funcs.append(func)
+            hook_op = create_op(
+                type="EagerPyFunc",
+                name=f"{op.name}_before_op_executed",
+                inputs=[f"input/{index}" for index in range(input_size)],
+                outputs=[f"output/{index}" for index in range(input_size)],
+                attrs=dict(
+                    token=token,
+                    is_async=False,
+                    Tin=Tin,
+                    Tout=Tin,
+                ),
+            )
+            graph.add_op(hook_op)
+            for edge in op.control_input_port.in_edges:
+                graph.create_control_edge(edge.src.op, hook_op)
+                graph.remove_edge(edge)
+            if len(input_ports) > 0:
+                for index, input_port in enumerate(input_ports):
+                    for edge in input_port.in_edges:
+                        graph.create_edge(edge.src, hook_op.input_port(index))
+                        graph.remove_edge(edge)
+                    graph.create_edge(hook_op.output_port(index), input_port)
+            else:
+                graph.create_control_edge(hook_op, op)
+
+        new_output_ports = list(output_ports)
+        if len(after_op_executed_tools) != 0:
+            context = EventContext(tools=after_op_executed_tools)
+            context["op"] = op
+            func = NoGradEagerFunc(
+                after_op_executed_hook(context, input_size), Tout, False
+            )
+            token = tf_py_funcs.insert(func)
+            _py_funcs.append(func)
+            hook_op = create_op(
+                type="EagerPyFunc",
+                name=f"{op.name}_after_op_executed",
+                inputs=[f"input/{index}" for index in range(input_size + output_size)],
+                outputs=[f"output/{index}" for index in range(output_size)],
+                attrs=dict(
+                    token=token,
+                    is_async=False,
+                    Tin=Tin + Tout,
+                    Tout=Tout,
+                ),
+            )
+            graph.add_op(hook_op)
+            for edge in op.control_output_port.out_edges:
+                graph.create_control_edge(hook_op, edge.dst.op)
+                graph.remove_edge(edge)
+            for index, inout_port in enumerate(input_ports):
+                for edge in inout_port.in_edges:
+                    graph.create_edge(edge.src, hook_op.input_port(index))
+            if len(output_ports) > 0:
+                for index, output_port in enumerate(output_ports):
+                    for edge in output_port.out_edges:
+                        graph.create_edge(
+                            hook_op.output_port(index),
+                            edge.dst,
+                        )
+                        graph.remove_edge(edge)
+                    graph.create_edge(
+                        output_port, hook_op.input_port(index + input_size)
+                    )
+                    new_output_ports[index] = hook_op.output_port(index)
+            else:
+                graph.create_control_edge(op, hook_op)
+
+        backward_op_names = op_names[
+            np.char.startswith(op_names, f"gradients/{op.name}_grad/")
+        ]
+        if backward_op_names.size == 0:
+            continue
+        if len(before_backward_op_executed_tools) != 0:
+            for backward_op_name in backward_op_names:
+                backward_op = graph.get_op(backward_op_name)
+                context = EventContext(tools=before_backward_op_executed_tools)
+                context["op"] = op
+                context["backward_op"] = backward_op
+                backward_input_ports = [
+                    port
+                    for port in backward_op.input_ports
+                    if not port.type.raw._is_ref_dtype
+                ]
+                backward_input_size = len(backward_input_ports)
+                backward_Tin = [port.type.raw for port in backward_input_ports]
+                func = NoGradEagerFunc(
+                    before_backward_op_executed_hook(context, input_size, output_size),
+                    backward_Tin,
+                    False,
+                )
+                token = tf_py_funcs.insert(func)
+                _py_funcs.append(func)
+                hook_op = create_op(
+                    type="EagerPyFunc",
+                    name=f"{backward_op.name}_before_op_executed",
+                    inputs=[
+                        f"input/{index}"
+                        for index in range(
+                            input_size + output_size + backward_input_size
+                        )
+                    ],
+                    outputs=[f"output/{index}" for index in range(backward_input_size)],
+                    attrs=dict(
+                        token=token,
+                        is_async=False,
+                        Tin=Tin + Tout + backward_Tin,
+                        Tout=backward_Tin,
+                    ),
+                )
+                graph.add_op(hook_op)
+                for edge in backward_op.control_input_port.in_edges:
+                    graph.create_control_edge(edge.src.op, hook_op)
+                    graph.remove_edge(edge)
+                for index, input_port in enumerate(input_ports):
+                    for edge in input_port.in_edges:
+                        graph.create_edge(edge.src, hook_op.input_port(index))
+                for index, output_port in enumerate(new_output_ports):
+                    graph.create_edge(
+                        output_port, hook_op.input_port(index + input_size)
+                    )
+                if len(backward_input_ports) > 0:
+                    for index, input_port in enumerate(backward_input_ports):
+                        for edge in input_port.in_edges:
+                            graph.create_edge(
+                                edge.src,
+                                hook_op.input_port(index + input_size + output_size),
+                            )
+                            graph.remove_edge(edge)
+                        graph.create_edge(hook_op.output_port(index), input_port)
+                else:
+                    graph.create_control_edge(hook_op, backward_op)
+
+        if len(after_backward_op_executed_tools) != 0:
+            for backward_op_name in backward_op_names:
+                backward_op = graph.get_op(backward_op_name)
+                context = EventContext(tools=after_backward_op_executed_tools)
+                context["op"] = op
+                context["backward_op"] = backward_op
+                backward_input_ports = [
+                    port
+                    for port in backward_op.input_ports
+                    if not port.type.raw._is_ref_dtype
+                ]
+                backward_input_size = len(backward_input_ports)
+                backward_Tin = [port.type.raw for port in backward_input_ports]
+                backward_output_ports = [
+                    port
+                    for port in backward_op.output_ports
+                    if not port.type.raw._is_ref_dtype
+                ]
+                backward_output_size = len(backward_output_ports)
+                backward_Tout = [port.type.raw for port in backward_output_ports]
+                func = NoGradEagerFunc(
+                    after_backward_op_executed_hook(
+                        context, input_size, output_size, backward_input_size
+                    ),
+                    backward_Tout,
+                    False,
+                )
+                token = tf_py_funcs.insert(func)
+                _py_funcs.append(func)
+                hook_op = create_op(
+                    type="EagerPyFunc",
+                    name=f"{backward_op.name}_after_op_executed",
+                    inputs=[
+                        f"input/{index}"
+                        for index in range(
+                            input_size
+                            + output_size
+                            + backward_input_size
+                            + backward_output_size
+                        )
+                    ],
+                    outputs=[
+                        f"output/{index}" for index in range(backward_output_size)
+                    ],
+                    attrs=dict(
+                        token=token,
+                        is_async=False,
+                        Tin=Tin + Tout + backward_Tin + backward_Tout,
+                        Tout=backward_Tout,
+                    ),
+                )
+                graph.add_op(hook_op)
+                for edge in backward_op.control_output_port.out_edges:
+                    graph.create_control_edge(hook_op, edge.dst.op)
+                    graph.remove_edge(edge)
+                for index, input_port in enumerate(input_ports):
+                    for edge in input_port.in_edges:
+                        graph.create_edge(edge.src, hook_op.input_port(index))
+                for index, input_port in enumerate(input_ports):
+                    for edge in input_port.in_edges:
+                        graph.create_edge(edge.src, hook_op.input_port(index))
+                for index, output_port in enumerate(new_output_ports):
+                    graph.create_edge(
+                        output_port, hook_op.input_port(index + input_size)
+                    )
+                for index, input_port in enumerate(backward_input_ports):
+                    for edge in input_port.in_edges:
+                        graph.create_edge(
+                            edge.src,
+                            hook_op.input_port(index + input_size + output_size),
+                        )
+                if len(backward_output_ports) > 0:
+                    for index, output_port in enumerate(backward_output_ports):
+                        for edge in output_port.out_edges:
+                            graph.create_edge(
+                                hook_op.output_port(index),
+                                edge.dst,
+                            )
+                            graph.remove_edge(edge)
+                        graph.create_edge(
+                            output_port,
+                            hook_op.input_port(
+                                index + input_size + output_size + backward_input_size
+                            ),
+                        )
+                else:
+                    graph.create_control_edge(backward_op, hook_op)
 
 
 class EstimatorAdapter(Adapter):
@@ -901,62 +1270,119 @@ class EstimatorAdapter(Adapter):
         evaluate = target.evaluate
         target.evaluate = MethodType(evaluate_with_tools, target)
 
+
+class FilterHook(InstScopeHook):
+    def __init__(self) -> None:
+        self.begin_ops_list: List[Set[str]] = []
+        self.end_ops_list: List[Set[str]] = []
+        self.is_enabled_list: List[bool] = []
+
+    @property
+    def disabled_ops(self) -> Set[str]:
+        disabled_ops: Set[str] = set()
+        for begin_ops, end_ops, scope_is_enabled in zip(
+            self.begin_ops_list, self.end_ops_list, self.is_enabled_list
+        ):
+            if scope_is_enabled:
+                disabled_ops = disabled_ops - (end_ops - begin_ops)
+            else:
+                disabled_ops = disabled_ops | (end_ops - begin_ops)
+        return disabled_ops
+
+    def begin(self, is_enabled: bool) -> None:
+        tf_graph = tf.get_default_graph()
+        self.begin_ops_list.append(set(op.name for op in tf_graph.get_operations()))
+        self.is_enabled_list.append(is_enabled)
+
+    def end(self, is_enabled: bool) -> None:
+        tf_graph = tf.get_default_graph()
+        self.end_ops_list.insert(0, set(op.name for op in tf_graph.get_operations()))
+
+
 def inject_hook(target: tf.estimator.Estimator) -> None:
-    def train_with_tools(
-        target_self,
-        input_fn,
-        hooks=None,
-        steps=None,
-        max_steps=None,
-        saving_listeners=None,
-    ):
-        return train(
-            input_fn,
-            [amanda_hook] if hooks is None else [amanda_hook, *hooks],
-            steps,
-            max_steps,
-            saving_listeners,
-        )
+    from amanda.conversion.tensorflow_updater import forward_ops_in_graph
 
-    def predict_with_tools(
-        target_self,
-        input_fn,
-        predict_keys=None,
-        hooks=None,
-        checkpoint_path=None,
-        yield_single_examples=True,
-    ):
-        return predict(
-            input_fn,
-            predict_keys,
-            [amanda_hook] if hooks is None else [amanda_hook, *hooks],
-            checkpoint_path,
-            yield_single_examples,
-        )
+    def model_fn_wrapper(model_fn):
+        def new_model_fn(features, labels, mode, params, config):
+            model_fn_args = function_utils.fn_args(model_fn)
+            kwargs = {}
+            if "labels" in model_fn_args:
+                kwargs["labels"] = labels
+            else:
+                if labels is not None:
+                    raise ValueError(
+                        "model_fn does not take labels, but input_fn returns labels."
+                    )
+            if "mode" in model_fn_args:
+                kwargs["mode"] = mode
+            if "params" in model_fn_args:
+                kwargs["params"] = params
+            if "config" in model_fn_args:
+                kwargs["config"] = config
+            if not is_enabled():
+                return model_fn(features, **kwargs)
+            tf_graph = tf.get_default_graph()
+            input_ops = set(op.name for op in tf_graph.get_operations())
+            filter_hook = FilterHook()
+            handler = register_inst_scope_hook(filter_hook)
+            spec = model_fn(features, **kwargs)
+            handler.unregister()
+            if tf_graph in forward_ops_in_graph:
+                forward_ops = forward_ops_in_graph[tf_graph] - input_ops
+            else:
+                forward_ops = (
+                    set(op.name for op in tf_graph.get_operations()) - input_ops
+                )
+            forward_ops = forward_ops - filter_hook.disabled_ops
+            graph = import_from_graph(tf_graph, session=tf.get_default_session())
+            insert_hooks(graph, tools, forward_ops)
+            new_tf_graph, _, session = export_to_graph(graph)
+            session.close()
+            new_tf_graph._device_function_stack = tf_graph._device_function_stack
+            gc.collect()
+            replace_all_refs(tf_graph, new_tf_graph)
 
-    def evaluate_with_tools(
-        target_self,
-        input_fn,
-        steps=None,
-        hooks=None,
-        checkpoint_path=None,
-        name=None,
-    ):
-        return evaluate(
-            input_fn,
-            steps,
-            [amanda_hook] if hooks is None else [amanda_hook, *hooks],
-            checkpoint_path,
-            name,
-        )
+            def get_after_hook_op(op_name: str):
+                hook_op_name = f"{op_name}_after_op_executed"
+                if graph.get_op(hook_op_name) is not None:
+                    return new_tf_graph.get_operation_by_name(hook_op_name)
+                else:
+                    return new_tf_graph.get_operation_by_name(op_name)
 
-    amanda_hook = GraphHook()
-    train = target.train
-    target.train = MethodType(train_with_tools, target)
-    predict = target.predict
-    target.predict = MethodType(predict_with_tools, target)
-    evaluate = target.evaluate
-    target.evaluate = MethodType(evaluate_with_tools, target)
+            def get_after_hook_tensor(tensor_name: str):
+                op_name, index = tensor_name.split(":")
+                hook_op_name = f"{op_name}_after_op_executed"
+                if graph.get_op(hook_op_name) is not None:
+                    return new_tf_graph.get_tensor_by_name(f"{hook_op_name}:{index}")
+                else:
+                    return new_tf_graph.get_tensor_by_name(tensor_name)
+
+            def get_after_hook(name: str):
+                if ":" in name:
+                    return get_after_hook_tensor(name)
+                else:
+                    return get_after_hook_op(name)
+
+            if isinstance(spec.predictions, dict):
+                for name, tensor in spec.predictions.items():
+                    spec.predictions[name] = get_after_hook(tensor.name)
+            elif spec.predictions is not None:
+                spec = spec._replace(predictions=get_after_hook(spec.predictions.name))
+            if spec.loss is not None:
+                spec = spec._replace(loss=get_after_hook(spec.loss.name))
+            if spec.train_op is not None:
+                spec = spec._replace(train_op=get_after_hook(spec.train_op.name))
+            for name in spec.eval_metric_ops.keys():
+                spec.eval_metric_ops[name] = (
+                    get_after_hook(spec.eval_metric_ops[name][0].name),
+                    get_after_hook(spec.eval_metric_ops[name][1].name),
+                )
+            return spec
+
+        return new_model_fn
+
+    tools = get_tools()
+    target._model_fn = model_fn_wrapper(target._model_fn)
 
 
 get_adapter_registry().register_adapter(tf.estimator.Estimator, EstimatorAdapter())

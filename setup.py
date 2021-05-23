@@ -23,7 +23,7 @@ setup(
     name='amanda',
     version='0.1.0',
     description='graph instrumentation',
-    python_requires='<4,>=3.6.1',
+    python_requires='<4,>=3.7',
     project_urls={
         "homepage": "https://github.com/uchuhimo/amanda",
         "repository": "https://github.com/uchuhimo/amanda"
@@ -36,7 +36,6 @@ setup(
         'Intended Audience :: Developers',
         'License :: OSI Approved :: Apache Software License',
         'Natural Language :: English', 'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8'
     ],

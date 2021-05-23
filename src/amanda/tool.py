@@ -1,9 +1,9 @@
-import threading
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Dict, List
 
 from amanda.event import Event, EventCallback
+from amanda.threading import ThreadLocalStack
 
 
 @dataclass
@@ -23,23 +23,6 @@ class Tool:
 
     def is_registered(self, event: Event) -> bool:
         return event in self._event_to_callback
-
-
-class ThreadLocalStack(threading.local):
-    """A thread-local stack."""
-
-    def __init__(self):
-        super(ThreadLocalStack, self).__init__()
-        self.stack = []
-
-    def push(self, item):
-        self.stack.append(item)
-
-    def pop(self):
-        self.stack.pop()
-
-    def __iter__(self):
-        return reversed(self.stack).__iter__()
 
 
 _tools = ThreadLocalStack()

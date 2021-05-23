@@ -1,0 +1,5 @@
+IMAGENET_RAW_DIR = "~/data/imagenet-raw-data"
+IMAGENET_DIR = "~/data/imagenet"
+MNIST_RAW_DIR = "~/data/mnist/raw"
+CIFAR10_RAW_DIR = "~/data/cifar10-raw"
+CIFAR100_RAW_DIR = "~/data/cifar100-raw"

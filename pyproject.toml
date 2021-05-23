@@ -57,13 +57,12 @@ classifiers=[
     "License :: OSI Approved :: Apache Software License",
     "Natural Language :: English",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.6",
     "Programming Language :: Python :: 3.7",
     "Programming Language :: Python :: 3.8",
 ]
 
 [tool.poetry.dependencies]
-python = ">= 3.6.2, < 4"
+python = ">= 3.7, < 4"
 more-itertools = "*"
 click = "*"
 typing-extensions = "*"
@@ -73,16 +72,13 @@ h5py = "*"
 immutables = "*"
 loguru = "*"
 guppy3 = "*"
-dataclasses = { version = "*", python = "< 3.7" }
-typing = { version = "*", python = "< 3.7" }
-contextvars = { version = "*", python = "< 3.7" }
 
 [tool.poetry.dev-dependencies]
 pybind11 = "*"
 mypy-protobuf = "*"
 numpy = "*"
 scipy = "*"
-tensorflow = "1.15.5"
+tensorflow-gpu = "1.15.5"
 torch = "1.8.1"
 torchvision = "0.9.1"
 mmdnn = "*"
@@ -111,6 +107,7 @@ twine="*"
 ipython = "*"
 jsondiff = "*"
 wget = "*"
+fire = "*"
 
 [tool.poetry.scripts]
 amanda = "amanda.cli.main:cli"

@@ -25,7 +25,7 @@ from amanda.conversion.tensorflow import (
     import_from_saved_model,
     import_from_tf_func,
 )
-from amanda.io.file import root_dir
+from amanda.io.file import ensure_dir, root_dir
 from amanda.tests.utils import diff_graph_def, get_diff_after_conversion
 
 
@@ -37,6 +37,7 @@ from amanda.tests.utils import diff_graph_def, get_diff_after_conversion
         # "inception_v3",
         # "resnet_v1_50",
         # "resnet_v1_152",
+        # "resnet_v2_50",
         pytest.param("resnet_v2_50", marks=pytest.mark.slow),
         # "resnet_v2_101",
         # "resnet_v2_152",
@@ -110,7 +111,7 @@ def run_model(arch_name, model_dir, input):
             return output, graph.as_graph_def()
 
 
-def run_model_with_estimator(arch_name, model_dir, input, tool):
+def run_model_with_estimator(arch_name, model_dir, input, tool=None):
     checkpoint_dir = root_dir() / model_dir / arch_name
     if not checkpoint_dir.exists():
         raise FileNotFoundError(f"{checkpoint_dir} is not existed")
@@ -234,6 +235,7 @@ def test_tf_modify_graph_with_hook(arch_name):
     input = np.random.rand(*input_shapes[arch_name])
     run_model(arch_name, model_dir="downloads/model", input=input)
     store_dir = root_dir() / "tmp" / "debug_info_with_hook" / arch_name
+    ensure_dir(store_dir, is_file=False)
     run_model_with_estimator(
         arch_name,
         model_dir="downloads/model",
@@ -241,22 +243,101 @@ def test_tf_modify_graph_with_hook(arch_name):
         tool=DebuggingTool(store_dir),
     )
 
-class TestTool(amanda.Tool):
-    def __init__(self):
-        super(TestTool, self).__init__(namespace="amanda/tensorflow")
-        self.register_event(amanda.event.before_op_executed, self.test)
 
-    def test(self, context: amanda.EventContext):
+class TestTool(amanda.Tool):
+    def __init__(self, store_dir):
+        super(TestTool, self).__init__(namespace="amanda/tensorflow")
+        self.register_event(
+            amanda.event.before_op_executed, self.test_before_op_executed
+        )
+        self.register_event(amanda.event.after_op_executed, self.test_after_op_executed)
+        self.register_event(
+            amanda.event.before_backward_op_executed,
+            self.test_before_backward_op_executed,
+        )
+        self.register_event(
+            amanda.event.after_backward_op_executed,
+            self.test_after_backward_op_executed,
+        )
+        self.store_dir = store_dir
+
+    def test_before_op_executed(self, context: amanda.EventContext):
         op = context["op"]
-        print(op.type)
+        file_name = op.name.replace("/", "_")
+        # print(
+        #     "before",
+        #     op.type,
+        #     [input.dtype for input in context["inputs"]],
+        #     op.name
+        # )
+        store_dir = self.store_dir / "before_op_executed" / file_name
+        ensure_dir(store_dir, is_file=False)
+        for index, input in enumerate(context["inputs"]):
+            np.save(f"{store_dir}/{index}", input)
+
+    def test_after_op_executed(self, context: amanda.EventContext):
+        op = context["op"]
+        file_name = op.name.replace("/", "_")
+        # print(
+        #     "after",
+        #     op.type,
+        #     [input.dtype for input in context["inputs"]],
+        #     [output.dtype for output in context["outputs"]],
+        #     op.name,
+        # )
+        store_dir = self.store_dir / "after_op_executed" / file_name
+        ensure_dir(store_dir, is_file=False)
+        for index, input in enumerate(context["inputs"]):
+            np.save(f"{store_dir}/input_{index}", input)
+        for index, output in enumerate(context["outputs"]):
+            np.save(f"{store_dir}/{index}", output)
+
+    def test_before_backward_op_executed(self, context: amanda.EventContext):
+        op = context["op"]
+        file_name = op.name.replace("/", "_")
+        # backward_op = context["backward_op"]
+        # print(
+        #     "before_bw",
+        #     op.type,
+        #     backward_op.type,
+        #     [input.dtype for input in context["outputs"]],
+        #     [input.dtype for input in context["grad_outputs"]],
+        #     op.name,
+        #     backward_op.name
+        # )
+        store_dir = self.store_dir / "before_backward_op_executed" / file_name
+        ensure_dir(store_dir, is_file=False)
+        for index, input in enumerate(context["outputs"]):
+            np.save(f"{store_dir}/{index}", input)
+        for index, input in enumerate(context["grad_outputs"]):
+            np.save(f"{store_dir}/grad_{index}", input)
+
+    def test_after_backward_op_executed(self, context: amanda.EventContext):
+        op = context["op"]
+        backward_op = context["backward_op"]
+        file_name = op.name.replace("/", "_")
+        print(
+            "after_bw",
+            op.type,
+            backward_op.type,
+            [input.dtype for input in context["inputs"]],
+            [input.dtype for input in context["grad_inputs"]],
+            op.name,
+            backward_op.name,
+        )
+        store_dir = self.store_dir / "after_backward_op_executed" / file_name
+        ensure_dir(store_dir, is_file=False)
+        for index, output in enumerate(context["inputs"]):
+            np.save(f"{store_dir}/{index}", output)
+        for index, output in enumerate(context["grad_inputs"]):
+            np.save(f"{store_dir}/grad_{index}", output)
+
 
 def test_tf_modify_graph_with_new_hook(arch_name):
-    from amanda.tools.debugging.insert_debug_op_tensorflow import DebuggingTool
-
     input = np.random.rand(*input_shapes[arch_name])
     run_model(arch_name, model_dir="downloads/model", input=input)
     store_dir = root_dir() / "tmp" / "debug_info_with_new_hook" / arch_name
-    tool = TestTool()
+    tool = TestTool(store_dir)
     with amanda.tool.apply(tool):
         run_model_with_estimator(
             arch_name,

@@ -254,3 +254,11 @@ def ensure_dir(path: Union[str, Path], is_file: bool = True) -> str:
 def root_dir() -> Path:
     current_dir = os.path.dirname(os.path.abspath(__file__))
     return Path(current_dir).parents[2]
+
+
+def abspath(path: str) -> str:
+    path = os.path.expanduser(path)
+    if path.startswith("/"):
+        return path
+    else:
+        return os.path.join(root_dir(), path)

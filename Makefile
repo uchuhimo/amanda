@@ -28,20 +28,26 @@ NVCC := nvcc
 PYTHON_BIN_PATH = python
 
 STORE_TENSOR_SRCS = $(wildcard cc/tensorflow/store_tensor_to_file/kernels/*.cc) $(wildcard cc/tensorflow/store_tensor_to_file/ops/*.cc)
+PY_HOOK_SRCS = $(wildcard cc/tensorflow/py_hook/*.cc)
 
 TF_CFLAGS := $(shell $(PYTHON_BIN_PATH) -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_compile_flags()))')
 TF_LFLAGS := $(shell $(PYTHON_BIN_PATH) -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_link_flags()))')
 
-CFLAGS = ${TF_CFLAGS} -fPIC -O2 -std=c++11
+PY_CONFIG = $(shell PKG_CONFIG_PATH=${CONDA_PREFIX}/lib/pkgconfig pkg-config --cflags --libs python3)
+CFLAGS = ${TF_CFLAGS} -fPIC -O2 -std=c++11 ${PY_CONFIG}
 LDFLAGS = -shared ${TF_LFLAGS}
 
 STORE_TENSOR_TARGET_LIB = cc/tensorflow/store_tensor_to_file/ops/store_tensor_to_file_ops.so
+PY_HOOK_TARGET_LIB = cc/tensorflow/py_hook/py_hook.so
 
 store_tensor_op: $(STORE_TENSOR_TARGET_LIB)
+py_hook_op: $(PY_HOOK_TARGET_LIB)
 
-build_cc: store_tensor_op
+build_cc: store_tensor_op py_hook_op
 
 $(STORE_TENSOR_TARGET_LIB): $(STORE_TENSOR_SRCS)
+	$(CXX) $(CFLAGS) -o $@ $^ ${LDFLAGS}
+$(PY_HOOK_TARGET_LIB): $(PY_HOOK_SRCS)
 	$(CXX) $(CFLAGS) -o $@ $^ ${LDFLAGS}
 
 proto:

@@ -8,33 +8,38 @@ from amanda.import_hook import (
     MatchedClassUpdater,
     MatchedFunctionUpdater,
     MethodUpdater,
+    disabled,
+    is_enabled,
     register_updater,
 )
 from amanda.lang import get_superclasses
 from amanda.tool import Tool
 
 
-def function_wrapper(func, pass_type=None):
+def function_wrapper(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
-        if _tool is None:
+        if is_enabled():
+            with disabled():
+                if _tool is None:
+                    return func(*args, **kwargs)
+                context = EventContext(tools=[_tool])
+                context.trigger(
+                    before_op_executed,
+                    op=func,
+                    args=args,
+                    kwargs=kwargs,
+                )
+                output = func(*args, **kwargs)
+                context.trigger(
+                    after_op_executed,
+                    op=func,
+                    output=output,
+                )
+                context.registry_bw_events(output)
+                return context["output"]
+        else:
             return func(*args, **kwargs)
-        context = EventContext(tools=[_tool])
-        context.trigger(
-            before_op_executed,
-            op=func,
-            args=args,
-            kwargs=kwargs,
-        )
-        output = func(*args, **kwargs)
-        context.trigger(
-            after_op_executed,
-            op=func,
-            output=output,
-        )
-        context.registry_bw_events(output)
-
-        return context["output"]
 
     return wrapper
 
