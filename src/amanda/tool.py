@@ -1,6 +1,6 @@
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Dict, List
+from typing import Dict, List, Set
 
 from amanda.event import Event, EventCallback
 from amanda.threading import ThreadLocalStack
@@ -10,6 +10,7 @@ from amanda.threading import ThreadLocalStack
 class Tool:
     namespace: str
     _event_to_callback: Dict[Event, EventCallback] = field(default_factory=dict)
+    dependencies: List["Tool"] = field(default_factory=list)
 
     def register_event(self, event: Event, callback: EventCallback) -> None:
         self._event_to_callback[event] = callback
@@ -24,15 +25,34 @@ class Tool:
     def is_registered(self, event: Event) -> bool:
         return event in self._event_to_callback
 
+    def depends_on(self, *tools: "Tool") -> None:
+        self.dependencies.extend(tools)
+
+    def get_id(self) -> str:
+        return None
+
+    def trigger(self, event: Event, context, triggered_tools: Set[str] = None) -> None:
+        triggered_tools = triggered_tools or set()
+        tool_id = self.get_id()
+        if tool_id is not None and tool_id in triggered_tools:
+            return
+        if tool_id is not None:
+            triggered_tools.add(tool_id)
+        for dependency in self.dependencies:
+            dependency.trigger(event, context, triggered_tools)
+        self.get_callback(event)(context)
+
 
 _tools = ThreadLocalStack()
 
 
 @contextmanager
-def apply(tool: Tool):
-    _tools.push(tool)
-    yield tool
-    _tools.pop()
+def apply(*tools: Tool):
+    for tool in tools:
+        _tools.push(tool)
+    yield
+    for _ in tools:
+        _tools.pop()
 
 
 def get_tools() -> List[Tool]:

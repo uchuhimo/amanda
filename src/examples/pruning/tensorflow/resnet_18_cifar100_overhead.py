@@ -370,10 +370,10 @@ class DummyTool(amanda.Tool):
         #     amanda.event.before_backward_op_executed,
         #     self.test_before_backward_op_executed
         # )
-        # self.register_event(
-        #     amanda.event.after_backward_op_executed,
-        #     self.test_after_backward_op_executed
-        # )
+        self.register_event(
+            amanda.event.after_backward_op_executed,
+            self.test_after_backward_op_executed
+        )
 
     def test_before_op_executed(self, context: amanda.EventContext):
         # op = context["op"]
@@ -412,7 +412,7 @@ def main():
     train_with_hook_time = end_time - start_time
     print(f"train_with_hook: {train_with_hook_time}")
 
-    overhead = (train_with_hook_time / train_time) - 1
+    overhead = (train_with_hook_time / train_time)
     print(f"overhead: {overhead}")
 
 

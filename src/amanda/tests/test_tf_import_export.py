@@ -13,6 +13,8 @@ from loguru import logger
 import amanda
 from amanda import Graph, create_op
 from amanda.conversion.tensorflow import (
+    after_op_executed_hook,
+    before_op_executed_hook,
     export_to_checkpoint,
     export_to_graph,
     export_to_graph_def,
@@ -247,6 +249,8 @@ def test_tf_modify_graph_with_hook(arch_name):
 class TestTool(amanda.Tool):
     def __init__(self, store_dir):
         super(TestTool, self).__init__(namespace="amanda/tensorflow")
+        self.register_event(amanda.event.before_op_added, self.before_op_added)
+        self.register_event(amanda.event.after_op_added, self.after_op_added)
         self.register_event(
             amanda.event.before_op_executed, self.test_before_op_executed
         )
@@ -260,9 +264,70 @@ class TestTool(amanda.Tool):
             self.test_after_backward_op_executed,
         )
         self.store_dir = store_dir
+        self.before_added_ops = set()
+        self.after_added_ops = set()
+        self.before_executed_ops = set()
+        self.after_executed_ops = set()
+
+    def before_op_added(self, context: amanda.EventContext):
+        op = context["op"]
+        self.before_added_ops.add(op.name)
+        input_with_index = [
+            (index, input)
+            for index, input in enumerate(context["inputs"])
+            if not input.dtype._is_ref_dtype
+        ]
+        inputs = [input for _, input in input_with_index]
+        input_indices = [index for index, _ in input_with_index]
+        input_types = op._input_types
+        input_types = [input_types[index] for index in input_indices]
+        with tf.control_dependencies(op.control_inputs):
+            new_inputs = tf.py_function(
+                before_op_executed_hook(context),
+                inputs,
+                input_types,
+                name=f"{op.name}_before_op_executed",
+            )
+        if len(inputs) == 0:
+            new_op = new_inputs
+            op._add_control_input(new_op)
+            new_inputs = []
+        for index, new_input in zip(input_indices, new_inputs):
+            context["inputs"][index] = new_input
+
+    def after_op_added(self, context: amanda.EventContext):
+        op = context["op"]
+        self.after_added_ops.add(op.name)
+        output_with_index = [
+            (index, output)
+            for index, output in enumerate(context["outputs"])
+            if not output.dtype._is_ref_dtype
+        ]
+        outputs = [output for _, output in output_with_index]
+        output_indices = [index for index, _ in output_with_index]
+        output_types = op._output_types
+        output_types = [output_types[index] for index in output_indices]
+        new_outputs = tf.py_function(
+            after_op_executed_hook(context),
+            outputs,
+            output_types,
+            name=f"{op.name}_after_op_executed",
+        )
+        if len(outputs) == 0:
+            new_op = new_outputs
+            new_outputs = []
+        else:
+            new_op = new_outputs[0].op
+        for control_output in op._control_outputs:
+            control_output._add_control_input(new_op)
+        if len(outputs) == 0:
+            new_op._add_control_input(op)
+        for index, new_output in zip(output_indices, new_outputs):
+            context["outputs"][index] = new_output
 
     def test_before_op_executed(self, context: amanda.EventContext):
         op = context["op"]
+        self.before_executed_ops.add(op.name)
         file_name = op.name.replace("/", "_")
         # print(
         #     "before",
@@ -277,18 +342,19 @@ class TestTool(amanda.Tool):
 
     def test_after_op_executed(self, context: amanda.EventContext):
         op = context["op"]
+        self.after_executed_ops.add(op.name)
         file_name = op.name.replace("/", "_")
         # print(
         #     "after",
         #     op.type,
-        #     [input.dtype for input in context["inputs"]],
+        #     # [input.dtype for input in context["inputs"]],
         #     [output.dtype for output in context["outputs"]],
         #     op.name,
         # )
         store_dir = self.store_dir / "after_op_executed" / file_name
         ensure_dir(store_dir, is_file=False)
-        for index, input in enumerate(context["inputs"]):
-            np.save(f"{store_dir}/input_{index}", input)
+        # for index, input in enumerate(context["inputs"]):
+        #     np.save(f"{store_dir}/input_{index}", input)
         for index, output in enumerate(context["outputs"]):
             np.save(f"{store_dir}/{index}", output)
 
@@ -307,28 +373,28 @@ class TestTool(amanda.Tool):
         # )
         store_dir = self.store_dir / "before_backward_op_executed" / file_name
         ensure_dir(store_dir, is_file=False)
-        for index, input in enumerate(context["outputs"]):
-            np.save(f"{store_dir}/{index}", input)
+        # for index, input in enumerate(context["outputs"]):
+        #     np.save(f"{store_dir}/{index}", input)
         for index, input in enumerate(context["grad_outputs"]):
             np.save(f"{store_dir}/grad_{index}", input)
 
     def test_after_backward_op_executed(self, context: amanda.EventContext):
         op = context["op"]
-        backward_op = context["backward_op"]
         file_name = op.name.replace("/", "_")
-        print(
-            "after_bw",
-            op.type,
-            backward_op.type,
-            [input.dtype for input in context["inputs"]],
-            [input.dtype for input in context["grad_inputs"]],
-            op.name,
-            backward_op.name,
-        )
+        # backward_op = context["backward_op"]
+        # print(
+        #     "after_bw",
+        #     op.type,
+        #     backward_op.type,
+        #     [input.dtype for input in context["inputs"]],
+        #     [input.dtype for input in context["grad_inputs"]],
+        #     op.name,
+        #     backward_op.name,
+        # )
         store_dir = self.store_dir / "after_backward_op_executed" / file_name
         ensure_dir(store_dir, is_file=False)
-        for index, output in enumerate(context["inputs"]):
-            np.save(f"{store_dir}/{index}", output)
+        # for index, output in enumerate(context["inputs"]):
+        #     np.save(f"{store_dir}/{index}", output)
         for index, output in enumerate(context["grad_inputs"]):
             np.save(f"{store_dir}/grad_{index}", output)
 
@@ -344,6 +410,8 @@ def test_tf_modify_graph_with_new_hook(arch_name):
             model_dir="downloads/model",
             input=input,
         )
+    assert tool.before_added_ops == tool.after_added_ops
+    assert tool.before_executed_ops == tool.after_executed_ops
 
 
 def check_modified_graph(graph_def, new_graph_def):

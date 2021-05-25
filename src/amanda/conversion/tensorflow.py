@@ -39,8 +39,10 @@ from amanda.conversion.utils import to_proto, without_internal_attrs
 from amanda.event import (
     EventContext,
     after_backward_op_executed,
+    after_op_added,
     after_op_executed,
     before_backward_op_executed,
+    before_op_added,
     before_op_executed,
     on_graph_loaded,
 )
@@ -881,13 +883,10 @@ def before_op_executed_hook(context: EventContext):
     return hook_fn
 
 
-def after_op_executed_hook(context, input_size: int):
-    def hook_fn(*args):
-        inputs = args[:input_size]
-        outputs = args[input_size:]
+def after_op_executed_hook(context):
+    def hook_fn(*outputs):
         context.trigger(
             after_op_executed,
-            inputs=list(inputs),
             outputs=list(outputs),
         )
         if len(outputs) == 0:
@@ -900,17 +899,10 @@ def after_op_executed_hook(context, input_size: int):
     return hook_fn
 
 
-def before_backward_op_executed_hook(
-    context: EventContext, input_size: int, output_size: int
-):
-    def hook_fn(*args):
-        inputs = args[:input_size]
-        outputs = args[input_size : input_size + output_size]
-        grad_outputs = args[input_size + output_size :]
+def before_backward_op_executed_hook(context: EventContext):
+    def hook_fn(*grad_outputs):
         context.trigger(
             before_backward_op_executed,
-            inputs=list(inputs),
-            outputs=list(outputs),
             grad_outputs=list(grad_outputs),
         )
         if len(grad_outputs) == 0:
@@ -923,21 +915,10 @@ def before_backward_op_executed_hook(
     return hook_fn
 
 
-def after_backward_op_executed_hook(
-    context: EventContext, input_size: int, output_size: int, grad_output_size: int
-):
-    def hook_fn(*args):
-        inputs = args[:input_size]
-        outputs = args[input_size : input_size + output_size]
-        grad_outputs = args[
-            input_size + output_size : input_size + output_size + grad_output_size
-        ]
-        grad_inputs = args[input_size + output_size + grad_output_size :]
+def after_backward_op_executed_hook(context: EventContext):
+    def hook_fn(*grad_inputs):
         context.trigger(
             after_backward_op_executed,
-            inputs=list(inputs),
-            outputs=list(outputs),
-            grad_outputs=list(grad_outputs),
             grad_inputs=list(grad_inputs),
         )
         if len(grad_inputs) == 0:
@@ -1016,20 +997,18 @@ def insert_hooks(graph: Graph, tools: List[Tool], forward_ops: Set[str] = None):
         if len(after_op_executed_tools) != 0:
             context = EventContext(tools=after_op_executed_tools)
             context["op"] = op
-            func = NoGradEagerFunc(
-                after_op_executed_hook(context, input_size), Tout, False
-            )
+            func = NoGradEagerFunc(after_op_executed_hook(context), Tout, False)
             token = tf_py_funcs.insert(func)
             _py_funcs.append(func)
             hook_op = create_op(
                 type="EagerPyFunc",
                 name=f"{op.name}_after_op_executed",
-                inputs=[f"input/{index}" for index in range(input_size + output_size)],
+                inputs=[f"input/{index}" for index in range(output_size)],
                 outputs=[f"output/{index}" for index in range(output_size)],
                 attrs=dict(
                     token=token,
                     is_async=False,
-                    Tin=Tin + Tout,
+                    Tin=Tout,
                     Tout=Tout,
                 ),
             )
@@ -1037,9 +1016,6 @@ def insert_hooks(graph: Graph, tools: List[Tool], forward_ops: Set[str] = None):
             for edge in op.control_output_port.out_edges:
                 graph.create_control_edge(hook_op, edge.dst.op)
                 graph.remove_edge(edge)
-            for index, inout_port in enumerate(input_ports):
-                for edge in inout_port.in_edges:
-                    graph.create_edge(edge.src, hook_op.input_port(index))
             if len(output_ports) > 0:
                 for index, output_port in enumerate(output_ports):
                     for edge in output_port.out_edges:
@@ -1048,9 +1024,7 @@ def insert_hooks(graph: Graph, tools: List[Tool], forward_ops: Set[str] = None):
                             edge.dst,
                         )
                         graph.remove_edge(edge)
-                    graph.create_edge(
-                        output_port, hook_op.input_port(index + input_size)
-                    )
+                    graph.create_edge(output_port, hook_op.input_port(index))
                     new_output_ports[index] = hook_op.output_port(index)
             else:
                 graph.create_control_edge(op, hook_op)
@@ -1074,7 +1048,7 @@ def insert_hooks(graph: Graph, tools: List[Tool], forward_ops: Set[str] = None):
                 backward_input_size = len(backward_input_ports)
                 backward_Tin = [port.type.raw for port in backward_input_ports]
                 func = NoGradEagerFunc(
-                    before_backward_op_executed_hook(context, input_size, output_size),
+                    before_backward_op_executed_hook(context),
                     backward_Tin,
                     False,
                 )
@@ -1083,17 +1057,12 @@ def insert_hooks(graph: Graph, tools: List[Tool], forward_ops: Set[str] = None):
                 hook_op = create_op(
                     type="EagerPyFunc",
                     name=f"{backward_op.name}_before_op_executed",
-                    inputs=[
-                        f"input/{index}"
-                        for index in range(
-                            input_size + output_size + backward_input_size
-                        )
-                    ],
+                    inputs=[f"input/{index}" for index in range(backward_input_size)],
                     outputs=[f"output/{index}" for index in range(backward_input_size)],
                     attrs=dict(
                         token=token,
                         is_async=False,
-                        Tin=Tin + Tout + backward_Tin,
+                        Tin=backward_Tin,
                         Tout=backward_Tin,
                     ),
                 )
@@ -1101,19 +1070,12 @@ def insert_hooks(graph: Graph, tools: List[Tool], forward_ops: Set[str] = None):
                 for edge in backward_op.control_input_port.in_edges:
                     graph.create_control_edge(edge.src.op, hook_op)
                     graph.remove_edge(edge)
-                for index, input_port in enumerate(input_ports):
-                    for edge in input_port.in_edges:
-                        graph.create_edge(edge.src, hook_op.input_port(index))
-                for index, output_port in enumerate(new_output_ports):
-                    graph.create_edge(
-                        output_port, hook_op.input_port(index + input_size)
-                    )
                 if len(backward_input_ports) > 0:
                     for index, input_port in enumerate(backward_input_ports):
                         for edge in input_port.in_edges:
                             graph.create_edge(
                                 edge.src,
-                                hook_op.input_port(index + input_size + output_size),
+                                hook_op.input_port(index),
                             )
                             graph.remove_edge(edge)
                         graph.create_edge(hook_op.output_port(index), input_port)
@@ -1141,9 +1103,7 @@ def insert_hooks(graph: Graph, tools: List[Tool], forward_ops: Set[str] = None):
                 backward_output_size = len(backward_output_ports)
                 backward_Tout = [port.type.raw for port in backward_output_ports]
                 func = NoGradEagerFunc(
-                    after_backward_op_executed_hook(
-                        context, input_size, output_size, backward_input_size
-                    ),
+                    after_backward_op_executed_hook(context),
                     backward_Tout,
                     False,
                 )
@@ -1152,22 +1112,14 @@ def insert_hooks(graph: Graph, tools: List[Tool], forward_ops: Set[str] = None):
                 hook_op = create_op(
                     type="EagerPyFunc",
                     name=f"{backward_op.name}_after_op_executed",
-                    inputs=[
-                        f"input/{index}"
-                        for index in range(
-                            input_size
-                            + output_size
-                            + backward_input_size
-                            + backward_output_size
-                        )
-                    ],
+                    inputs=[f"input/{index}" for index in range(backward_output_size)],
                     outputs=[
                         f"output/{index}" for index in range(backward_output_size)
                     ],
                     attrs=dict(
                         token=token,
                         is_async=False,
-                        Tin=Tin + Tout + backward_Tin + backward_Tout,
+                        Tin=backward_Tout,
                         Tout=backward_Tout,
                     ),
                 )
@@ -1175,22 +1127,6 @@ def insert_hooks(graph: Graph, tools: List[Tool], forward_ops: Set[str] = None):
                 for edge in backward_op.control_output_port.out_edges:
                     graph.create_control_edge(hook_op, edge.dst.op)
                     graph.remove_edge(edge)
-                for index, input_port in enumerate(input_ports):
-                    for edge in input_port.in_edges:
-                        graph.create_edge(edge.src, hook_op.input_port(index))
-                for index, input_port in enumerate(input_ports):
-                    for edge in input_port.in_edges:
-                        graph.create_edge(edge.src, hook_op.input_port(index))
-                for index, output_port in enumerate(new_output_ports):
-                    graph.create_edge(
-                        output_port, hook_op.input_port(index + input_size)
-                    )
-                for index, input_port in enumerate(backward_input_ports):
-                    for edge in input_port.in_edges:
-                        graph.create_edge(
-                            edge.src,
-                            hook_op.input_port(index + input_size + output_size),
-                        )
                 if len(backward_output_ports) > 0:
                     for index, output_port in enumerate(backward_output_ports):
                         for edge in output_port.out_edges:
@@ -1201,12 +1137,90 @@ def insert_hooks(graph: Graph, tools: List[Tool], forward_ops: Set[str] = None):
                             graph.remove_edge(edge)
                         graph.create_edge(
                             output_port,
-                            hook_op.input_port(
-                                index + input_size + output_size + backward_input_size
-                            ),
+                            hook_op.input_port(index),
                         )
                 else:
                     graph.create_control_edge(backward_op, hook_op)
+
+
+def insert_hooks_v2(
+    tf_graph: tf.Graph, tools: List[Tool], forward_ops: Set[str] = None
+) -> tf.Graph:
+    if len(tools) == 0:
+        return tf_graph
+    forward_ops = forward_ops or set()
+    before_op_update = []
+    after_op_update = []
+    contexts = []
+    for op in tf_graph.get_operations():
+        if op.name not in forward_ops:
+            continue
+        if op.type in ["VariableV2", "Merge"]:
+            continue
+        # if op.type not in ["Conv2D"]:
+        #     continue
+
+        context = EventContext(tools=tools)
+        contexts.append(context)
+        inputs = list(op.inputs)
+        context.trigger(
+            before_op_added,
+            op=op,
+            inputs=list(inputs),
+        )
+        for index, (input, new_input) in enumerate(zip(inputs, context["inputs"])):
+            if input != new_input:
+                before_op_update.append((op, index, input, new_input))
+
+        outputs = list(op.outputs)
+        last_id = tf_graph._last_id
+        context.trigger(
+            after_op_added,
+            op=op,
+            outputs=list(outputs),
+        )
+        new_last_id = tf_graph._last_id
+        new_op_names = [
+            tf_graph._nodes_by_id[id].name for id in range(last_id + 1, new_last_id + 1)
+        ]
+        for index, (output, new_output) in enumerate(zip(outputs, context["outputs"])):
+            if output != new_output:
+                after_op_update.append((op, index, output, new_output, new_op_names))
+
+    graph = import_from_graph(tf_graph, session=tf.get_default_session())
+
+    for tf_op, index, input, new_input in before_op_update:
+        op = graph.get_op(tf_op.name)
+        input_port = op.input_port(index)
+        graph.remove_edge(
+            graph.get_edge(
+                graph.get_op(input.op.name).output_port(input.value_index), input_port
+            )
+        )
+        graph.create_edge(
+            graph.get_op(new_input.op.name).output_port(new_input.value_index),
+            input_port,
+        )
+
+    for tf_op, index, output, new_output, new_op_names in after_op_update:
+        op = graph.get_op(tf_op.name)
+        output_port = op.output_port(index)
+        for edge in output_port.out_edges:
+            if edge.dst.op.name not in new_op_names:
+                graph.remove_edge(edge)
+                graph.create_edge(
+                    graph.get_op(new_output.op.name).output_port(
+                        new_output.value_index
+                    ),
+                    edge.dst,
+                )
+
+    new_tf_graph, _, session = export_to_graph(graph)
+    session.close()
+    new_tf_graph._device_function_stack = tf_graph._device_function_stack
+    for context in contexts:
+        context["op"] = new_tf_graph.get_operation_by_name(context["op"].name)
+    return new_tf_graph
 
 
 class EstimatorAdapter(Adapter):
@@ -1334,17 +1348,18 @@ def inject_hook(target: tf.estimator.Estimator) -> None:
                     set(op.name for op in tf_graph.get_operations()) - input_ops
                 )
             forward_ops = forward_ops - filter_hook.disabled_ops
-            graph = import_from_graph(tf_graph, session=tf.get_default_session())
-            insert_hooks(graph, tools, forward_ops)
-            new_tf_graph, _, session = export_to_graph(graph)
-            session.close()
-            new_tf_graph._device_function_stack = tf_graph._device_function_stack
+            new_tf_graph = insert_hooks_v2(tf_graph, tools, forward_ops)
+            # graph = import_from_graph(tf_graph, session=tf.get_default_session())
+            # insert_hooks(graph, tools, forward_ops)
+            # new_tf_graph, _, session = export_to_graph(graph)
+            # session.close()
+            # new_tf_graph._device_function_stack = tf_graph._device_function_stack
             gc.collect()
             replace_all_refs(tf_graph, new_tf_graph)
 
             def get_after_hook_op(op_name: str):
                 hook_op_name = f"{op_name}_after_op_executed"
-                if graph.get_op(hook_op_name) is not None:
+                if hook_op_name in new_tf_graph._nodes_by_name:
                     return new_tf_graph.get_operation_by_name(hook_op_name)
                 else:
                     return new_tf_graph.get_operation_by_name(op_name)
@@ -1352,7 +1367,7 @@ def inject_hook(target: tf.estimator.Estimator) -> None:
             def get_after_hook_tensor(tensor_name: str):
                 op_name, index = tensor_name.split(":")
                 hook_op_name = f"{op_name}_after_op_executed"
-                if graph.get_op(hook_op_name) is not None:
+                if hook_op_name in new_tf_graph._nodes_by_name:
                     return new_tf_graph.get_tensor_by_name(f"{hook_op_name}:{index}")
                 else:
                     return new_tf_graph.get_tensor_by_name(tensor_name)
