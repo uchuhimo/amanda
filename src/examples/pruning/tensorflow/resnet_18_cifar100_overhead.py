@@ -15,283 +15,19 @@
 
 import os
 import time
-from typing import overload
+from typing import Set
 import amanda
 import shutil
 
 import tensorflow as tf
 
 from examples.common.tensorflow.dataset.cifar100_main import input_fn
-from examples.common.tensorflow.model.resnet_18_cifar100 import ResNet18Cifar100
 from examples.common.tensorflow.utils import new_session_config
 from examples.common.tensorflow.dataset.envs import CIFAR100_RAW_DIR
 from amanda.io.file import abspath
-
-_NUM_IMAGES = {"train": 50000, "validation": 10000}
-
-
-################################################################################
-# Functions for running training/eval/validation loops for the model.
-################################################################################
-def learning_rate_with_decay(
-    batch_size,
-    batch_denom,
-    num_images,
-    boundary_epochs,
-    decay_rates,
-    base_lr=0.1,
-    warmup=False,
-):
-    """Get a learning rate that decays step-wise as training progresses.
-    Args:
-      batch_size: the number of examples processed in each training batch.
-      batch_denom: this value will be used to scale the base learning rate.
-        `0.1 * batch size` is divided by this number, such that when
-        batch_denom == batch_size, the initial learning rate will be 0.1.
-      num_images: total number of images that will be used for training.
-      boundary_epochs: list of ints representing the epochs at which we
-        decay the learning rate.
-      decay_rates: list of floats representing the decay rates to be used
-        for scaling the learning rate. It should have one more element
-        than `boundary_epochs`, and all elements should have the same type.
-      base_lr: Initial learning rate scaled based on batch_denom.
-      warmup: Run a 5 epoch warmup to the initial lr.
-    Returns:
-      Returns a function that takes a single argument - the number of batches
-      trained so far (global_step)- and returns the learning rate to be used
-      for training the next batch.
-    """
-    initial_learning_rate = base_lr * batch_size / batch_denom
-    batches_per_epoch = num_images / batch_size
-
-    # Reduce the learning rate at certain epochs.
-    # CIFAR-10: divide by 10 at epoch 100, 150, and 200
-    # ImageNet: divide by 10 at epoch 30, 60, 80, and 90
-    boundaries = [int(batches_per_epoch * epoch) for epoch in boundary_epochs]
-    vals = [initial_learning_rate * decay for decay in decay_rates]
-
-    def learning_rate_fn(global_step):
-        """Builds scaled learning rate function with 5 epoch warm up."""
-        lr = tf.train.piecewise_constant(global_step, boundaries, vals)
-        if warmup:
-            warmup_steps = int(batches_per_epoch * 5)
-            warmup_lr = (
-                initial_learning_rate
-                * tf.cast(global_step, tf.float32)
-                / tf.cast(warmup_steps, tf.float32)
-            )
-            return tf.cond(global_step < warmup_steps, lambda: warmup_lr, lambda: lr)
-        return lr
-
-    return learning_rate_fn
-
-
-def resnet_model_fn(
-    features,
-    labels,
-    mode,
-    model_class,
-    weight_decay,
-    learning_rate_fn,
-    momentum,
-    loss_scale,
-    loss_filter_fn=None,
-    dtype=tf.float32,
-    fine_tune=False,
-):
-    """Shared functionality for different resnet model_fns.
-    Initializes the ResnetModel representing the model layers
-    and uses that model to build the necessary EstimatorSpecs for
-    the `mode` in question. For training, this means building losses,
-    the optimizer, and the train op that get passed into the EstimatorSpec.
-    For evaluation and prediction, the EstimatorSpec is returned without
-    a train op, but with the necessary parameters for the given mode.
-    Args:
-      features: tensor representing input images
-      labels: tensor representing class labels for all input images
-      mode: current estimator mode; should be one of
-        `tf.estimator.ModeKeys.TRAIN`, `EVALUATE`, `PREDICT`
-      model_class: a class representing a TensorFlow model that has a __call__
-        function. We assume here that this is a subclass of ResnetModel.
-      resnet_size: A single integer for the size of the ResNet model.
-      weight_decay: weight decay loss rate used to regularize learned variables.
-      learning_rate_fn: function that returns the current learning rate given
-        the current global_step
-      momentum: momentum term used for optimization
-      data_format: Input format ('channels_last', 'channels_first', or None).
-        If set to None, the format is dependent on whether a GPU is available.
-      resnet_version: Integer representing which version of the ResNet network to
-        use. See README for details. Valid values: [1, 2]
-      loss_scale: The factor to scale the loss for numerical stability. A detailed
-        summary is present in the arg parser help text.
-      loss_filter_fn: function that takes a string variable name and returns
-        True if the var should be included in loss calculation, and False
-        otherwise. If None, batch_normalization variables will be excluded
-        from the loss.
-      dtype: the TensorFlow dtype to use for calculations.
-      fine_tune: If True only train the dense layers(final layers).
-    Returns:
-      EstimatorSpec parameterized according to the input params and the
-      current mode.
-    """
-
-    # Generate a summary node for the images
-    tf.summary.image("images", features, max_outputs=6)
-    # Checks that features/images have same data type being used for calculations.
-    assert features.dtype == dtype
-
-    model = model_class()
-
-    logits = model(features, mode == tf.estimator.ModeKeys.TRAIN)
-
-    # This acts as a no-op if the logits are already in fp32 (provided logits are
-    # not a SparseTensor). If dtype is is low precision, logits must be cast to
-    # fp32 for numerical stability.
-    logits = tf.cast(logits, tf.float32)
-
-    predictions = {
-        "classes": tf.argmax(logits, axis=1),
-        "probabilities": tf.nn.softmax(logits, name="softmax_tensor"),
-    }
-
-    if mode == tf.estimator.ModeKeys.PREDICT:
-        # Return the predictions and the specification for serving a SavedModel
-        return tf.estimator.EstimatorSpec(
-            mode=mode,
-            predictions=predictions,
-            export_outputs={"predict": tf.estimator.export.PredictOutput(predictions)},
-        )
-
-    # Calculate loss, which includes softmax cross entropy and L2 regularization.
-    cross_entropy = tf.losses.sparse_softmax_cross_entropy(logits=logits, labels=labels)
-
-    # Create a tensor named cross_entropy for logging purposes.
-    tf.identity(cross_entropy, name="cross_entropy")
-    tf.summary.scalar("cross_entropy", cross_entropy)
-
-    # If no loss_filter_fn is passed, assume we want the default behavior,
-    # which is that batch_normalization variables are excluded from loss.
-    def exclude_batch_norm(name):
-        return "batch_normalization" not in name
-
-    loss_filter_fn = loss_filter_fn or exclude_batch_norm
-
-    # Add weight decay to the loss.
-    l2_loss = weight_decay * tf.add_n(
-        # loss is computed using fp32 for numerical stability.
-        [
-            tf.nn.l2_loss(tf.cast(v, tf.float32))
-            for v in tf.trainable_variables()
-            if loss_filter_fn(v.name)
-        ]
-    )
-    tf.summary.scalar("l2_loss", l2_loss)
-    loss = cross_entropy + l2_loss
-
-    if mode == tf.estimator.ModeKeys.TRAIN:
-        global_step = tf.train.get_or_create_global_step()
-
-        learning_rate = learning_rate_fn(global_step)
-
-        # Create a tensor named learning_rate for logging purposes
-        tf.identity(learning_rate, name="learning_rate")
-        tf.summary.scalar("learning_rate", learning_rate)
-
-        optimizer = tf.train.MomentumOptimizer(
-            learning_rate=learning_rate, momentum=momentum
-        )
-
-        def _dense_grad_filter(gvs):
-            """Only apply gradient updates to the final layer.
-            This function is used for fine tuning.
-            Args:
-              gvs: list of tuples with gradients and variable info
-            Returns:
-              filtered gradients so that only the dense layer remains
-            """
-            return [(g, v) for g, v in gvs if "dense" in v.name]
-
-        if loss_scale != 1:
-            # When computing fp16 gradients, often intermediate tensor values are
-            # so small, they underflow to 0. To avoid this, we multiply the loss by
-            # loss_scale to make these tensor values loss_scale times bigger.
-            scaled_grad_vars = optimizer.compute_gradients(loss * loss_scale)
-
-            if fine_tune:
-                scaled_grad_vars = _dense_grad_filter(scaled_grad_vars)
-
-            # Once the gradient computation is complete we can scale the gradients
-            # back to the correct scale before passing them to the optimizer.
-            unscaled_grad_vars = [
-                (grad / loss_scale, var) for grad, var in scaled_grad_vars
-            ]
-            minimize_op = optimizer.apply_gradients(unscaled_grad_vars, global_step)
-        else:
-            grad_vars = optimizer.compute_gradients(loss)
-            if fine_tune:
-                grad_vars = _dense_grad_filter(grad_vars)
-            minimize_op = optimizer.apply_gradients(grad_vars, global_step)
-
-        update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-        train_op = tf.group(minimize_op, update_ops)
-    else:
-        train_op = None
-
-    accuracy = tf.metrics.accuracy(labels, predictions["classes"])
-    accuracy_top_5 = tf.metrics.mean(
-        tf.nn.in_top_k(predictions=logits, targets=labels, k=5, name="top_5_op")
-    )
-    metrics = {"accuracy": accuracy, "accuracy_top_5": accuracy_top_5}
-
-    # Create a tensor named train_accuracy for logging purposes
-    tf.identity(accuracy[1], name="train_accuracy")
-    tf.identity(accuracy_top_5[1], name="train_accuracy_top_5")
-    tf.summary.scalar("train_accuracy", accuracy[1])
-    tf.summary.scalar("train_accuracy_top_5", accuracy_top_5[1])
-
-    return tf.estimator.EstimatorSpec(
-        mode=mode,
-        predictions=predictions,
-        loss=loss,
-        train_op=train_op,
-        eval_metric_ops=metrics,
-    )
-
-
-def cifar100_model_fn(features, labels, mode, params):
-    """Model function for CIFAR-10."""
-    # Learning rate schedule follows arXiv:1512.03385 for ResNet-56 and under.
-    learning_rate_fn = learning_rate_with_decay(
-        batch_size=params["batch_size"],
-        batch_denom=128,
-        num_images=_NUM_IMAGES["train"],
-        boundary_epochs=[91, 136, 182],
-        decay_rates=[1, 0.1, 0.01, 0.001],
-    )
-
-    # Weight decay of 2e-4 diverges from 1e-4 decay used in the ResNet paper
-    # and seems more stable in testing. The difference was nominal for ResNet-56.
-    weight_decay = 2e-4
-
-    # Empirical testing showed that including batch_normalization variables
-    # in the calculation of regularized loss helped validation accuracy
-    # for the CIFAR-10 dataset, perhaps because the regularization prevents
-    # overfitting on the small data set. We therefore include all vars when
-    # regularizing and computing loss during training.
-    def loss_filter_fn(_):
-        return True
-
-    return resnet_model_fn(
-        features=features,
-        labels=labels,
-        mode=mode,
-        model_class=ResNet18Cifar100,
-        weight_decay=weight_decay,
-        learning_rate_fn=learning_rate_fn,
-        momentum=0.9,
-        loss_scale=params["loss_scale"],
-        loss_filter_fn=loss_filter_fn,
-    )
+# from examples.pruning.tensorflow.pruning import PruningTool
+from examples.pruning.tensorflow.pruning_test import PruningTool
+from examples.pruning.tensorflow.resnet_18_cifar100_train import cifar100_model_fn
 
 
 def train(
@@ -301,6 +37,7 @@ def train(
     multi_gpu: bool = False,
     label: str = None,
     with_hook: bool = False,
+    take_num: int = None,
 ):
     # Using the Winograd non-fused algorithms provides a small performance boost.
     os.environ["TF_ENABLE_WINOGRAD_NONFUSED"] = "1"
@@ -342,6 +79,8 @@ def train(
             batch_size=batch_size,
             num_epochs=epochs_between_evals,
         )
+        if take_num is not None:
+            input = input.take(take_num)
         return input
 
     # Set up training hook that logs the training accuracy every 100 steps.
@@ -356,48 +95,101 @@ def train(
 
 
 class DummyTool(amanda.Tool):
-    def __init__(self):
+    def __init__(self, debug: bool = False):
         super(DummyTool, self).__init__(namespace="amanda/tensorflow")
+
+        def filter_fn(event, context):
+            op = context["op"]
+            if op.type not in [
+                "Conv2D",
+                "MatMul",
+            ]:
+                return False
+            if event in [amanda.event.before_op_added, amanda.event.after_op_added]:
+                if not debug and event == amanda.event.after_op_added:
+                    return False
+                else:
+                    return True
+            else:
+                backward_op = context["backward_op"]
+                if backward_op.type in [
+                    "Conv2DBackpropFilter",
+                    "MatMul",
+                ]:
+                    if not debug and event == amanda.event.before_backward_op_added:
+                        return False
+                    else:
+                        return True
+                else:
+                    return False
+
+        self.depends_on(
+            amanda.tools.FilterOpTool(filter_fn=filter_fn),
+            amanda.tools.EagerContextTool(),
+        )
         self.register_event(
             amanda.event.before_op_executed,
             self.test_before_op_executed
         )
-        # self.register_event(
-        #     amanda.event.after_op_executed,
-        #     self.test_after_op_executed
-        # )
-        # self.register_event(
-        #     amanda.event.before_backward_op_executed,
-        #     self.test_before_backward_op_executed
-        # )
+        self.register_event(
+            amanda.event.after_op_executed,
+            self.test_after_op_executed
+        )
+        self.register_event(
+            amanda.event.before_backward_op_executed,
+            self.test_before_backward_op_executed
+        )
         self.register_event(
             amanda.event.after_backward_op_executed,
             self.test_after_backward_op_executed
         )
+        self.debug = debug
+        self.before_executed_ops: Set[str] = set()
+        self.after_executed_ops: Set[str] = set()
+        self.before_executed_backward_ops: Set[str] = set()
+        self.after_executed_backward_ops: Set[str] = set()
 
     def test_before_op_executed(self, context: amanda.EventContext):
-        # op = context["op"]
-        # print("before", op.type, [input.dtype for input in context["inputs"]], op.name)
+        if self.debug:
+            op = context["op"]
+            print("before", op.type, [input.dtype for input in context["inputs"]], op.name)
+            self.before_executed_ops.add(op.name)
         return
 
     def test_after_op_executed(self, context: amanda.EventContext):
+        if self.debug:
+            op = context["op"]
+            self.after_executed_ops.add(op.name)
         return
 
     def test_before_backward_op_executed(self, context: amanda.EventContext):
+        if self.debug:
+            op = context["op"]
+            backward_op = context["backward_op"]
+            print("before_backward", op.type, op.name, backward_op.type, backward_op.name)
+            self.before_executed_backward_ops.add(backward_op.name)
         return
 
     def test_after_backward_op_executed(self, context: amanda.EventContext):
+        if self.debug:
+            backward_op = context["backward_op"]
+            self.after_executed_backward_ops.add(backward_op.name)
         return
 
 
 def main():
+    take_num = None
+    epochs_between_evals = 10
     model_dir = abspath("tmp/tf/resnet-18-cifar100/model_overhead/")
 
     if os.path.exists(model_dir):
         shutil.rmtree(model_dir, ignore_errors=True)
     start_time = time.time()
     with amanda.disabled():
-        train()
+        train(
+            take_num=take_num,
+            epochs_between_evals=epochs_between_evals,
+        )
     end_time = time.time()
     train_time = end_time - start_time
     print(f"train: {train_time}")
@@ -407,7 +199,11 @@ def main():
     start_time = time.time()
     tool = DummyTool()
     with amanda.tool.apply(tool):
-        train(with_hook=True)
+        train(
+            with_hook=True,
+            take_num=take_num,
+            epochs_between_evals=epochs_between_evals,
+        )
     end_time = time.time()
     train_with_hook_time = end_time - start_time
     print(f"train_with_hook: {train_with_hook_time}")
@@ -416,12 +212,76 @@ def main():
     print(f"overhead: {overhead}")
 
 
-def test():
-    tool = DummyTool()
+def main_pruning():
+    take_num = 1
+    epochs_between_evals = 1
+    model_dir = abspath("tmp/tf/resnet-18-cifar100/model_overhead/")
+
+    if os.path.exists(model_dir):
+        shutil.rmtree(model_dir, ignore_errors=True)
+    start_time = time.time()
+    with amanda.disabled():
+        train(
+            take_num=take_num,
+            epochs_between_evals=epochs_between_evals,
+        )
+    end_time = time.time()
+    train_time = end_time - start_time
+
+    if os.path.exists(model_dir):
+        shutil.rmtree(model_dir, ignore_errors=True)
+    start_time = time.time()
+    tool = PruningTool(disabled=True)
     with amanda.tool.apply(tool):
-        train(with_hook=True)
+        train(
+            with_hook=True,
+            take_num=take_num,
+            epochs_between_evals=epochs_between_evals,
+        )
+    end_time = time.time()
+    train_with_hook_time = end_time - start_time
+
+    if os.path.exists(model_dir):
+        shutil.rmtree(model_dir, ignore_errors=True)
+    start_time = time.time()
+    tool = PruningTool(disabled=False)
+    with amanda.tool.apply(tool):
+        train(
+            with_hook=True,
+            take_num=take_num,
+            epochs_between_evals=epochs_between_evals,
+        )
+    end_time = time.time()
+    train_with_pruning_time = end_time - start_time
+
+    hook_overhead = (train_with_hook_time / train_time) - 1
+    pruning_overhead = (train_with_pruning_time / train_time) - hook_overhead - 1
+    print(f"train: {train_time} s")
+    print(f"train_with_hook: {train_with_hook_time} s")
+    print(f"train_with_pruning: {train_with_pruning_time} s")
+    print(f"hook_overhead: {hook_overhead}")
+    print(f"pruning_overhead: {pruning_overhead}")
+
+
+def test():
+    tool = DummyTool(debug=True)
+    with amanda.tool.apply(tool):
+        train(batch_size=1, with_hook=True, take_num=1)
+        # train(batch_size=1, with_hook=False, take_num=1)
+    assert len(tool.before_executed_ops) != 0
+    assert tool.before_executed_ops == tool.after_executed_ops
+    assert len(tool.before_executed_backward_ops) != 0
+    assert tool.before_executed_backward_ops == tool.after_executed_backward_ops
+
+
+def test_pruning():
+    tool = PruningTool(disabled=False)
+    with amanda.tool.apply(tool):
+        train(batch_size=1, with_hook=True, take_num=1)
 
 
 if __name__ == "__main__":
-    main()
+    # main()
+    # main_pruning()
     # test()
+    test_pruning()

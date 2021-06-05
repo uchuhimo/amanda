@@ -14,7 +14,7 @@ from .vector_wise_sparsity import create_mask
 class VectorWisePruningMethod(prune.BasePruningMethod):
     def compute_mask(self, t, default_mask):
         mask = create_mask(t)
-        return mask    
+        return mask
 
 def main():
 
@@ -68,11 +68,11 @@ def main():
     curr_lr = learning_rate
 
 
-    # for name, module in model.named_modules():
-    #     if name == 'conv1' or name=='features.0': # skip input layer with input dim=3
-    #         continue
-    #     if isinstance(module, torch.nn.Conv2d):
-    #         VectorWisePruningMethod.apply(module, 'weight')
+    for name, module in model.named_modules():
+        if name == 'conv1' or name=='features.0': # skip input layer with input dim=3
+            continue
+        if isinstance(module, torch.nn.Conv2d):
+            VectorWisePruningMethod.apply(module, 'weight')
 
     for epoch in range(num_epochs):
 

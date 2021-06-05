@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 
-def new_session_config(parallel: int = 1):
+def new_session_config(parallel: int = 0):
     # session_config = tf.ConfigProto(allow_soft_placement=True)
     session_config = tf.ConfigProto()
     session_config.intra_op_parallelism_threads = parallel

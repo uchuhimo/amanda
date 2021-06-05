@@ -23,6 +23,7 @@ before_op_added = Event("before_op_added")
 after_op_added = Event("after_op_added")
 before_backward_op_added = Event("before_backward_op_added")
 after_backward_op_added = Event("after_backward_op_added")
+after_graph_constructed = Event("after_graph_constructed")
 
 EventCallback = Callable[["EventContext"], None]
 

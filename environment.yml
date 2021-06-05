@@ -2,5 +2,6 @@ name: amanda
 dependencies:
     - python=3.7
     - pip>=19.3
+    - cudatoolkit=10.0
     - pip:
-        - poetry==1.1.5
+        - poetry==1.1.6

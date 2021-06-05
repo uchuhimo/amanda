@@ -13,8 +13,6 @@ from loguru import logger
 import amanda
 from amanda import Graph, create_op
 from amanda.conversion.tensorflow import (
-    after_op_executed_hook,
-    before_op_executed_hook,
     export_to_checkpoint,
     export_to_graph,
     export_to_graph_def,
@@ -29,6 +27,7 @@ from amanda.conversion.tensorflow import (
 )
 from amanda.io.file import ensure_dir, root_dir
 from amanda.tests.utils import diff_graph_def, get_diff_after_conversion
+from amanda.tools.eager_context import EagerContextTool
 
 
 @pytest.fixture(
@@ -249,12 +248,15 @@ def test_tf_modify_graph_with_hook(arch_name):
 class TestTool(amanda.Tool):
     def __init__(self, store_dir):
         super(TestTool, self).__init__(namespace="amanda/tensorflow")
-        self.register_event(amanda.event.before_op_added, self.before_op_added)
-        self.register_event(amanda.event.after_op_added, self.after_op_added)
+        self.depends_on(EagerContextTool())
         self.register_event(
-            amanda.event.before_op_executed, self.test_before_op_executed
+            amanda.event.before_op_executed,
+            self.test_before_op_executed,
         )
-        self.register_event(amanda.event.after_op_executed, self.test_after_op_executed)
+        self.register_event(
+            amanda.event.after_op_executed,
+            self.test_after_op_executed,
+        )
         self.register_event(
             amanda.event.before_backward_op_executed,
             self.test_before_backward_op_executed,
@@ -264,66 +266,10 @@ class TestTool(amanda.Tool):
             self.test_after_backward_op_executed,
         )
         self.store_dir = store_dir
-        self.before_added_ops = set()
-        self.after_added_ops = set()
         self.before_executed_ops = set()
         self.after_executed_ops = set()
-
-    def before_op_added(self, context: amanda.EventContext):
-        op = context["op"]
-        self.before_added_ops.add(op.name)
-        input_with_index = [
-            (index, input)
-            for index, input in enumerate(context["inputs"])
-            if not input.dtype._is_ref_dtype
-        ]
-        inputs = [input for _, input in input_with_index]
-        input_indices = [index for index, _ in input_with_index]
-        input_types = op._input_types
-        input_types = [input_types[index] for index in input_indices]
-        with tf.control_dependencies(op.control_inputs):
-            new_inputs = tf.py_function(
-                before_op_executed_hook(context),
-                inputs,
-                input_types,
-                name=f"{op.name}_before_op_executed",
-            )
-        if len(inputs) == 0:
-            new_op = new_inputs
-            op._add_control_input(new_op)
-            new_inputs = []
-        for index, new_input in zip(input_indices, new_inputs):
-            context["inputs"][index] = new_input
-
-    def after_op_added(self, context: amanda.EventContext):
-        op = context["op"]
-        self.after_added_ops.add(op.name)
-        output_with_index = [
-            (index, output)
-            for index, output in enumerate(context["outputs"])
-            if not output.dtype._is_ref_dtype
-        ]
-        outputs = [output for _, output in output_with_index]
-        output_indices = [index for index, _ in output_with_index]
-        output_types = op._output_types
-        output_types = [output_types[index] for index in output_indices]
-        new_outputs = tf.py_function(
-            after_op_executed_hook(context),
-            outputs,
-            output_types,
-            name=f"{op.name}_after_op_executed",
-        )
-        if len(outputs) == 0:
-            new_op = new_outputs
-            new_outputs = []
-        else:
-            new_op = new_outputs[0].op
-        for control_output in op._control_outputs:
-            control_output._add_control_input(new_op)
-        if len(outputs) == 0:
-            new_op._add_control_input(op)
-        for index, new_output in zip(output_indices, new_outputs):
-            context["outputs"][index] = new_output
+        self.before_executed_backward_ops = set()
+        self.after_executed_backward_ops = set()
 
     def test_before_op_executed(self, context: amanda.EventContext):
         op = context["op"]
@@ -360,6 +306,8 @@ class TestTool(amanda.Tool):
 
     def test_before_backward_op_executed(self, context: amanda.EventContext):
         op = context["op"]
+        backward_op = context["backward_op"]
+        self.before_executed_backward_ops.add(backward_op.name)
         file_name = op.name.replace("/", "_")
         # backward_op = context["backward_op"]
         # print(
@@ -380,6 +328,8 @@ class TestTool(amanda.Tool):
 
     def test_after_backward_op_executed(self, context: amanda.EventContext):
         op = context["op"]
+        backward_op = context["backward_op"]
+        self.after_executed_backward_ops.add(backward_op.name)
         file_name = op.name.replace("/", "_")
         # backward_op = context["backward_op"]
         # print(
@@ -410,8 +360,10 @@ def test_tf_modify_graph_with_new_hook(arch_name):
             model_dir="downloads/model",
             input=input,
         )
-    assert tool.before_added_ops == tool.after_added_ops
+    assert len(tool.before_executed_ops) != 0
     assert tool.before_executed_ops == tool.after_executed_ops
+    assert len(tool.before_executed_backward_ops) != 0
+    assert tool.before_executed_backward_ops == tool.after_executed_backward_ops
 
 
 def check_modified_graph(graph_def, new_graph_def):

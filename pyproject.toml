@@ -108,6 +108,7 @@ ipython = "*"
 jsondiff = "*"
 wget = "*"
 fire = "*"
+pympler = "*"
 
 [tool.poetry.scripts]
 amanda = "amanda.cli.main:cli"

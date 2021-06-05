@@ -95,6 +95,7 @@ def resnet_model_fn(
     loss_filter_fn=None,
     dtype=tf.float32,
     fine_tune=False,
+    multi_gpu=False,
 ):
     """Shared functionality for different resnet model_fns.
     Initializes the ResnetModel representing the model layers
@@ -139,7 +140,8 @@ def resnet_model_fn(
 
     model = model_class()
 
-    logits = model(features, mode == tf.estimator.ModeKeys.TRAIN)
+    with tf.variable_scope("model", reuse=tf.AUTO_REUSE):
+        logits = model(features, mode == tf.estimator.ModeKeys.TRAIN)
 
     # This acts as a no-op if the logits are already in fp32 (provided logits are
     # not a SparseTensor). If dtype is is low precision, logits must be cast to
@@ -197,6 +199,8 @@ def resnet_model_fn(
         optimizer = tf.train.MomentumOptimizer(
             learning_rate=learning_rate, momentum=momentum
         )
+        if multi_gpu:
+            optimizer = tf.contrib.estimator.TowerOptimizer(optimizer)
 
         def _dense_grad_filter(gvs):
             """Only apply gradient updates to the final layer.
@@ -288,6 +292,7 @@ def cifar100_model_fn(features, labels, mode, params):
         momentum=0.9,
         loss_scale=params["loss_scale"],
         loss_filter_fn=loss_filter_fn,
+        multi_gpu=params["multi_gpu"],
     )
 
 

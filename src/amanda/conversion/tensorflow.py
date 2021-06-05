@@ -38,9 +38,12 @@ from amanda.adapter import Adapter, get_adapter_registry
 from amanda.conversion.utils import to_proto, without_internal_attrs
 from amanda.event import (
     EventContext,
+    after_backward_op_added,
     after_backward_op_executed,
+    after_graph_constructed,
     after_op_added,
     after_op_executed,
+    before_backward_op_added,
     before_backward_op_executed,
     before_op_added,
     before_op_executed,
@@ -587,7 +590,9 @@ def export_to_graph(
             return export_fn(tf_graph, session)
     else:
         with tf.Graph().as_default() as tf_graph:
-            session = tf.Session()
+            session_config = tf.ConfigProto()
+            session_config.gpu_options.allow_growth = True
+            session = tf.Session(config=session_config)
             return export_fn(tf_graph, session)
 
 
@@ -1144,21 +1149,24 @@ def insert_hooks(graph: Graph, tools: List[Tool], forward_ops: Set[str] = None):
 
 
 def insert_hooks_v2(
-    tf_graph: tf.Graph, tools: List[Tool], forward_ops: Set[str] = None
-) -> tf.Graph:
+    tf_graph: tf.Graph,
+    spec: tf.estimator.EstimatorSpec,
+    tools: List[Tool],
+    forward_ops: Set[str] = None,
+) -> Tuple[tf.Graph, tf.estimator.EstimatorSpec]:
     if len(tools) == 0:
         return tf_graph
     forward_ops = forward_ops or set()
+    op_names = np.array([op.name for op in tf_graph.get_operations()])
     before_op_update = []
     after_op_update = []
     contexts = []
     for op in tf_graph.get_operations():
         if op.name not in forward_ops:
             continue
-        if op.type in ["VariableV2", "Merge"]:
+        # TODO: forward set has backward ops
+        if op.name.startswith("gradients/"):
             continue
-        # if op.type not in ["Conv2D"]:
-        #     continue
 
         context = EventContext(tools=tools)
         contexts.append(context)
@@ -1172,6 +1180,8 @@ def insert_hooks_v2(
             if input != new_input:
                 before_op_update.append((op, index, input, new_input))
 
+        context = EventContext(tools=tools)
+        contexts.append(context)
         outputs = list(op.outputs)
         last_id = tf_graph._last_id
         context.trigger(
@@ -1186,6 +1196,51 @@ def insert_hooks_v2(
         for index, (output, new_output) in enumerate(zip(outputs, context["outputs"])):
             if output != new_output:
                 after_op_update.append((op, index, output, new_output, new_op_names))
+
+        backward_op_names = op_names[
+            np.char.startswith(op_names, f"gradients/{op.name}_grad/")
+        ]
+        if backward_op_names.size == 0:
+            continue
+        for backward_op_name in backward_op_names:
+            backward_op = tf_graph.get_operation_by_name(backward_op_name)
+            context = EventContext(tools=tools)
+            contexts.append(context)
+            grad_outputs = list(backward_op.inputs)
+            context.trigger(
+                before_backward_op_added,
+                op=op,
+                backward_op=backward_op,
+                grad_outputs=list(grad_outputs),
+            )
+            for index, (input, new_input) in enumerate(
+                zip(grad_outputs, context["grad_outputs"])
+            ):
+                if input != new_input:
+                    before_op_update.append((backward_op, index, input, new_input))
+
+            context = EventContext(tools=tools)
+            contexts.append(context)
+            grad_inputs = list(backward_op.outputs)
+            last_id = tf_graph._last_id
+            context.trigger(
+                after_backward_op_added,
+                op=op,
+                backward_op=backward_op,
+                grad_inputs=list(grad_inputs),
+            )
+            new_last_id = tf_graph._last_id
+            new_op_names = [
+                tf_graph._nodes_by_id[id].name
+                for id in range(last_id + 1, new_last_id + 1)
+            ]
+            for index, (output, new_output) in enumerate(
+                zip(grad_inputs, context["grad_inputs"])
+            ):
+                if output != new_output:
+                    after_op_update.append(
+                        (backward_op, index, output, new_output, new_op_names)
+                    )
 
     graph = import_from_graph(tf_graph, session=tf.get_default_session())
 
@@ -1216,11 +1271,46 @@ def insert_hooks_v2(
                 )
 
     new_tf_graph, _, session = export_to_graph(graph)
-    session.close()
     new_tf_graph._device_function_stack = tf_graph._device_function_stack
-    for context in contexts:
-        context["op"] = new_tf_graph.get_operation_by_name(context["op"].name)
-    return new_tf_graph
+
+    def get_from_new_graph(node: Union[tf.Operation, tf.Tensor]):
+        name = node.name
+        if ":" in name:
+            return new_tf_graph.get_tensor_by_name(name)
+        else:
+            return new_tf_graph.get_operation_by_name(name)
+
+    with new_tf_graph.as_default():
+        for context in contexts:
+            context["op"] = get_from_new_graph(context["op"])
+            if "backward_op" in context:
+                context["backward_op"] = get_from_new_graph(context["backward_op"])
+        updated_spec = {}
+        if isinstance(spec.predictions, dict):
+            for name, tensor in spec.predictions.items():
+                spec.predictions[name] = get_from_new_graph(tensor)
+        elif spec.predictions is not None:
+            updated_spec["predictions"] = get_from_new_graph(spec.predictions)
+        if spec.loss is not None:
+            updated_spec["loss"] = get_from_new_graph(spec.loss)
+        if spec.train_op is not None:
+            updated_spec["train_op"] = get_from_new_graph(spec.train_op)
+        for name in spec.eval_metric_ops.keys():
+            spec.eval_metric_ops[name] = (
+                get_from_new_graph(spec.eval_metric_ops[name][0]),
+                get_from_new_graph(spec.eval_metric_ops[name][1]),
+            )
+        spec = spec._replace(**updated_spec)
+
+        graph_context = EventContext(tools=tools)
+        graph_context.trigger(
+            after_graph_constructed,
+            graph=new_tf_graph,
+            estimator_spec=spec,
+        )
+
+    session.close()
+    return graph_context["graph"], graph_context["estimator_spec"]
 
 
 class EstimatorAdapter(Adapter):
@@ -1348,51 +1438,10 @@ def inject_hook(target: tf.estimator.Estimator) -> None:
                     set(op.name for op in tf_graph.get_operations()) - input_ops
                 )
             forward_ops = forward_ops - filter_hook.disabled_ops
-            new_tf_graph = insert_hooks_v2(tf_graph, tools, forward_ops)
-            # graph = import_from_graph(tf_graph, session=tf.get_default_session())
-            # insert_hooks(graph, tools, forward_ops)
-            # new_tf_graph, _, session = export_to_graph(graph)
-            # session.close()
-            # new_tf_graph._device_function_stack = tf_graph._device_function_stack
+            new_tf_graph, new_spec = insert_hooks_v2(tf_graph, spec, tools, forward_ops)
             gc.collect()
             replace_all_refs(tf_graph, new_tf_graph)
-
-            def get_after_hook_op(op_name: str):
-                hook_op_name = f"{op_name}_after_op_executed"
-                if hook_op_name in new_tf_graph._nodes_by_name:
-                    return new_tf_graph.get_operation_by_name(hook_op_name)
-                else:
-                    return new_tf_graph.get_operation_by_name(op_name)
-
-            def get_after_hook_tensor(tensor_name: str):
-                op_name, index = tensor_name.split(":")
-                hook_op_name = f"{op_name}_after_op_executed"
-                if hook_op_name in new_tf_graph._nodes_by_name:
-                    return new_tf_graph.get_tensor_by_name(f"{hook_op_name}:{index}")
-                else:
-                    return new_tf_graph.get_tensor_by_name(tensor_name)
-
-            def get_after_hook(name: str):
-                if ":" in name:
-                    return get_after_hook_tensor(name)
-                else:
-                    return get_after_hook_op(name)
-
-            if isinstance(spec.predictions, dict):
-                for name, tensor in spec.predictions.items():
-                    spec.predictions[name] = get_after_hook(tensor.name)
-            elif spec.predictions is not None:
-                spec = spec._replace(predictions=get_after_hook(spec.predictions.name))
-            if spec.loss is not None:
-                spec = spec._replace(loss=get_after_hook(spec.loss.name))
-            if spec.train_op is not None:
-                spec = spec._replace(train_op=get_after_hook(spec.train_op.name))
-            for name in spec.eval_metric_ops.keys():
-                spec.eval_metric_ops[name] = (
-                    get_after_hook(spec.eval_metric_ops[name][0].name),
-                    get_after_hook(spec.eval_metric_ops[name][1].name),
-                )
-            return spec
+            return new_spec
 
         return new_model_fn
 

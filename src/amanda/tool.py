@@ -8,7 +8,7 @@ from amanda.threading import ThreadLocalStack
 
 @dataclass
 class Tool:
-    namespace: str
+    namespace: str = None
     _event_to_callback: Dict[Event, EventCallback] = field(default_factory=dict)
     dependencies: List["Tool"] = field(default_factory=list)
 
@@ -16,14 +16,19 @@ class Tool:
         self._event_to_callback[event] = callback
 
     def unregister_event(self, event: Event) -> None:
-        if self.is_registered(event):
+        if event in self._event_to_callback:
             del self._event_to_callback[event]
 
     def get_callback(self, event: Event) -> EventCallback:
         return self._event_to_callback[event]
 
     def is_registered(self, event: Event) -> bool:
-        return event in self._event_to_callback
+        if event in self._event_to_callback:
+            return True
+        for dependency in self.dependencies:
+            if dependency.is_registered(event):
+                return True
+        return False
 
     def depends_on(self, *tools: "Tool") -> None:
         self.dependencies.extend(tools)
@@ -40,7 +45,8 @@ class Tool:
             triggered_tools.add(tool_id)
         for dependency in self.dependencies:
             dependency.trigger(event, context, triggered_tools)
-        self.get_callback(event)(context)
+        if event in self._event_to_callback:
+            self.get_callback(event)(context)
 
 
 _tools = ThreadLocalStack()
