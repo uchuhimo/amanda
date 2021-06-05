@@ -186,6 +186,12 @@ graph.remove_edge(edge)
 pre-commit install
 ```
 
+### Update git pre-commit hooks
+
+```bash
+pre-commit autoupdate
+```
+
 ### run tests
 
 ```bash
