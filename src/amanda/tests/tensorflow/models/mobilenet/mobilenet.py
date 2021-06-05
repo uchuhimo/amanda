@@ -106,12 +106,12 @@ def depth_multiplier(
     )
 
 
-_Op = collections.namedtuple("Op", ["op", "params", "multiplier_func"])
+Op = collections.namedtuple("Op", ["op", "params", "multiplier_func"])
 
 
 def op(opfunc, **params):
     multiplier = params.pop("multiplier_transorm", depth_multiplier)
-    return _Op(opfunc, params=params, multiplier_func=multiplier)
+    return Op(opfunc, params=params, multiplier_func=multiplier)
 
 
 class NoOpScope(object):

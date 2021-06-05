@@ -157,14 +157,14 @@ def _operation_to_num_layers(operation):
 def _operation_to_info(operation):
     """Takes in operation name and returns meta information.
 
-  An example would be 'separable_3x3_4' -> (3, 4).
+    An example would be 'separable_3x3_4' -> (3, 4).
 
-  Args:
-    operation: String that corresponds to convolution operation.
+    Args:
+      operation: String that corresponds to convolution operation.
 
-  Returns:
-    Tuple of (filter shape, num layers).
-  """
+    Returns:
+      Tuple of (filter shape, num layers).
+    """
     num_layers = _operation_to_num_layers(operation)
     filter_shape = _operation_to_filter_shape(operation)
     return num_layers, filter_shape
@@ -241,16 +241,16 @@ def _pooling(net, stride, operation):
 class NasNetABaseCell(object):
     """NASNet Cell class that is used as a 'layer' in image architectures.
 
-  Args:
-    num_conv_filters: The number of filters for each convolution operation.
-    operations: List of operations that are performed in the NASNet Cell in
-      order.
-    used_hiddenstates: Binary array that signals if the hiddenstate was used
-      within the cell. This is used to determine what outputs of the cell
-      should be concatenated together.
-    hiddenstate_indices: Determines what hiddenstates should be combined
-      together with the specified operations to create the NASNet cell.
-  """
+    Args:
+      num_conv_filters: The number of filters for each convolution operation.
+      operations: List of operations that are performed in the NASNet Cell in
+        order.
+      used_hiddenstates: Binary array that signals if the hiddenstate was used
+        within the cell. This is used to determine what outputs of the cell
+        should be concatenated together.
+      hiddenstate_indices: Determines what hiddenstates should be combined
+        together with the specified operations to create the NASNet cell.
+    """
 
     def __init__(
         self,

@@ -4,7 +4,6 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Union, cast
-from functools import partial
 
 import torch
 import torch._C
@@ -38,13 +37,13 @@ from torch.nn import Parameter
 from amanda import Adapter, EventContext, get_adapter_registry
 from amanda.conversion.utils import without_internal_attrs
 from amanda.event import (
-    after_subgraph_executed,
-    before_subgraph_executed,
-    after_backward_subgraph_executed,
-    on_graph_loaded,
-    after_graph_executed,
-    before_graph_executed,
     after_backward_graph_executed,
+    after_backward_subgraph_executed,
+    after_graph_executed,
+    after_subgraph_executed,
+    before_graph_executed,
+    before_subgraph_executed,
+    on_graph_loaded,
 )
 from amanda.exception import MismatchNamespaceError
 from amanda.graph import InputPort, Op, OutputPort, SubGraph, create_op, create_subgraph
@@ -515,7 +514,9 @@ class ModuleAdapter(Adapter):
         def add_hook(module: torch.nn.Module, name: str):
             def subgraph_forward_pre_hook(module, input):
                 context.trigger(
-                    before_subgraph_executed, subgraph=module_to_op(module, name), input=input
+                    before_subgraph_executed,
+                    subgraph=module_to_op(module, name),
+                    input=input,
                 )
                 return context["input"]
 

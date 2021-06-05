@@ -111,7 +111,7 @@ def block8(net, scale=1.0, activation_fn=tf.nn.relu, scope=None, reuse=None):
     return net
 
 
-def reduction_a(net, k, l, m, n):
+def reduction_a(net, k, l, m, n):  # noqa: E741
     with tf.variable_scope("Branch_0"):
         tower_conv = slim.conv2d(
             net, n, 3, stride=2, padding="VALID", scope="Conv2d_1a_3x3"

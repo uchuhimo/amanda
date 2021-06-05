@@ -111,15 +111,15 @@ def nasnet_cifar_arg_scope(
 ):
     """Defines the default arg scope for the NASNet-A Cifar model.
 
-  Args:
-    weight_decay: The weight decay to use for regularizing the model.
-    batch_norm_decay: Decay for batch norm moving average.
-    batch_norm_epsilon: Small float added to variance to avoid dividing by zero
-      in batch norm.
+    Args:
+      weight_decay: The weight decay to use for regularizing the model.
+      batch_norm_decay: Decay for batch norm moving average.
+      batch_norm_epsilon: Small float added to variance to avoid dividing by zero
+        in batch norm.
 
-  Returns:
-    An `arg_scope` to use for the NASNet Cifar Model.
-  """
+    Returns:
+      An `arg_scope` to use for the NASNet Cifar Model.
+    """
     batch_norm_params = {
         # Decay for the moving averages.
         "decay": batch_norm_decay,
@@ -150,15 +150,15 @@ def nasnet_mobile_arg_scope(
 ):
     """Defines the default arg scope for the NASNet-A Mobile ImageNet model.
 
-  Args:
-    weight_decay: The weight decay to use for regularizing the model.
-    batch_norm_decay: Decay for batch norm moving average.
-    batch_norm_epsilon: Small float added to variance to avoid dividing by zero
-      in batch norm.
+    Args:
+      weight_decay: The weight decay to use for regularizing the model.
+      batch_norm_decay: Decay for batch norm moving average.
+      batch_norm_epsilon: Small float added to variance to avoid dividing by zero
+        in batch norm.
 
-  Returns:
-    An `arg_scope` to use for the NASNet Mobile Model.
-  """
+    Returns:
+      An `arg_scope` to use for the NASNet Mobile Model.
+    """
     batch_norm_params = {
         # Decay for the moving averages.
         "decay": batch_norm_decay,
@@ -189,15 +189,15 @@ def nasnet_large_arg_scope(
 ):
     """Defines the default arg scope for the NASNet-A Large ImageNet model.
 
-  Args:
-    weight_decay: The weight decay to use for regularizing the model.
-    batch_norm_decay: Decay for batch norm moving average.
-    batch_norm_epsilon: Small float added to variance to avoid dividing by zero
-      in batch norm.
+    Args:
+      weight_decay: The weight decay to use for regularizing the model.
+      batch_norm_decay: Decay for batch norm moving average.
+      batch_norm_epsilon: Small float added to variance to avoid dividing by zero
+        in batch norm.
 
-  Returns:
-    An `arg_scope` to use for the NASNet Large Model.
-  """
+    Returns:
+      An `arg_scope` to use for the NASNet Large Model.
+    """
     batch_norm_params = {
         # Decay for the moving averages.
         "decay": batch_norm_decay,

@@ -2,7 +2,9 @@ from typing import Any, Dict
 
 
 def tensor(
-    op=None, output_index=None, attrs: Dict[str, Any] = None,
+    op=None,
+    output_index=None,
+    attrs: Dict[str, Any] = None,
 ):
     pass
 

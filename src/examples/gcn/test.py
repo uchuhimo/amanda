@@ -54,8 +54,8 @@ class Net(torch.nn.Module):
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model, data = Net().to(device), data.to(device)
+model, data = Net().to(device), data.to(device)  # type: ignore
 
 with amanda.conversion.pytorch_updater.apply(TraceTool()):
-    model(data.x, data.edge_index)
+    model(data.x, data.edge_index)  # type: ignore
 
