@@ -16,13 +16,30 @@ from amanda.lang import get_superclasses
 from amanda.tool import Tool
 
 
+def unpack_input_grad_fns(inputs):
+    def _unpack_input_grad_fns(inputs):
+        for input in inputs:
+            if hasattr(input, "grad_fn") and input.grad_fn:
+                input_grad_fns.append(input.grad_fn)
+            elif isinstance(input, list) or isinstance(input, set):
+                _unpack_input_grad_fns(input)
+
+    input_grad_fns = []
+    _unpack_input_grad_fns(inputs)
+    return input_grad_fns
+
+
 def function_wrapper(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         if is_enabled():
             with disabled():
+
                 if _tool is None:
                     return func(*args, **kwargs)
+                input_grad_fns = unpack_input_grad_fns(args) + unpack_input_grad_fns(
+                    kwargs.values()
+                )
                 context = EventContext(tools=[_tool])
                 context.trigger(
                     before_op_executed,
@@ -36,7 +53,7 @@ def function_wrapper(func):
                     op=func,
                     output=output,
                 )
-                context.registry_bw_events(output)
+                context.register_bw_events_recursively(output, input_grad_fns)
                 return context["output"]
         else:
             return func(*args, **kwargs)
