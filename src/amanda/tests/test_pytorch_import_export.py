@@ -192,6 +192,12 @@ def test_pytorch_graph_callback(model_and_input):
     assert_close(output, new_output, model)
 
 
+"""
+forward backward op and subgraph matching
+tested case is forward op and backward subgraph caused by broadcasting
+"""
+
+
 def test_pytorch_with_forward_backward_matching(model_and_input):
     class NewTestTool(amanda.Tool):
         def __init__(self):
