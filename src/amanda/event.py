@@ -126,6 +126,12 @@ class EventContext(dict):
         else:
             pass
 
+    """EventContext.register_bw_events_recursively()
+    same functionality as register_bw_events() with subgraph matching,
+    in this manner, a EventContext in bw phase have "op", "bw_op" two context,
+    either of them may be None or not exists, denoting only exists in fw or bw,
+    """
+
     def register_bw_events_recursively(self, output, input_grad_fns):
         def before_bw_op_hook(context, bw_op, output):
             context.trigger(
@@ -151,6 +157,7 @@ class EventContext(dict):
             else:
                 return
             for next_grad_fn, next_input_pos in grad_fn.next_functions:
+                # including AccumulateGrad in backward graph
                 if next_grad_fn and next_grad_fn not in input_grad_fns:
                     # if next_grad_fn and
                     #     next_grad_fn not in input_grad_fns

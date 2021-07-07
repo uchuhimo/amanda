@@ -15,6 +15,13 @@ from amanda.import_hook import (
 from amanda.lang import get_superclasses
 from amanda.tool import Tool
 
+""" unpack_input_grad_fns()
+unpack a nested iterable (currently list and set supported)
+    of tensors recursively into a list,
+the grad_fn of each tensor is gathered into the output list,
+this list is used to identify the backward subgraph tracing boundary
+"""
+
 
 def unpack_input_grad_fns(inputs):
     def _unpack_input_grad_fns(inputs):
