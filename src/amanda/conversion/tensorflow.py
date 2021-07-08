@@ -38,6 +38,7 @@ from amanda.adapter import Adapter, get_adapter_registry
 from amanda.conversion.utils import to_proto, without_internal_attrs
 from amanda.event import (
     EventContext,
+    OpContext,
     after_backward_op_added,
     after_backward_op_executed,
     after_graph_constructed,
@@ -47,7 +48,9 @@ from amanda.event import (
     before_backward_op_executed,
     before_op_added,
     before_op_executed,
+    on_backward_op_call,
     on_graph_loaded,
+    on_op_call,
 )
 from amanda.exception import MismatchNamespaceError
 from amanda.graph import Graph, Op, OutputPort, create_graph, create_op
@@ -63,7 +66,7 @@ from amanda.io.serde import (
 )
 from amanda.lang import replace_all_refs
 from amanda.namespace import Namespace, default_namespace
-from amanda.tool import Tool, get_tools
+from amanda.tool import Tool, get_tools, register_cleanup_task
 from amanda.type import DataType
 
 _namespace = default_namespace() / Namespace("tensorflow")
@@ -1313,6 +1316,199 @@ def insert_hooks_v2(
     return graph_context["graph"], graph_context["estimator_spec"]
 
 
+def insert_hooks_v3(
+    tf_graph: tf.Graph,
+    spec: tf.estimator.EstimatorSpec,
+    tools: List[Tool],
+    forward_ops: Set[str] = None,
+) -> Tuple[tf.Graph, tf.estimator.EstimatorSpec]:
+    if len(tools) == 0:
+        return tf_graph
+    forward_ops = forward_ops or set()
+    op_names = np.array([op.name for op in tf_graph.get_operations()])
+    before_op_update = []
+    after_op_update = []
+    remove_op_update = []
+    session = tf.get_default_session()
+
+    def collect_actions():
+        actions = []
+        for op in tf_graph.get_operations():
+            if op.name not in forward_ops:
+                continue
+            # TODO: forward set has backward ops
+            if op.name.startswith("gradients/"):
+                continue
+
+            context = OpContext(tools=tools)
+            inputs = list(op.inputs)
+            context.trigger(
+                on_op_call,
+                op=op,
+                inputs=inputs,
+                session=session,
+            )
+            for action in context.actions:
+                actions.append((action, op))
+
+            backward_op_names = op_names[
+                np.char.startswith(op_names, f"gradients/{op.name}_grad/")
+            ]
+            if backward_op_names.size == 0:
+                continue
+            for backward_op_name in backward_op_names:
+                backward_op = tf_graph.get_operation_by_name(backward_op_name)
+                context = OpContext(tools=tools)
+                grad_outputs = list(backward_op.inputs)
+                context.trigger(
+                    on_backward_op_call,
+                    op=op,
+                    backward_op=backward_op,
+                    grad_outputs=grad_outputs,
+                    session=session,
+                )
+                for action in context.actions:
+                    actions.append((action, backward_op))
+        return actions
+
+    def apply_actions(actions):
+        for row in actions:
+            action = row[0]
+            op = row[1]
+            action_type = action.type
+            func = action.func
+            kwargs = action.kwargs
+            if action_type == "insert_before_op":
+                inputs = list(op.inputs)
+                if action.inputs is not None:
+                    inputs = [inputs[index] for index in action.inputs]
+                new_inputs = func(*inputs, **kwargs)
+                if new_inputs is not None:
+                    if isinstance(new_inputs, tf.Tensor):
+                        new_inputs = [new_inputs]
+                    for index, input, new_input in zip(
+                        action.inputs or range(len(inputs)), inputs, new_inputs
+                    ):
+                        before_op_update.append((op, index, input, new_input))
+            elif action_type == "insert_after_op":
+                outputs = list(op.outputs)
+                if action.outputs is not None:
+                    outputs = [outputs[index] for index in action.outputs]
+                last_id = tf_graph._last_id
+                new_outputs = func(*outputs, **kwargs)
+                new_last_id = tf_graph._last_id
+                new_op_names = [
+                    tf_graph._nodes_by_id[id].name
+                    for id in range(last_id + 1, new_last_id + 1)
+                ]
+                if new_outputs is not None:
+                    if isinstance(new_outputs, tf.Tensor):
+                        new_outputs = [new_outputs]
+                    for index, output, new_output in zip(
+                        action.outputs or range(len(outputs)), outputs, new_outputs
+                    ):
+                        after_op_update.append(
+                            (op, index, output, new_output, new_op_names)
+                        )
+            elif action_type == "replace_op":
+                inputs = list(op.inputs)
+                outputs = list(op.outputs)
+                if action.inputs is not None:
+                    inputs = [inputs[index] for index in action.inputs]
+                last_id = tf_graph._last_id
+                new_outputs = func(*inputs, **kwargs)
+                new_last_id = tf_graph._last_id
+                new_op_names = [
+                    tf_graph._nodes_by_id[id].name
+                    for id in range(last_id + 1, new_last_id + 1)
+                ]
+                if new_outputs is not None:
+                    if isinstance(new_outputs, tf.Tensor):
+                        new_outputs = [new_outputs]
+                    for index, output, new_output in zip(
+                        range(len(outputs)), outputs, new_outputs
+                    ):
+                        after_op_update.append(
+                            (op, index, output, new_output, new_op_names)
+                        )
+                remove_op_update.append(op)
+            else:
+                raise ValueError(f"action type {action_type} is unsupported")
+
+    def update_graph(graph):
+        for tf_op, index, input, new_input in before_op_update:
+            op = graph.get_op(tf_op.name)
+            input_port = op.input_port(index)
+            graph.remove_edge(
+                graph.get_edge(
+                    graph.get_op(input.op.name).output_port(input.value_index),
+                    input_port,
+                )
+            )
+            graph.create_edge(
+                graph.get_op(new_input.op.name).output_port(new_input.value_index),
+                input_port,
+            )
+
+        for tf_op, index, output, new_output, new_op_names in after_op_update:
+            op = graph.get_op(tf_op.name)
+            output_port = op.output_port(index)
+            for edge in output_port.out_edges:
+                if edge.dst.op.name not in new_op_names:
+                    graph.remove_edge(edge)
+                    graph.create_edge(
+                        graph.get_op(new_output.op.name).output_port(
+                            new_output.value_index
+                        ),
+                        edge.dst,
+                    )
+
+        for tf_op in remove_op_update:
+            op = graph.get_op(tf_op.name)
+            for edge in op.in_edges:
+                graph.remove_edge(edge)
+            for edge in op.control_input_port.in_edges:
+                graph.remove_edge(edge)
+            graph.remove_op(op)
+
+    actions = collect_actions()
+    apply_actions(actions)
+
+    graph = import_from_graph(tf_graph, session=tf.get_default_session())
+    update_graph(graph)
+
+    new_tf_graph, _, session = export_to_graph(graph)
+    new_tf_graph._device_function_stack = tf_graph._device_function_stack
+
+    def get_from_new_graph(node: Union[tf.Operation, tf.Tensor]):
+        name = node.name
+        if ":" in name:
+            return new_tf_graph.get_tensor_by_name(name)
+        else:
+            return new_tf_graph.get_operation_by_name(name)
+
+    with new_tf_graph.as_default():
+        updated_spec = {}
+        if isinstance(spec.predictions, dict):
+            for name, tensor in spec.predictions.items():
+                spec.predictions[name] = get_from_new_graph(tensor)
+        elif spec.predictions is not None:
+            updated_spec["predictions"] = get_from_new_graph(spec.predictions)
+        if spec.loss is not None:
+            updated_spec["loss"] = get_from_new_graph(spec.loss)
+        if spec.train_op is not None:
+            updated_spec["train_op"] = get_from_new_graph(spec.train_op)
+        for name in spec.eval_metric_ops.keys():
+            spec.eval_metric_ops[name] = (
+                get_from_new_graph(spec.eval_metric_ops[name][0]),
+                get_from_new_graph(spec.eval_metric_ops[name][1]),
+            )
+        spec = spec._replace(**updated_spec)
+
+    session.close()
+    return new_tf_graph, spec
+
+
 class EstimatorAdapter(Adapter):
     def __init__(self):
         super(EstimatorAdapter, self).__init__(namespace="tensorflow")
@@ -1403,6 +1599,42 @@ class FilterHook(InstScopeHook):
         self.end_ops_list.insert(0, set(op.name for op in tf_graph.get_operations()))
 
 
+class FuncSessionHook(tf.train.SessionRunHook):
+    def __init__(
+        self,
+        after_create_session=None,
+        before_run=None,
+        after_run=None,
+        begin=None,
+        end=None,
+    ):
+        self.after_create_session_func = after_create_session
+        self.before_run_func = before_run
+        self.after_run_func = after_run
+        self.begin_func = begin
+        self.end_func = end
+
+    def after_create_session(self, session, coord):
+        if self.after_create_session_func is not None:
+            self.after_create_session_func(session, coord)
+
+    def after_run(self, run_context, run_values):
+        if self.after_run_func is not None:
+            self.after_run_func(run_context, run_values)
+
+    def before_run(self, run_context):
+        if self.before_run_func is not None:
+            self.before_run_func(run_context)
+
+    def begin(self):
+        if self.begin_func is not None:
+            self.begin_func()
+
+    def end(self, session):
+        if self.end_func is not None:
+            self.end_func(session)
+
+
 def inject_hook(target: tf.estimator.Estimator) -> None:
     from amanda.conversion.tensorflow_updater import forward_ops_in_graph
 
@@ -1425,6 +1657,9 @@ def inject_hook(target: tf.estimator.Estimator) -> None:
                 kwargs["config"] = config
             if not is_enabled():
                 return model_fn(features, **kwargs)
+            nonlocal forward_ops
+            nonlocal tf_graph
+            nonlocal spec
             tf_graph = tf.get_default_graph()
             input_ops = set(op.name for op in tf_graph.get_operations())
             filter_hook = FilterHook()
@@ -1438,15 +1673,118 @@ def inject_hook(target: tf.estimator.Estimator) -> None:
                     set(op.name for op in tf_graph.get_operations()) - input_ops
                 )
             forward_ops = forward_ops - filter_hook.disabled_ops
-            new_tf_graph, new_spec = insert_hooks_v2(tf_graph, spec, tools, forward_ops)
-            gc.collect()
-            replace_all_refs(tf_graph, new_tf_graph)
-            return new_spec
+            # new_tf_graph, new_spec = insert_hooks_v3(
+            #     tf_graph, spec, tools, forward_ops
+            # )
+            # gc.collect()
+            # replace_all_refs(tf_graph, new_tf_graph)
+            # return new_spec
+            return spec
 
         return new_model_fn
 
+    def after_create_session(session, coord):
+        nonlocal forward_ops
+        nonlocal tf_graph
+        nonlocal spec
+        is_hooked = len(tf_graph.get_collection("amanda.is_hooked")) != 0
+        if not is_hooked:
+            tf_graph._finalized = False
+            with session.as_default():
+                new_tf_graph, new_spec = insert_hooks_v3(
+                    tf_graph, spec, tools, forward_ops
+                )
+                new_tf_graph._device_function_stack = tf_graph._device_function_stack
+                new_tf_graph.add_to_collection("amanda.is_hooked", True)
+                new_tf_graph.finalize()
+            gc.collect()
+            old_tf_graph = tf_graph
+            old_spec = spec
+            replace_all_refs(old_tf_graph, new_tf_graph)
+            replace_all_refs(old_spec, new_spec)
+        else:
+            raise RuntimeError("graph is hooked")
+        forward_ops = None
+        tf_graph = None
+        spec = None
+
+    def before_run(run_context):
+        print(run_context)
+
+    def train_with_tools(
+        target_self,
+        input_fn,
+        hooks=None,
+        steps=None,
+        max_steps=None,
+        saving_listeners=None,
+    ):
+        return train(
+            input_fn,
+            [amanda_hook] if hooks is None else [*hooks, amanda_hook],
+            steps,
+            max_steps,
+            saving_listeners,
+        )
+
+    def predict_with_tools(
+        target_self,
+        input_fn,
+        predict_keys=None,
+        hooks=None,
+        checkpoint_path=None,
+        yield_single_examples=True,
+    ):
+        return predict(
+            input_fn,
+            predict_keys,
+            [amanda_hook] if hooks is None else [*hooks, amanda_hook],
+            checkpoint_path,
+            yield_single_examples,
+        )
+
+    def evaluate_with_tools(
+        target_self,
+        input_fn,
+        steps=None,
+        hooks=None,
+        checkpoint_path=None,
+        name=None,
+    ):
+        return evaluate(
+            input_fn,
+            steps,
+            [amanda_hook] if hooks is None else [*hooks, amanda_hook],
+            checkpoint_path,
+            name,
+        )
+
+    def cleanup():
+        target._model_fn = target._original_model_fn
+        target.train = target._original_train
+        target.predict = target._original_predict
+        target.evaluate = target._original_evaluate
+
+    forward_ops = None
+    tf_graph = None
+    spec = None
     tools = get_tools()
+    target._original_model_fn = target._model_fn
     target._model_fn = model_fn_wrapper(target._model_fn)
+    amanda_hook = FuncSessionHook(
+        after_create_session=after_create_session,
+        before_run=before_run,
+    )
+    train = target.train
+    target._original_train = train
+    target.train = MethodType(train_with_tools, target)
+    predict = target.predict
+    target._original_predict = predict
+    target.predict = MethodType(predict_with_tools, target)
+    evaluate = target.evaluate
+    target._original_evaluate = evaluate
+    target.evaluate = MethodType(evaluate_with_tools, target)
+    register_cleanup_task(cleanup)
 
 
 get_adapter_registry().register_adapter(tf.estimator.Estimator, EstimatorAdapter())

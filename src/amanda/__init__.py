@@ -3,7 +3,7 @@ from importlib.util import find_spec
 from . import event, import_hook, io, tools  # noqa: F401
 from .adapter import Adapter, apply, get_adapter_registry  # noqa: F401
 from .attributes import Attributes  # noqa: F401
-from .event import Event, EventContext  # noqa: F401
+from .event import Event, EventContext, OpContext  # noqa: F401
 from .graph import (  # noqa: F401
     Edge,
     Graph,

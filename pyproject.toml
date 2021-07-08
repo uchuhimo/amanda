@@ -109,6 +109,11 @@ jsondiff = "*"
 wget = "*"
 fire = "*"
 pympler = "*"
+types-protobuf = "*"
+types-six = "*"
+types-filelock = "*"
+types-setuptools = "*"
+types-toml = "*"
 
 [tool.poetry.scripts]
 amanda = "amanda.cli.main:cli"

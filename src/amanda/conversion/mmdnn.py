@@ -227,7 +227,8 @@ def export_to_graph_def(graph: Graph) -> graph_pb2.GraphDef:
                     elif type(elem) == float:
                         ir_value.list.f.extend(value)
                     elif type(elem) == DataType:
-                        ir_value.list.type.extend(deserialize_type(value))
+                        for elem_ in value:
+                            ir_value.list.type.append(deserialize_type(elem_))
                     elif type(elem) == graph_pb2.TensorShape:
                         for elem_ in value:
                             ir_value.list.shape.append(elem_)

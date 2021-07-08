@@ -1,4 +1,5 @@
 import amanda
+from amanda.conversion.pytorch_updater import apply
 import torch
 import os
 import sys
@@ -19,49 +20,41 @@ class PruneTool(amanda.Tool):
 
     def __init__(self):
         super(PruneTool, self).__init__(namespace="amanda/pytorch")
-        self.register_event(amanda.event.before_op_executed, self.mask_forward_weight)
-        self.register_event(amanda.event.after_backward_op_executed, self.mask_backward_gradient)
+        self.add_inst_for_op(self.instrumentation)
+        self.add_inst_for_backward_op(self.backward_instrumentation)
+        self.masks = {}
 
-        self.conv_cnt = 0
-        self.conv_masks = []
-
-    def compute_mask(self, tensor):
-        print(f"compute mask for {tensor.shape}")
-        # return torch.rand_like(tensor)
-        return create_mask(tensor)
-
-
-    def get_mask(self, tensor):
-        if self.conv_cnt <= len(self.conv_masks):
-            return self.conv_masks[self.conv_cnt-1]
-        else:
-            mask = self.compute_mask(tensor)
-            self.conv_masks.append(mask)
-            return mask
-
-    def mask_forward_weight(self, context):
-
-        if  ('conv2d' in context['op'].__name__ and context['args'][1].shape[1]%4==0)  or ('matmul' in context['op'].__name__  and len(context['args'][1].shape)==2):
-            self.conv_cnt += 1
-
-            weight = context['args'][1]
+    def instrumentation(self, context: amanda.OpContext):
+        op = context.get_op()
+        weight = context.get_inputs()[1]
+        if (("conv2d" in op.__name__ and weight.shape[1] % 4 == 0)
+                or ("matmul" in op.__name__ and len(weight.shape) == 2)):
             mask = self.get_mask(weight)
-            with torch.no_grad():
-                weight.data = torch.mul(weight, mask)
-                context['mask'] = mask
+            self.masks[op] = mask
+            context.insert_before_op(
+                self.mask_forward_weight, inputs=[1], mask=mask
+            )
 
-    def mask_backward_gradient(self, context):
-        if  ('conv2d' in context['op'].__name__ and context['args'][1].shape[1]%4==0)  or ('matmul' in context['op'].__name__  and len(context['args'][1].shape)==2):
-            weight_grad = context['input_grad'][1]
-            mask = context['mask']
-            # print(context['args'][0].shape, context['args'][1].shape)
-            # print(context['input_grad'][0].shape, context['input_grad'][1].shape)
-            with torch.no_grad():
-                weight_grad.data = torch.mul(weight_grad, mask)
+    def backward_instrumentation(self, context: amanda.OpContext):
+        op = context.get_op()
+        weight_grad = context.get_inputs()[1]
+        if (("conv2d" in op.__name__ and weight_grad.shape[1] % 4 == 0)
+                or ("matmul" in op.__name__ and len(weight_grad.shape) == 2)):
+            mask = self.masks[op]
+            context.insert_after_backward_op(
+                self.mask_backward_gradient, grad_inputs=[1], mask=mask
+            )
 
+    def mask_forward_weight(self, weight, mask):
+        with torch.no_grad():
+            return torch.mul(weight, mask)
 
-    def reset_cnt(self):
-        self.conv_cnt = 0
+    def mask_backward_gradient(self, weight_grad, mask):
+        with torch.no_grad():
+            return torch.mul(weight_grad, mask)
+
+    def get_mask(self, weight):
+        return create_mask(weight)
 
 
 def main():
@@ -124,11 +117,8 @@ def main():
 
             start = timer()
 
-            with amanda.tool.apply(tool):
+            with apply(tool):
             # if True:
-
-                if hasattr(tool, 'reset_cnt'):
-                    tool.reset_cnt()
 
                 model.train()
                 images = images.to(device)
@@ -202,9 +192,6 @@ def main_transformer():
     # with apply(tool):
 
     for i in range(16):
-        # if hasattr(tool, 'reset_cnt'):
-        #     tool.reset_cnt()
-
         start = timer()
 
         model_output = model(rand_input)
