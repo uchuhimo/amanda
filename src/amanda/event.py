@@ -200,15 +200,14 @@ class EventContext(dict):
 
     def registry_bw_events(self, output):
         """
-        hook wrappers triggers the event with context and remove the hook.
-        note that is a hook is not triggered, then it will not be collected!
+        hook wrapper= triggers the event with context and remove the hook.
+        note that if a hook is not triggered, then it will not be collected!
         this may caused by ops only existed only in forward phase.
         """
 
         def before_bw_op_hook(context, output):
             context.trigger(before_backward_op_executed, output_grad=output)
             before_bw_op_hook_handle.remove()
-            # return context['output_grad']
 
         def after_bw_op_hook(context, input, output):
             context.trigger(
@@ -228,10 +227,7 @@ class EventContext(dict):
                 """check for broadcast case
                 not considering broadcast of input tensors now
                 """
-                # print(
-                #     f"Bypass broadcast for {self['op'].__name__}, "
-                #     f"to {output.grad_fn.next_functions[0][0]}"
-                # )
+                # print(f"add backward with broadcast")
                 if output.grad_fn.next_functions[0][0]:
                     after_bw_op_hook_handle = output.grad_fn.next_functions[0][
                         0
@@ -241,10 +237,7 @@ class EventContext(dict):
                         )
                     )
             elif output.grad_fn.__class__.__name__ == "AddBackward0":  # check for bias
-                # print(
-                #     f"Bypass bias for {self['op'].__name__}, "
-                #     f"to {output.grad_fn.next_functions[0][0]}"
-                # )
+                # print(f"add backward with bias founded")
                 if output.grad_fn.next_functions[0][0]:
                     after_bw_op_hook_handle = output.grad_fn.next_functions[0][
                         0
@@ -260,3 +253,50 @@ class EventContext(dict):
                     )
         else:
             pass
+
+    """EventContext.register_bw_events_recursively()
+    same functionality as register_bw_events() with subgraph matching,
+    in this manner, a EventContext in bw phase have "op", "bw_op" two context,
+    either of them may be None or not exists, denoting only exists in fw or bw,
+    """
+
+    def register_bw_events_recursively(self, output, input_grad_fns):
+        def before_bw_op_hook(context, bw_op, output):
+            context.trigger(
+                before_backward_op_executed, bw_op=bw_op, output_grad=output
+            )
+            before_bw_op_hook_handle.remove()
+
+        def _register_bw_events(grad_fn):
+            def after_bw_op_hook(context, bw_op, input, output):
+                context.trigger(
+                    after_backward_op_executed,
+                    bw_op=bw_op,
+                    input_grad=input,
+                    output_grad=output,
+                )
+                after_bw_op_hook_handle.remove()
+
+            if grad_fn and grad_fn not in input_grad_fns:
+                # print(f"registering after event for: {grad_fn}")
+                after_bw_op_hook_handle = grad_fn.register_hook(
+                    lambda input, output: after_bw_op_hook(self, grad_fn, input, output)
+                )
+            else:
+                return
+            for next_grad_fn, next_input_pos in grad_fn.next_functions:
+                # including AccumulateGrad in backward graph
+                if next_grad_fn and next_grad_fn not in input_grad_fns:
+                    # if next_grad_fn and
+                    #     next_grad_fn not in input_grad_fns
+                    #     and type(next_grad_fn).__name__ != "AccumulateGrad":
+                    _register_bw_events(next_grad_fn)
+
+        if hasattr(output, "register_hook") and output.requires_grad:
+            # print(f"registering before event for: {output.shape}")
+            before_bw_op_hook_handle = output.register_hook(
+                lambda output: before_bw_op_hook(self, output.grad_fn, output)
+            )
+
+        if hasattr(output, "grad_fn"):
+            _register_bw_events(output.grad_fn)

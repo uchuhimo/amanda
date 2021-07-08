@@ -19,6 +19,7 @@ from amanda.io.file import root_dir
     scope="module",
     params=[
         models.resnet18,
+        # models.inception_v3,
         # models.resnet50,
         pytest.param(models.inception_v3, marks=pytest.mark.slow),
         pytest.param(models.alexnet, marks=pytest.mark.slow),
@@ -129,7 +130,8 @@ class NewTestTool(amanda.Tool):
     def __init__(self):
         super(NewTestTool, self).__init__(namespace="amanda/pytorch")
         # self.register_event(amanda.event.before_op_executed, self.test)
-        self.register_event(amanda.event.before_op_executed, self.pruning_weight)
+        # self.register_event(amanda.event.before_op_executed, self.test)
+        # self.register_event(amanda.event.before_backward_op_executed, self.test)
 
     def test(self, context: amanda.EventContext):
         op = context["op"]
@@ -188,3 +190,34 @@ def test_pytorch_graph_callback(model_and_input):
     # torch._C._jit_set_profiling_mode(True)
     new_output = traced_model(x)
     assert_close(output, new_output, model)
+
+
+"""
+forward backward op and subgraph matching
+tested case is forward op and backward subgraph caused by broadcasting
+"""
+
+
+def test_pytorch_with_forward_backward_matching(model_and_input):
+    class NewTestTool(amanda.Tool):
+        def __init__(self):
+            super(NewTestTool, self).__init__(namespace="amanda/pytorch")
+            self.register_event(amanda.event.before_op_executed, self.print_name)
+            self.register_event(
+                amanda.event.after_backward_op_executed, self.print_name_bw
+            )
+
+        def print_name(self, context):
+            print(context["op"].__name__)
+
+        def print_name_bw(self, context):
+            print(context["bw_op"])
+
+    from amanda.conversion.pytorch_updater import apply
+
+    linear = torch.nn.Linear(227, 128, bias=True)
+    x = torch.rand(3, 9, 227, 227)
+
+    with apply(NewTestTool()):
+        y = linear(x)
+        y.backward(torch.ones_like(y))
