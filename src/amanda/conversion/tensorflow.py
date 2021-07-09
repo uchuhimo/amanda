@@ -40,9 +40,11 @@ from amanda.event import (
     EventContext,
     OpContext,
     after_backward_op_added,
+    after_backward_op_call,
     after_backward_op_executed,
     after_graph_constructed,
     after_op_added,
+    after_op_call,
     after_op_executed,
     before_backward_op_added,
     before_backward_op_executed,
@@ -54,7 +56,12 @@ from amanda.event import (
 )
 from amanda.exception import MismatchNamespaceError
 from amanda.graph import Graph, Op, OutputPort, create_graph, create_op
-from amanda.import_hook import InstScopeHook, is_enabled, register_inst_scope_hook
+from amanda.import_hook import (
+    InstScopeHook,
+    disabled,
+    is_enabled,
+    register_inst_scope_hook,
+)
 from amanda.io.serde import (
     ProtoToDictSerde,
     Serde,
@@ -1348,6 +1355,11 @@ def insert_hooks_v3(
                 inputs=inputs,
                 session=session,
             )
+            outputs = list(op.outputs)
+            context.trigger(
+                after_op_call,
+                outputs=outputs,
+            )
             for action in context.actions:
                 actions.append((action, op))
 
@@ -1367,6 +1379,11 @@ def insert_hooks_v3(
                     grad_outputs=grad_outputs,
                     session=session,
                 )
+                grad_inputs = list(backward_op.outputs)
+                context.trigger(
+                    after_backward_op_call,
+                    grad_inputs=grad_inputs,
+                )
                 for action in context.actions:
                     actions.append((action, backward_op))
         return actions
@@ -1378,7 +1395,7 @@ def insert_hooks_v3(
             action_type = action.type
             func = action.func
             kwargs = action.kwargs
-            if action_type == "insert_before_op":
+            if action_type in ["insert_before_op", "insert_before_backward_op"]:
                 inputs = list(op.inputs)
                 if action.inputs is not None:
                     inputs = [inputs[index] for index in action.inputs]
@@ -1390,7 +1407,7 @@ def insert_hooks_v3(
                         action.inputs or range(len(inputs)), inputs, new_inputs
                     ):
                         before_op_update.append((op, index, input, new_input))
-            elif action_type == "insert_after_op":
+            elif action_type in ["insert_after_op", "insert_after_backward_op"]:
                 outputs = list(op.outputs)
                 if action.outputs is not None:
                     outputs = [outputs[index] for index in action.outputs]
@@ -1410,7 +1427,7 @@ def insert_hooks_v3(
                         after_op_update.append(
                             (op, index, output, new_output, new_op_names)
                         )
-            elif action_type == "replace_op":
+            elif action_type in ["replace_op", "replace_backward_op"]:
                 inputs = list(op.inputs)
                 outputs = list(op.outputs)
                 if action.inputs is not None:
@@ -1471,8 +1488,9 @@ def insert_hooks_v3(
                 graph.remove_edge(edge)
             graph.remove_op(op)
 
-    actions = collect_actions()
-    apply_actions(actions)
+    with disabled():
+        actions = collect_actions()
+        apply_actions(actions)
 
     graph = import_from_graph(tf_graph, session=tf.get_default_session())
     update_graph(graph)

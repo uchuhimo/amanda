@@ -1,11 +1,13 @@
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Set, Union
+from typing import Callable, Dict, List, Mapping, Set, Union
 
 from amanda.event import (
     Event,
     EventCallback,
     OpCallback,
+    after_backward_op_call,
+    after_op_call,
     on_backward_op_call,
     on_op_call,
 )
@@ -18,6 +20,7 @@ ToolCallback = Union[EventCallback, OpCallback]
 class Tool:
     namespace: str = None
     _event_to_callback: Dict[Event, ToolCallback] = field(default_factory=dict)
+    _mappings: List[Mapping] = field(default_factory=list)
     dependencies: List["Tool"] = field(default_factory=list)
 
     def register_event(self, event: Event, callback: ToolCallback) -> None:
@@ -27,11 +30,28 @@ class Tool:
         if event in self._event_to_callback:
             del self._event_to_callback[event]
 
-    def add_inst_for_op(self, callback: OpCallback) -> None:
-        self._event_to_callback[on_op_call] = callback
+    def register_mapping(self, mapping: Mapping):
+        self._mappings.append(mapping)
 
-    def add_inst_for_backward_op(self, callback: OpCallback) -> None:
-        self._event_to_callback[on_backward_op_call] = callback
+    def add_inst_for_op(
+        self,
+        callback: OpCallback,
+        require_outputs: bool = False,
+    ) -> None:
+        if require_outputs:
+            self._event_to_callback[after_op_call] = callback
+        else:
+            self._event_to_callback[on_op_call] = callback
+
+    def add_inst_for_backward_op(
+        self,
+        callback: OpCallback,
+        require_grad_inputs: bool = False,
+    ) -> None:
+        if require_grad_inputs:
+            self._event_to_callback[after_backward_op_call] = callback
+        else:
+            self._event_to_callback[on_backward_op_call] = callback
 
     def get_callback(self, event: Event) -> ToolCallback:
         return self._event_to_callback[event]
