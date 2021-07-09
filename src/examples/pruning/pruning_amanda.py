@@ -51,7 +51,8 @@ class PruneTool(amanda.Tool):
                 context['mask'] = mask
 
     def mask_backward_gradient(self, context):
-        if  ('conv2d' in context['op'].__name__ and context['args'][1].shape[1]%4==0)  or ('matmul' in context['op'].__name__  and len(context['args'][1].shape)==2):
+        if (('conv2d' in context['op'].__name__ and context['args'][1].shape[1]%4==0)  or ('matmul' in context['op'].__name__  and len(context['args'][1].shape)==2)
+                and 'Conv' in context['bw_op'].__class__.__name__ or 'Matmul' in context['bw_op'].__class__.__name__):
             weight_grad = context['input_grad'][1]
             mask = context['mask']
             # print(context['args'][0].shape, context['args'][1].shape)
