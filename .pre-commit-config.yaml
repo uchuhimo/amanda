@@ -34,3 +34,11 @@ repos:
     #   hooks:
     #     - id: dephell
     #     - id: pyproject-toml-to-requirements-txt
+    - repo: local
+      hooks:
+          - id: export-requirements
+            name: Export requeriments.txt
+            language: system
+            pass_filenames: false
+            entry: poetry export --without-hashes --dev -o requirements.txt
+            files: ^(pyproject.toml|poetry.lock)$
