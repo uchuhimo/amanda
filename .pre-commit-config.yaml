@@ -13,7 +13,7 @@ repos:
       hooks:
           - id: flake8
     - repo: https://github.com/pre-commit/mirrors-isort
-      rev: v5.9.1
+      rev: v5.9.2
       hooks:
           - id: isort
             exclude: .*_pb2.py
@@ -30,10 +30,9 @@ repos:
               - types-setuptools
               - types-toml
     # - repo: https://github.com/mverteuil/precommit-dephell
-    #   rev: master
+    #   rev: d62e4fd01b6616a673d2305d6eb0f2bd45556996
     #   hooks:
     #     - id: dephell
-    #     - id: pyproject-toml-to-requirements-txt
     - repo: local
       hooks:
           - id: export-requirements
