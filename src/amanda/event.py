@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum, auto
+from functools import partial
 from typing import Callable, Iterable, Set
 
 
@@ -40,6 +41,15 @@ class GradStatue:
         self.status = status
 
 
+_before_count = 0
+_after_count = 0
+_before_count_in_hook = 0
+_after_count_in_hook = 0
+
+
+_trigger_count = 0
+
+
 class EventContext(dict):
     from amanda.tool import Tool
 
@@ -50,6 +60,9 @@ class EventContext(dict):
         self.tools: Iterable[Tool] = tools
 
     def trigger(self, event: Event, **kwargs) -> None:
+        global _trigger_count
+        _trigger_count += 1
+        print("trigger", _trigger_count, event.name)
         self.update(**kwargs)
         triggered_tools: Set[str] = set()
         for tool in self.tools:
@@ -133,26 +146,35 @@ class EventContext(dict):
     """
 
     def register_bw_events_recursively(self, output, input_grad_fns):
-        def before_bw_op_hook(context, bw_op, output):
+        def before_bw_op_hook(output, context, bw_op):
             context.trigger(
                 before_backward_op_executed, bw_op=bw_op, output_grad=output
             )
+            global _before_count_in_hook
+            _before_count_in_hook += 1
+            print("_before_count_in_hook", _before_count_in_hook)
             before_bw_op_hook_handle.remove()
 
         def _register_bw_events(grad_fn):
-            def after_bw_op_hook(context, bw_op, input, output):
+            def after_bw_op_hook(input, output, context, bw_op):
                 context.trigger(
                     after_backward_op_executed,
                     bw_op=bw_op,
                     input_grad=input,
                     output_grad=output,
                 )
+                global _after_count_in_hook
+                _after_count_in_hook += 1
+                print("_after_count_in_hook", _after_count_in_hook)
                 after_bw_op_hook_handle.remove()
 
             if grad_fn and grad_fn not in input_grad_fns:
                 # print(f"registering after event for: {grad_fn}")
+                global _after_count
+                _after_count += 1
+                print("_after_count", _after_count)
                 after_bw_op_hook_handle = grad_fn.register_hook(
-                    lambda input, output: after_bw_op_hook(self, grad_fn, input, output)
+                    partial(after_bw_op_hook, context=self, bw_op=grad_fn)
                 )
             else:
                 return
@@ -166,8 +188,11 @@ class EventContext(dict):
 
         if hasattr(output, "register_hook") and output.requires_grad:
             # print(f"registering before event for: {output.shape}")
+            global _before_count
+            _before_count += 1
+            print("_before_count", _before_count)
             before_bw_op_hook_handle = output.register_hook(
-                lambda output: before_bw_op_hook(self, output.grad_fn, output)
+                partial(before_bw_op_hook, context=self, bw_op=output.grad_fn)
             )
 
         if hasattr(output, "grad_fn"):
