@@ -362,11 +362,6 @@ def test_tf_modify_graph_with_new_hook(arch_name):
     def without_prefix(tensor_set):
         return {tensor[tensor.find("_op/") + 4 :] for tensor in tensor_set}
 
-    assert len(tool.before_tensors) != 0
-    assert len(tool.after_backward_tensors) != 0
-    assert len(tool.after_tensors) != 0
-    assert len(tool.before_backward_tensors) != 0
-
     assert len(tool.before_ops) != 0
     assert len(tool.after_ops) != 0
     assert without_prefix(tool.before_ops) == without_prefix(tool.after_ops)
@@ -375,6 +370,11 @@ def test_tf_modify_graph_with_new_hook(arch_name):
     assert without_prefix(tool.before_backward_ops) == without_prefix(
         tool.after_backward_ops
     )
+
+    assert len(tool.before_tensors) != 0
+    assert len(tool.after_backward_tensors) != 0
+    assert len(tool.after_tensors) != 0
+    assert len(tool.before_backward_tensors) != 0
 
 
 def check_modified_graph(graph_def, new_graph_def):
