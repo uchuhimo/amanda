@@ -1,13 +1,13 @@
-import amanda
-import pytest
 import torch
 import torchvision
-from trace_tool import TraceEffectivePathTool
 
+import amanda  # noqa: F401
 from amanda.conversion.pytorch_updater import apply
 
+from .trace_tool import TraceEffectivePathTool
+
 """ graph_traverse(utils.Graph) -> None
-traverse a fw graph traced by TraceEffectivePathTool 
+traverse a fw graph traced by TraceEffectivePathTool
     in backward fashion, but not backward propagation,
 forward graph with residual graph may cause deep loop,
     so each op is visited for once,
@@ -37,13 +37,15 @@ def test_graph_trace():
         "vgg": torchvision.models.vgg19_bn,
     }
 
-    model = TEST_MODELS["resnet"]()
+    # model = TEST_MODELS["resnet"]()
+    model = TEST_MODELS["inception"]()
 
     x = torch.rand((4, 3, 500, 500))
 
     tracer = TraceEffectivePathTool()
 
     with apply(tracer):
-        model(x)
+        y = model(x)
+        y[0].backward(torch.rand_like(y[0]))
 
-    graph_traverse(tracer.graph)
+    # graph_traverse(tracer.graph)
