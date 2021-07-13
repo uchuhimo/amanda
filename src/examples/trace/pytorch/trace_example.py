@@ -1,7 +1,7 @@
-import amanda
 import torch
 import torchvision
 
+import amanda
 from examples.trace.pytorch.trace_tool import TraceTool
 
 
