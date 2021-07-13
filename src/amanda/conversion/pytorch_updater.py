@@ -180,7 +180,7 @@ def register_bw_events_recursively(context, output, input_grad_fns):
             grad_output.data = new_grad_output
         before_bw_op_hook_handle.remove()
 
-    def _register_bw_events(grad_fn):
+    def _register_bw_events(context, grad_fn):
         def after_bw_op_hook(input, output, context, bw_op):
             if isinstance(input, torch.Tensor):
                 grad_inputs = [input]
@@ -221,7 +221,7 @@ def register_bw_events_recursively(context, output, input_grad_fns):
         if grad_fn and grad_fn not in input_grad_fns:
             # print(f"registering after event for: {grad_fn}")
             after_bw_op_hook_handle = grad_fn.register_hook(
-                partial(after_bw_op_hook, context=context, bw_op=grad_fn)
+                partial(after_bw_op_hook, context=context, bw_op=grad_fn.__class__)
             )
         else:
             return
@@ -231,7 +231,7 @@ def register_bw_events_recursively(context, output, input_grad_fns):
                 # if next_grad_fn and
                 #     next_grad_fn not in input_grad_fns
                 #     and type(next_grad_fn).__name__ != "AccumulateGrad":
-                _register_bw_events(next_grad_fn)
+                _register_bw_events(context, next_grad_fn)
 
     if hasattr(output, "register_hook") and output.requires_grad:
         # print(f"registering before event for: {output.shape}")
@@ -240,7 +240,7 @@ def register_bw_events_recursively(context, output, input_grad_fns):
         )
 
     if hasattr(output, "grad_fn"):
-        _register_bw_events(output.grad_fn)
+        _register_bw_events(context, output.grad_fn)
 
 
 def function_wrapper(func):
