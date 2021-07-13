@@ -3,6 +3,7 @@ import torch
 import torchvision
 
 
+
 def test_naive_backward_func_hook():
     class CallbackCnt:
         def __init__(self):
@@ -51,12 +52,8 @@ def test_amanda_backward_func_hook():
     class TestTool(amanda.Tool):
         def __init__(self):
             super(TestTool, self).__init__(namespace="amanda/testtool")
-            self.register_event(
-                amanda.event.before_op_executed, self.before_callback
-            )
-            self.register_event(
-                amanda.event.after_op_executed, self.after_callback
-            )
+            self.register_event(amanda.event.before_op_executed, self.before_callback)
+            self.register_event(amanda.event.after_op_executed, self.after_callback)
             self.register_event(
                 amanda.event.before_backward_op_executed, self.before_backward_callback
             )
@@ -91,7 +88,8 @@ def test_amanda_backward_func_hook():
         y.backward(torch.rand_like(y))
 
     print(f"before fw: {tool.before_fw_cnt}, after fw: {tool.after_fw_cnt}")
-    print(f"before: {tool.before_cnt}, after: {tool.after_cnt}")
+    print(f"after fw: {tool.after_fw_cnt}, before bw: {tool.before_cnt}")
+    print(f"before bw: {tool.before_cnt}, after bw: {tool.after_cnt}")
     assert tool.before_fw_cnt == tool.after_fw_cnt
     assert tool.before_cnt <= tool.after_fw_cnt
-    assert tool.before_cnt == tool.after_cnt
+    assert tool.before_cnt <= tool.after_cnt
