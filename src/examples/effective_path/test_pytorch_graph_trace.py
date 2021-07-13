@@ -2,7 +2,6 @@ import torch
 import torchvision
 
 import amanda  # noqa: F401
-from amanda.conversion.pytorch_updater import apply
 
 from .trace_tool import TraceEffectivePathTool
 
@@ -44,7 +43,7 @@ def test_graph_trace():
 
     tracer = TraceEffectivePathTool()
 
-    with apply(tracer):
+    with amanda.tool.apply(tracer):
         y = model(x)
         y[0].backward(torch.rand_like(y[0]))
 

@@ -52,13 +52,11 @@ def test_amanda_backward_func_hook():
     class TestTool(amanda.Tool):
         def __init__(self):
             super(TestTool, self).__init__(namespace="amanda/testtool")
-            self.register_event(amanda.event.before_op_executed, self.before_callback)
-            self.register_event(amanda.event.after_op_executed, self.after_callback)
-            self.register_event(
-                amanda.event.before_backward_op_executed, self.before_backward_callback
-            )
-            self.register_event(
-                amanda.event.after_backward_op_executed, self.after_backward_callback
+            self.add_inst_for_op(self.before_callback)
+            self.add_inst_for_op(self.after_callback, require_outputs=True)
+            self.add_inst_for_backward_op(self.before_backward_callback)
+            self.add_inst_for_backward_op(
+                self.after_backward_callback, require_grad_inputs=True
             )
 
             self.before_fw_cnt = 0
@@ -83,7 +81,7 @@ def test_amanda_backward_func_hook():
 
     tool = TestTool()
 
-    with amanda.conversion.pytorch_updater.apply(tool):
+    with amanda.tool.apply(tool):
         y = model(x)
         y.backward(torch.rand_like(y))
 

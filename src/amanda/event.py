@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum, auto
 from functools import partial
-from typing import Callable, Iterable, Set
+from typing import Any, Callable, Dict, Iterable, List, Set
 
 
 @dataclass(frozen=True)
