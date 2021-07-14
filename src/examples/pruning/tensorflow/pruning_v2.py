@@ -29,7 +29,7 @@ class PruningTool(amanda.Tool):
             "MatMul" == op.type and len(weight.shape) == 2
         ):
             mask = self.get_mask(weight, context["session"])
-            self.masks[op.name] = mask
+            context["mask"] = mask
             context.insert_before_op(self.mask_forward_weight, inputs=[1], mask=mask)
 
     def backward_instrumentation(self, context: amanda.OpContext):
@@ -52,7 +52,7 @@ class PruningTool(amanda.Tool):
             and "MatMul" == backward_op.type
             and len(weight_grad.shape) == 2
         ):
-            mask = self.masks[op.name]
+            mask = context["mask"]
             if backward_op.type == "MatMul":
                 if weight_grad.shape != mask.shape:
                     return

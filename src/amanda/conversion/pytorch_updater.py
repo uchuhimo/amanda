@@ -152,13 +152,6 @@ def apply_replace_op(action, inputs):
     return action.func(*filtered_inputs, **action.kwargs)
 
 
-def copy_context(context: OpContext):
-    new_context = OpContext(context.tools)
-    for key, value in context.items():
-        new_context[key] = value
-    return new_context
-
-
 _grad_fns: Set[Any] = set()
 
 
@@ -177,7 +170,7 @@ def register_bw_events_recursively(context, output, input_grad_fns):
             grad_outputs = grad_output
         context.trigger(
             on_backward_op_call,
-            backward_op=bw_op,
+            backward_op=bw_op.__class__,
             grad_outputs=grad_outputs,
         )
         new_grad_outputs = list(grad_outputs)
@@ -193,7 +186,7 @@ def register_bw_events_recursively(context, output, input_grad_fns):
     def _register_bw_events(context, grad_fn):
         def after_bw_op_hook(grad_input, grad_output, context, bw_op, handle):
             _grad_fns.remove(bw_op)
-            context = copy_context(context)
+            context = context.inherite()
             if isinstance(grad_input, torch.Tensor):
                 grad_inputs = [grad_input]
             else:
@@ -255,7 +248,7 @@ def register_bw_events_recursively(context, output, input_grad_fns):
     bw_context = None
     if hasattr(output, "register_hook") and output.requires_grad:
         # print(f"registering before event for: {output.shape}")
-        bw_context = copy_context(context)
+        bw_context = context.inherite()
         handle = output.register_hook(
             lambda grad_output: before_bw_op_hook(
                 grad_output,

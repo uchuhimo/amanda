@@ -1370,9 +1370,9 @@ def insert_hooks_v3(
                 continue
             for backward_op_name in backward_op_names:
                 backward_op = tf_graph.get_operation_by_name(backward_op_name)
-                context = OpContext(tools=tools)
+                backward_context = context.inherite()
                 grad_outputs = list(backward_op.inputs)
-                context.trigger(
+                backward_context.trigger(
                     on_backward_op_call,
                     op=op,
                     backward_op=backward_op,
@@ -1380,11 +1380,11 @@ def insert_hooks_v3(
                     session=session,
                 )
                 grad_inputs = list(backward_op.outputs)
-                context.trigger(
+                backward_context.trigger(
                     after_backward_op_call,
                     grad_inputs=grad_inputs,
                 )
-                for action in context.actions:
+                for action in backward_context.actions:
                     actions.append((action, backward_op))
         return actions
 
