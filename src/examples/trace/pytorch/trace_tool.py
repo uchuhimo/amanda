@@ -1,6 +1,7 @@
 import torch
 
 import amanda
+from amanda.io.file import ensure_dir
 
 
 class TraceTool(amanda.Tool):
@@ -12,8 +13,12 @@ class TraceTool(amanda.Tool):
             require_grad_inputs=True,
         )
 
+        self.output_file = open(ensure_dir("tmp/trace_resnet50/tracetool.txt"), "w")
+
     def forward_instrumentation(self, context: amanda.OpContext):
-        print(context["op"].__name__)
+        self.output_file.write(f"fw: {context['op'].__name__}\n")
 
     def backward_instrumentation(self, context: amanda.OpContext):
-        print(context["backward_op"].__name__)
+        self.output_file.write(
+            f"fw: {context['op'].__name__}, bw: {context['backward_op'].__name__}\n"
+        )
