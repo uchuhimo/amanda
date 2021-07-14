@@ -1,7 +1,7 @@
-import amanda
 import torch
 import torchvision
 
+import amanda
 
 
 def test_naive_backward_func_hook(model=None):
@@ -11,18 +11,22 @@ def test_naive_backward_func_hook(model=None):
             self.trigger_cnt = 0
             self.hooked_func = list()
 
+            self.output_file = open("tmp/trace_resnet50/naive_trace.txt", "w")
+
         def registration_callback(self):
             self.registration_cnt += 1
 
         def trigger_callback(self, handle):
             self.trigger_cnt += 1
-            handle.remove()
+            self.output_file.write(f"{handle.__name__}\n")
 
         def add_hook(self, grad_fn):
             def _add_hook(grad_fn):
                 if grad_fn and grad_fn not in self.hooked_func:
                     handle = grad_fn.register_hook(
-                        lambda in_tensor, out_tensor: self.trigger_callback(handle)
+                        lambda in_tensor, out_tensor: self.trigger_callback(
+                            grad_fn.__class__
+                        )
                     )
                     self.registration_callback()
                     self.hooked_func.append(grad_fn)
@@ -66,6 +70,8 @@ def test_amanda_backward_func_hook(model=None):
             self.before_cnt = 0
             self.after_cnt = 0
 
+            self.output_file = open("tmp/trace_resnet50/amanda_trace.txt", "w")
+
         def before_callback(self, context):
             self.before_fw_cnt += 1
 
@@ -77,6 +83,8 @@ def test_amanda_backward_func_hook(model=None):
 
         def after_backward_callback(self, context):
             self.after_cnt += 1
+            # self.output_file.write(f'{context["backward_op"].__name__}\n')
+            print(context["backward_op"].__name__)
 
     if not model:
         model = torchvision.models.resnet50()
@@ -100,11 +108,10 @@ def test_amanda_backward_func_hook(model=None):
 
 def test_amanda_backward_graph_trace():
 
-    model = torchvision.models.resnet50()
+    model_a = torchvision.models.resnet50()
+    model_b = torchvision.models.resnet50()
 
-    amanda_cnt = test_amanda_backward_func_hook(model)
-    baseline_cnt = test_naive_backward_func_hook(model)
-
-    print(amanda_cnt)
+    baseline_cnt = test_naive_backward_func_hook(model_a)
+    amanda_cnt = test_amanda_backward_func_hook(model_a)
 
     assert baseline_cnt == amanda_cnt
