@@ -1,6 +1,6 @@
 import inspect
-from functools import partial, wraps
-from typing import List
+from functools import wraps
+from typing import Any, List, Set
 
 from loguru import logger
 
@@ -152,6 +152,16 @@ def apply_replace_op(action, inputs):
     return action.func(*filtered_inputs, **action.kwargs)
 
 
+def copy_context(context: OpContext):
+    new_context = OpContext(context.tools)
+    for key, value in context.items():
+        new_context[key] = value
+    return new_context
+
+
+_grad_fns: Set[Any] = set()
+
+
 def register_bw_events_recursively(context, output, input_grad_fns):
     """
     same functionality as register_bw_events() with subgraph matching,
@@ -160,11 +170,11 @@ def register_bw_events_recursively(context, output, input_grad_fns):
     """
     import torch
 
-    def before_bw_op_hook(output, context, bw_op):
-        if isinstance(output, torch.Tensor):
-            grad_outputs = [output]
+    def before_bw_op_hook(grad_output, context, bw_op, handle):
+        if isinstance(grad_output, torch.Tensor):
+            grad_outputs = [grad_output]
         else:
-            grad_outputs = output
+            grad_outputs = grad_output
         context.trigger(
             on_backward_op_call,
             backward_op=bw_op,
@@ -178,21 +188,23 @@ def register_bw_events_recursively(context, output, input_grad_fns):
         assert len(context.actions) == 0
         for grad_output, new_grad_output in zip(grad_outputs, new_grad_outputs):
             grad_output.data = new_grad_output
-        before_bw_op_hook_handle.remove()
+        handle.remove()
 
     def _register_bw_events(context, grad_fn):
-        def after_bw_op_hook(input, output, context, bw_op):
-            if isinstance(input, torch.Tensor):
-                grad_inputs = [input]
+        def after_bw_op_hook(grad_input, grad_output, context, bw_op, handle):
+            _grad_fns.remove(bw_op)
+            context = copy_context(context)
+            if isinstance(grad_input, torch.Tensor):
+                grad_inputs = [grad_input]
             else:
-                grad_inputs = input
-            if isinstance(output, torch.Tensor):
-                grad_outputs = [output]
+                grad_inputs = grad_input
+            if isinstance(grad_output, torch.Tensor):
+                grad_outputs = [grad_output]
             else:
-                grad_outputs = output
+                grad_outputs = grad_output
             context.trigger(
                 after_backward_op_call,
-                backward_op=bw_op,
+                backward_op=bw_op.__class__,
                 grad_outputs=grad_outputs,
                 grad_inputs=grad_inputs,
             )
@@ -216,12 +228,19 @@ def register_bw_events_recursively(context, output, input_grad_fns):
                     new_grad_input, torch.Tensor
                 ):
                     grad_input.data = new_grad_input
-            after_bw_op_hook_handle.remove()
+            handle.remove()
 
         if grad_fn and grad_fn not in input_grad_fns:
             # print(f"registering after event for: {grad_fn}")
-            after_bw_op_hook_handle = grad_fn.register_hook(
-                partial(after_bw_op_hook, context=context, bw_op=grad_fn.__class__)
+            _grad_fns.add(grad_fn)
+            handle = grad_fn.register_hook(
+                lambda grad_input, grad_output: after_bw_op_hook(
+                    grad_input,
+                    grad_output,
+                    context=context,
+                    bw_op=grad_fn,
+                    handle=handle,
+                )
             )
         else:
             return
@@ -233,14 +252,21 @@ def register_bw_events_recursively(context, output, input_grad_fns):
                 #     and type(next_grad_fn).__name__ != "AccumulateGrad":
                 _register_bw_events(context, next_grad_fn)
 
+    bw_context = None
     if hasattr(output, "register_hook") and output.requires_grad:
         # print(f"registering before event for: {output.shape}")
-        before_bw_op_hook_handle = output.register_hook(
-            partial(before_bw_op_hook, context=context, bw_op=output.grad_fn)
+        bw_context = copy_context(context)
+        handle = output.register_hook(
+            lambda grad_output: before_bw_op_hook(
+                grad_output,
+                context=bw_context,
+                bw_op=output.grad_fn,
+                handle=handle,
+            )
         )
 
     if hasattr(output, "grad_fn"):
-        _register_bw_events(context, output.grad_fn)
+        _register_bw_events(bw_context or context, output.grad_fn)
 
 
 def function_wrapper(func):
@@ -348,7 +374,7 @@ class FunctionalUpdater(MatchedFunctionUpdater):
         return not name.startswith("_")
 
 
-TORCH_OP_LIST = set()
+TORCH_OP_LIST: Set[str] = set()
 
 TORCH_OP_OVERLOAD_LIST = (
     "__add__",
