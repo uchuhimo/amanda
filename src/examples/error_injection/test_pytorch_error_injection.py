@@ -1,11 +1,10 @@
-import amanda
-
 from typing import Callable
 
 import torch
 import torchvision
 from injection_tool import ErrorInjectionTool
 
+import amanda
 
 
 def gen_op_names_filter(op_names) -> Callable:
@@ -32,7 +31,7 @@ def test_error_injection():
         filter_fn=gen_op_names_filter(["relu_"]), modify_fn=zero_out
     )
 
-    with amanda.conversion.pytorch_updater.apply(injector):
+    with amanda.tool.apply(injector):
 
         output = model(input)
 

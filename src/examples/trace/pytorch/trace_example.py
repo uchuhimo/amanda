@@ -1,7 +1,7 @@
-import amanda
 import torch
 import torchvision
 
+import amanda
 from examples.trace.pytorch.trace_tool import TraceTool
 
 
@@ -10,7 +10,6 @@ def main():
     x = torch.rand((2, 3, 227, 227))
 
     tool = TraceTool()
-
     with amanda.tool.apply(tool):
 
         y = model(x)
