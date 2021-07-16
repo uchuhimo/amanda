@@ -26,7 +26,8 @@ from examples.common.tensorflow.utils import new_session_config
 from examples.common.tensorflow.dataset.envs import CIFAR100_RAW_DIR
 from amanda.io.file import abspath
 # from examples.pruning.tensorflow.pruning import PruningTool
-from examples.pruning.tensorflow.pruning_test import PruningTool
+# from examples.pruning.tensorflow.pruning_test import PruningTool
+from examples.pruning.tensorflow.pruning_v2 import PruningTool
 from examples.pruning.tensorflow.resnet_18_cifar100_train import cifar100_model_fn
 
 

@@ -1,7 +1,9 @@
 import os
 import shutil
 import tempfile
+from functools import partial
 from pathlib import Path
+from typing import Set
 
 import google.protobuf.text_format
 import jsondiff
@@ -25,9 +27,9 @@ from amanda.conversion.tensorflow import (
     import_from_saved_model,
     import_from_tf_func,
 )
+from amanda.event import OpContext
 from amanda.io.file import ensure_dir, root_dir
 from amanda.tests.utils import diff_graph_def, get_diff_after_conversion
-from amanda.tools.eager_context import EagerContextTool
 
 
 @pytest.fixture(
@@ -247,106 +249,102 @@ def test_tf_modify_graph_with_hook(arch_name):
 
 class TestTool(amanda.Tool):
     def __init__(self, store_dir):
-        super(TestTool, self).__init__(namespace="amanda/tensorflow")
-        self.depends_on(EagerContextTool())
-        self.register_event(
-            amanda.event.before_op_executed,
-            self.test_before_op_executed,
-        )
-        self.register_event(
-            amanda.event.after_op_executed,
-            self.test_after_op_executed,
-        )
-        self.register_event(
-            amanda.event.before_backward_op_executed,
-            self.test_before_backward_op_executed,
-        )
-        self.register_event(
-            amanda.event.after_backward_op_executed,
-            self.test_after_backward_op_executed,
-        )
+        super().__init__(namespace="amanda/tensorflow")
+        self.add_inst_for_op(self.instrumentation)
+        self.add_inst_for_backward_op(self.backward_instrumentation)
         self.store_dir = store_dir
-        self.before_executed_ops = set()
-        self.after_executed_ops = set()
-        self.before_executed_backward_ops = set()
-        self.after_executed_backward_ops = set()
+        self.ignored_ops = {
+            "VariableV2",
+            "Merge",
+            "Switch",
+            "AudioSummary",
+            "AudioSummaryV2",
+            "HistogramSummary",
+            "ImageSummary",
+            "MergeSummary",
+            "ScalarSummary",
+            "TensorSummary",
+            "TensorSummaryV2",
+        }
+        self.before_tensors = set()
+        self.after_tensors = set()
+        self.before_backward_tensors = set()
+        self.after_backward_tensors = set()
+        self.before_ops = set()
+        self.after_ops = set()
+        self.before_backward_ops = set()
+        self.after_backward_ops = set()
 
-    def test_before_op_executed(self, context: amanda.EventContext):
-        op = context["op"]
-        self.before_executed_ops.add(op.name)
-        file_name = op.name.replace("/", "_")
-        # print(
-        #     "before",
-        #     op.type,
-        #     [input.dtype for input in context["inputs"]],
-        #     op.name
-        # )
-        store_dir = self.store_dir / "before_op_executed" / file_name
-        ensure_dir(store_dir, is_file=False)
-        for index, input in enumerate(context["inputs"]):
-            np.save(f"{store_dir}/{index}", input)
+    def store_as_numpy(self, input: np.array, store_dir: str, tensor_set: Set[str]):
+        ensure_dir(store_dir)
+        tensor_set.add(store_dir)
+        np.save(store_dir, input)
+        return input
 
-    def test_after_op_executed(self, context: amanda.EventContext):
-        op = context["op"]
-        self.after_executed_ops.add(op.name)
-        file_name = op.name.replace("/", "_")
-        # print(
-        #     "after",
-        #     op.type,
-        #     # [input.dtype for input in context["inputs"]],
-        #     [output.dtype for output in context["outputs"]],
-        #     op.name,
-        # )
-        store_dir = self.store_dir / "after_op_executed" / file_name
-        ensure_dir(store_dir, is_file=False)
-        # for index, input in enumerate(context["inputs"]):
-        #     np.save(f"{store_dir}/input_{index}", input)
-        for index, output in enumerate(context["outputs"]):
-            np.save(f"{store_dir}/{index}", output)
+    def store_tensors(
+        self, *tensors, store_dir: Path, tensor_set: Set[str], op_set: Set[str]
+    ):
+        op_set.add(str(store_dir))
+        if len(tensors) == 0:
+            return
+        new_tensors = []
+        for index, tensor in enumerate(tensors):
+            if not tensor.dtype._is_ref_dtype:
+                new_tensors.append(
+                    tf.numpy_function(
+                        partial(
+                            self.store_as_numpy,
+                            store_dir=f"{store_dir}/{index}",
+                            tensor_set=tensor_set,
+                        ),
+                        [tensor],
+                        tensor.dtype,
+                    )
+                )
+            else:
+                new_tensors.append(tensor)
+        return new_tensors
 
-    def test_before_backward_op_executed(self, context: amanda.EventContext):
-        op = context["op"]
-        backward_op = context["backward_op"]
-        self.before_executed_backward_ops.add(backward_op.name)
+    def instrumentation(self, context: OpContext):
+        op = context.get_op()
+        if op.type in self.ignored_ops:
+            return
         file_name = op.name.replace("/", "_")
-        # backward_op = context["backward_op"]
-        # print(
-        #     "before_bw",
-        #     op.type,
-        #     backward_op.type,
-        #     [input.dtype for input in context["outputs"]],
-        #     [input.dtype for input in context["grad_outputs"]],
-        #     op.name,
-        #     backward_op.name
-        # )
-        store_dir = self.store_dir / "before_backward_op_executed" / file_name
-        ensure_dir(store_dir, is_file=False)
-        # for index, input in enumerate(context["outputs"]):
-        #     np.save(f"{store_dir}/{index}", input)
-        for index, input in enumerate(context["grad_outputs"]):
-            np.save(f"{store_dir}/grad_{index}", input)
+        store_dir = self.store_dir / "before_op" / file_name
+        context.insert_before_op(
+            self.store_tensors,
+            store_dir=store_dir,
+            tensor_set=self.before_tensors,
+            op_set=self.before_ops,
+        )
+        store_dir = self.store_dir / "after_op" / file_name
+        context.insert_after_op(
+            self.store_tensors,
+            store_dir=store_dir,
+            tensor_set=self.after_tensors,
+            op_set=self.after_ops,
+        )
 
-    def test_after_backward_op_executed(self, context: amanda.EventContext):
-        op = context["op"]
-        backward_op = context["backward_op"]
-        self.after_executed_backward_ops.add(backward_op.name)
-        file_name = op.name.replace("/", "_")
-        # backward_op = context["backward_op"]
-        # print(
-        #     "after_bw",
-        #     op.type,
-        #     backward_op.type,
-        #     [input.dtype for input in context["inputs"]],
-        #     [input.dtype for input in context["grad_inputs"]],
-        #     op.name,
-        #     backward_op.name,
-        # )
-        store_dir = self.store_dir / "after_backward_op_executed" / file_name
-        ensure_dir(store_dir, is_file=False)
-        # for index, output in enumerate(context["inputs"]):
-        #     np.save(f"{store_dir}/{index}", output)
-        for index, output in enumerate(context["grad_inputs"]):
-            np.save(f"{store_dir}/grad_{index}", output)
+    def backward_instrumentation(self, context: OpContext):
+        op = context.get_op()
+        backward_op = context.get_backward_op()
+        if op.type in self.ignored_ops:
+            return
+        file_name = backward_op.name.replace("/", "_")
+        store_dir = self.store_dir / "before_backward_op" / file_name
+        context.insert_before_backward_op(
+            self.store_tensors,
+            store_dir=store_dir,
+            tensor_set=self.before_backward_tensors,
+            op_set=self.before_backward_ops,
+        )
+        store_dir = self.store_dir / "after_backward_op" / file_name
+        context.insert_after_backward_op(
+            self.store_tensors,
+            store_dir=store_dir,
+            tensor_set=self.after_backward_tensors,
+            op_set=self.after_backward_ops,
+        )
 
 
 def test_tf_modify_graph_with_new_hook(arch_name):
@@ -360,10 +358,23 @@ def test_tf_modify_graph_with_new_hook(arch_name):
             model_dir="downloads/model",
             input=input,
         )
-    assert len(tool.before_executed_ops) != 0
-    assert tool.before_executed_ops == tool.after_executed_ops
-    assert len(tool.before_executed_backward_ops) != 0
-    assert tool.before_executed_backward_ops == tool.after_executed_backward_ops
+
+    def without_prefix(tensor_set):
+        return {tensor[tensor.find("_op/") + 4 :] for tensor in tensor_set}
+
+    assert len(tool.before_ops) != 0
+    assert len(tool.after_ops) != 0
+    assert without_prefix(tool.before_ops) == without_prefix(tool.after_ops)
+    assert len(tool.before_backward_ops) != 0
+    assert len(tool.after_backward_ops) != 0
+    assert without_prefix(tool.before_backward_ops) == without_prefix(
+        tool.after_backward_ops
+    )
+
+    assert len(tool.before_tensors) != 0
+    assert len(tool.after_backward_tensors) != 0
+    assert len(tool.after_tensors) != 0
+    assert len(tool.before_backward_tensors) != 0
 
 
 def check_modified_graph(graph_def, new_graph_def):

@@ -12,7 +12,7 @@ class ThreadLocalStack(threading.local):
         self.stack.append(item)
 
     def pop(self):
-        self.stack.pop()
+        return self.stack.pop()
 
     def top(self):
         if len(self.stack) != 0:

@@ -154,9 +154,8 @@ class NewTestTool(amanda.Tool):
 def test_pytorch_with_new_hook(model_and_input):
     model, x = model_and_input
     tool = NewTestTool()
-    from amanda.conversion.pytorch_updater import apply
 
-    with apply(tool):
+    with amanda.tool.apply(tool):
         y = model(x)
         y.backward(torch.zeros(y.shape))
 
@@ -213,11 +212,9 @@ def test_pytorch_with_forward_backward_matching(model_and_input):
         def print_name_bw(self, context):
             print(context["bw_op"])
 
-    from amanda.conversion.pytorch_updater import apply
-
     linear = torch.nn.Linear(227, 128, bias=True)
     x = torch.rand(3, 9, 227, 227)
 
-    with apply(NewTestTool()):
+    with amanda.tool.apply(NewTestTool()):
         y = linear(x)
         y.backward(torch.ones_like(y))

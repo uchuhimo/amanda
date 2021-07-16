@@ -121,10 +121,13 @@ def replace_all_refs(old, new):
     idset = hp.iso(old)
     paths = list(idset.get_shpaths(gc_referrers | idset.referrers))
     current_frame = inspect.currentframe()
+    caller_frame = inspect.stack()[1].frame
     f_locals = current_frame.f_locals
+    caller_f_locals = caller_frame.f_locals
+    excluded_source = [current_frame, caller_frame, f_locals, caller_f_locals]
     for path in paths:
         source = path.src.theone
-        if source == current_frame or source == f_locals:
+        if source in excluded_source:
             continue
         relation = path.path[1]
         try:

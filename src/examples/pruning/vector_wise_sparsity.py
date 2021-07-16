@@ -149,26 +149,27 @@ def create_mask(tensor, pattern="m4n2_1d", density=0.5):
     # Reshape tensor and mask.
     shape = tensor.shape
     ttype = tensor.type()
+    mask = None
     t = tensor.float().contiguous()
+    is_cuda = t.is_cuda
+    if is_cuda:
+        t = t.cpu()
 
     # 1d-tensor
     if len(shape) == 1:
         t = t.view(1, shape[0])
         func = getattr(sys.modules[__name__], pattern, None)
         mask = func(t, density)
-        return mask.view(shape).type(ttype)
     # 2d-tensor (in, out)
     elif len(shape) == 2:
         t = t.view(shape[0], shape[1])
         func = getattr(sys.modules[__name__], pattern, None)
         mask = func(t, density)
-        return mask.view(shape).type(ttype)
     # 3d-tensor (batch, in, out)
     elif len(shape) == 3:
         t = t.view(shape[0]*shape[1], shape[2])
         func = getattr(sys.modules[__name__], pattern, None)
         mask = func(t, density)
-        return mask.view(shape).type(ttype)
     # 4d-tensor (in, out, h, w)
     elif len(shape) == 4:
         """
@@ -183,4 +184,8 @@ def create_mask(tensor, pattern="m4n2_1d", density=0.5):
         func = getattr(sys.modules[__name__], pattern, None)
         mask = func(t, density)
         mask = mask.view(shape[2], shape[3], shape[0], shape[1]).permute(2,3,0,1).contiguous()
-        return mask.view(shape).type(ttype)
+
+    mask = mask.view(shape).type(ttype)
+    if is_cuda:
+        mask = mask.cuda()
+    return mask

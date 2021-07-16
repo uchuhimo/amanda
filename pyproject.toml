@@ -86,7 +86,7 @@ onnx = "*"
 onnxruntime = "*"
 pip = ">=19.3"
 dephell = { version = "*", extras = [ "full" ], allow-prereleases = true }
-fissix = { version = "*", allow-prereleases = true }
+fissix = "*"
 bump2version="*"
 wheel="*"
 watchdog="*"
@@ -109,8 +109,17 @@ jsondiff = "*"
 wget = "*"
 fire = "*"
 pympler = "*"
+types-protobuf = "*"
+types-six = "*"
+types-filelock = "*"
+types-setuptools = "*"
+types-toml = "*"
 
 [tool.poetry.scripts]
 amanda = "amanda.cli.main:cli"
 amanda-download = "amanda.cli.download:cli"
 amanda-run = "amanda.cli.run:cli"
+
+[build-system]
+requires = ["poetry_core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

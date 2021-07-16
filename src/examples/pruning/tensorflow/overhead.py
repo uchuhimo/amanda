@@ -226,11 +226,11 @@ def resnet_50_train(
     logging_hook = tf.train.LoggingTensorHook(
         tensors=tensors_to_log, every_n_iter=100
     )
-    tr = tracker.SummaryTracker()
-    tr_hook = TrackerHook(tr)
+    # tr = tracker.SummaryTracker()
+    # tr_hook = TrackerHook(tr)
     start_time = time.time()
     classifier.train(input_fn=train_input_fn, hooks=[logging_hook])
-    tr.print_diff()
+    # tr.print_diff()
     end_time = time.time()
     return end_time - start_time
 
@@ -382,6 +382,7 @@ def main(train_fn, model_name, prune_matmul: bool = True):
 
 
 if __name__ == "__main__":
-    # main(train_resnet_18_cifar100, "resnet-18-cifar100")
+    main(train_resnet_18_cifar100, "resnet-18-cifar100")
     # main(train_alexnet_imagenet, "alexnet")
-    main(resnet_50_train, "resnet-50-v2", prune_matmul=False)
+    # main(resnet_50_train, "resnet-50-v2")
+    # main(resnet_50_train, "resnet-50-v2", prune_matmul=False)
