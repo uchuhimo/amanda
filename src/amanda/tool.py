@@ -36,22 +36,19 @@ class Tool:
     def add_inst_for_op(
         self,
         callback: OpCallback,
+        backward: bool = False,
         require_outputs: bool = False,
     ) -> None:
-        if require_outputs:
-            self._event_to_callback[after_op_call] = callback
+        if backward:
+            if require_outputs:
+                self._event_to_callback[after_backward_op_call] = callback
+            else:
+                self._event_to_callback[on_backward_op_call] = callback
         else:
-            self._event_to_callback[on_op_call] = callback
-
-    def add_inst_for_backward_op(
-        self,
-        callback: OpCallback,
-        require_grad_inputs: bool = False,
-    ) -> None:
-        if require_grad_inputs:
-            self._event_to_callback[after_backward_op_call] = callback
-        else:
-            self._event_to_callback[on_backward_op_call] = callback
+            if require_outputs:
+                self._event_to_callback[after_op_call] = callback
+            else:
+                self._event_to_callback[on_op_call] = callback
 
     def get_callback(self, event: Event) -> ToolCallback:
         return self._event_to_callback[event]

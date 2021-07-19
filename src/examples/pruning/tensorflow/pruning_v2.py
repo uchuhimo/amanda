@@ -11,9 +11,10 @@ class PruningTool(amanda.Tool):
     def __init__(self, disabled: bool = False):
         super().__init__(namespace="amanda/tensorflow")
         self.add_inst_for_op(self.instrumentation)
-        self.add_inst_for_backward_op(
+        self.add_inst_for_op(
             self.backward_instrumentation,
-            require_grad_inputs=True,
+            backward=True,
+            require_outputs=True,
         )
         self.masks: Dict[str, tf.Tensor] = {}
         self.disabled = disabled

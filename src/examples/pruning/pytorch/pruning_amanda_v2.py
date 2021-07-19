@@ -14,9 +14,10 @@ class PruneTool(amanda.Tool):
     def __init__(self):
         super(PruneTool, self).__init__(namespace="amanda/pytorch")
         self.add_inst_for_op(self.instrumentation)
-        self.add_inst_for_backward_op(
+        self.add_inst_for_op(
             self.backward_instrumentation,
-            require_grad_inputs=True,
+            backward=True,
+            require_outputs=True,
         )
 
     def instrumentation(self, context: amanda.OpContext):

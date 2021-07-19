@@ -66,9 +66,9 @@ def test_amanda_backward_func_hook(model=None):
             super(TestTool, self).__init__(namespace="amanda/testtool")
             self.add_inst_for_op(self.before_callback)
             self.add_inst_for_op(self.after_callback, require_outputs=True)
-            self.add_inst_for_backward_op(self.before_backward_callback)
-            self.add_inst_for_backward_op(
-                self.after_backward_callback, require_grad_inputs=True
+            self.add_inst_for_op(self.before_backward_callback, backward=True)
+            self.add_inst_for_op(
+                self.after_backward_callback, backward=True, require_outputs=True
             )
 
             self.before_fw_cnt = 0
