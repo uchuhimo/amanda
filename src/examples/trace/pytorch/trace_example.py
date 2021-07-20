@@ -1,13 +1,16 @@
-import amanda
 import torch
 import torchvision
 
+import amanda
 from examples.trace.pytorch.trace_tool import TraceTool
 
 
 def main():
-    model = torchvision.models.resnet50()
-    x = torch.rand((2, 3, 227, 227))
+
+    device = "cuda"
+
+    model = torchvision.models.resnet50().to(device)
+    x = torch.rand((2, 3, 227, 227)).to(device)
 
     tool = TraceTool()
 

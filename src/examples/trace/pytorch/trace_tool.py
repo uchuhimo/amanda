@@ -1,5 +1,3 @@
-import torch
-
 import amanda
 from amanda.io.file import ensure_dir
 
@@ -20,5 +18,5 @@ class TraceTool(amanda.Tool):
 
     def backward_instrumentation(self, context: amanda.OpContext):
         self.output_file.write(
-            f"fw: {context['op'].__name__}, bw: {context['backward_op'].__name__}\n"
+            f"bw: {context['backward_op'].__name__}, fw: {context['op'].__name__}\n"
         )

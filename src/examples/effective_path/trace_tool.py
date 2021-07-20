@@ -1,12 +1,11 @@
-from utils import Graph, Op
-
 import amanda
+from examples.effective_path.utils import Graph, Op
 
 
 class TraceEffectivePathTool(amanda.Tool):
     def __init__(self):
         super(TraceEffectivePathTool, self).__init__(namespace="amanda/pytorch")
-        self.register_event(amanda.event.after_op_executed, self.trace_forward_graph)
+        self.add_inst_for_op(self.trace_forward_graph, require_outputs=True)
 
         self.graph = Graph()
         self.tensor_output_ops = dict()
@@ -16,11 +15,11 @@ class TraceEffectivePathTool(amanda.Tool):
             raw_op=context["op"],
             input_ops=[
                 self.tensor_output_ops[i]
-                for i in self.unpack_inputs(context["args"])
+                for i in self.unpack_inputs(context["inputs"])
                 if i.__hash__ and i in self.tensor_output_ops
             ],
-            inputs=context["args"],
-            outputs=context["output"],
+            inputs=context["inputs"],
+            outputs=context["outputs"][0],
         )
         print(f"forward tracing: {op.raw_op.__name__}")
         self.graph.ops.append(op)
