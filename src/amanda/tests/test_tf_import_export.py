@@ -251,7 +251,7 @@ class TestTool(amanda.Tool):
     def __init__(self, store_dir):
         super().__init__(namespace="amanda/tensorflow")
         self.add_inst_for_op(self.instrumentation)
-        self.add_inst_for_backward_op(self.backward_instrumentation)
+        self.add_inst_for_op(self.backward_instrumentation, backward=True)
         self.store_dir = store_dir
         self.ignored_ops = {
             "VariableV2",

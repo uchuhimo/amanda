@@ -83,6 +83,12 @@ class OpContext(dict):
                 return True
         return False
 
+    def inherite(self):
+        new_context = OpContext(self.tools)
+        for key, value in self.items():
+            new_context[key] = value
+        return new_context
+
     @property
     def op(self):
         return self.get_op()

@@ -11,9 +11,10 @@ class PruningTool(amanda.Tool):
     def __init__(self, disabled: bool = False):
         super().__init__(namespace="amanda/tensorflow")
         self.add_inst_for_op(self.instrumentation)
-        self.add_inst_for_backward_op(
+        self.add_inst_for_op(
             self.backward_instrumentation,
-            require_grad_inputs=True,
+            backward=True,
+            require_outputs=True,
         )
         self.masks: Dict[str, tf.Tensor] = {}
         self.disabled = disabled
@@ -29,7 +30,7 @@ class PruningTool(amanda.Tool):
             "MatMul" == op.type and len(weight.shape) == 2
         ):
             mask = self.get_mask(weight, context["session"])
-            self.masks[op.name] = mask
+            context["mask"] = mask
             context.insert_before_op(self.mask_forward_weight, inputs=[1], mask=mask)
 
     def backward_instrumentation(self, context: amanda.OpContext):
@@ -52,7 +53,7 @@ class PruningTool(amanda.Tool):
             and "MatMul" == backward_op.type
             and len(weight_grad.shape) == 2
         ):
-            mask = self.masks[op.name]
+            mask = context["mask"]
             if backward_op.type == "MatMul":
                 if weight_grad.shape != mask.shape:
                     return
