@@ -12,6 +12,7 @@ from typing import Callable, List, Type
 import _imp
 from loguru import logger
 
+from amanda.lang import Handler, register_handler
 from amanda.threading import ThreadLocalStack
 
 
@@ -177,17 +178,8 @@ class InstScopeHook:
 _inst_scope_hooks: List[InstScopeHook] = []
 
 
-class Handler:
-    def __init__(self, hook) -> None:
-        self.hook = hook
-
-    def unregister(self):
-        _inst_scope_hooks.remove(self.hook)
-
-
 def register_inst_scope_hook(hook: InstScopeHook) -> Handler:
-    _inst_scope_hooks.append(hook)
-    return Handler(hook)
+    return register_handler(_inst_scope_hooks, hook)
 
 
 _enabled = ThreadLocalStack()

@@ -68,7 +68,7 @@ class PruningTool(amanda.Tool):
         return weight_grad * mask
 
     def get_mask(self, weight, session):
-        torch_weight = torch.from_numpy(session.run(weight))
+        torch_weight = torch.from_numpy(weight.eval())
         if len(torch_weight.shape) == 4:
             torch_weight = torch_weight.permute(2, 3, 0, 1)
         mask = create_mask(torch_weight)

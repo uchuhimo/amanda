@@ -377,6 +377,67 @@ def test_tf_modify_graph_with_new_hook(arch_name):
     assert len(tool.before_backward_tensors) != 0
 
 
+class HookGraphTool(amanda.Tool):
+    def __init__(self):
+        super().__init__(namespace="amanda/tensorflow")
+        self.add_inst_for_op(self.instrumentation)
+        self.count_before = 0
+        self.count_after = 0
+        self.count_before_tensor = 0
+        self.count_after_tensor = 0
+
+    def store_before_tensor(self, input: np.array):
+        self.count_before_tensor += 1
+        return input + 1
+
+    def store_after_tensor(self, input: np.array):
+        self.count_after_tensor += 1
+        return input + 2
+
+    def count_before_op(self, *tensors):
+        self.count_before += 1
+        return [
+            tf.numpy_function(
+                self.store_before_tensor,
+                [tensor],
+                tensor.dtype,
+            )
+            for tensor in tensors
+        ]
+
+    def count_after_op(self, *tensors):
+        self.count_after += 1
+        return [
+            tf.numpy_function(
+                self.store_after_tensor,
+                [tensor],
+                tensor.dtype,
+            )
+            for tensor in tensors
+        ]
+
+    def instrumentation(self, context: OpContext):
+        context.insert_before_op(self.count_before_op)
+        context.insert_after_op(self.count_after_op)
+
+
+def test_tf_inject_hook_to_graph():
+    tool = HookGraphTool()
+    with amanda.tool.apply(tool):
+        with tf.Graph().as_default() as tf_graph:
+            input1 = tf.constant([1, 2, 3, 4, 5, 6])
+            input2 = tf.constant([1, 2, 3, 4, 5, 6])
+            output = input1 + input2
+            with tf.Session() as session:
+                amanda.tensorflow.inject_hook_to_graph(tf_graph)
+                np_output = session.run(output.name)
+    assert tool.count_before == 3
+    assert tool.count_after == 3
+    assert tool.count_before_tensor == 2
+    assert tool.count_after_tensor == 2
+    np.testing.assert_array_equal(np_output, [8, 10, 12, 14, 16, 18])
+
+
 def check_modified_graph(graph_def, new_graph_def):
     graph_diff = diff_graph_def(graph_def, new_graph_def)
     assert [jsondiff.update] == list(graph_diff.keys())
