@@ -9,7 +9,7 @@ from types import (
     MemberDescriptorType,
     MethodType,
 )
-from typing import List, Type
+from typing import Any, List, Type
 
 import guppy
 from guppy.heapy import Path
@@ -111,20 +111,31 @@ _RELATIONS = {
     Path.R_INDEXVAL: _replace_indexval,
     Path.R_INDEXKEY: _replace_indexkey,
     Path.R_INTERATTR: _replace_interattr,
+    Path.R_CELL: _replace_local_var,
     Path.R_LOCAL_VAR: _replace_local_var,
     Path.R_INSET: _replace_inset,
 }
 
 
-def replace_all_refs(old, new):
+def get_all_refs(target):
+    gc_referrers = hp.idset(gc.get_referrers(target))
+    idset = hp.iso(target)
+    paths = list(idset.get_shpaths(gc_referrers | idset.referrers))
+    return paths
+
+
+def replace_all_refs(old, new, exclude_caller: bool = False):
     gc_referrers = hp.idset(gc.get_referrers(old))
     idset = hp.iso(old)
     paths = list(idset.get_shpaths(gc_referrers | idset.referrers))
-    current_frame = inspect.currentframe()
-    caller_frame = inspect.stack()[1].frame
-    f_locals = current_frame.f_locals
-    caller_f_locals = caller_frame.f_locals
-    excluded_source = [current_frame, caller_frame, f_locals, caller_f_locals]
+    if exclude_caller:
+        current_frame = inspect.currentframe()
+        caller_frame = inspect.stack()[1].frame
+        f_locals = current_frame.f_locals
+        caller_f_locals = caller_frame.f_locals
+        excluded_source = [current_frame, caller_frame, f_locals, caller_f_locals]
+    else:
+        excluded_source = []
     for path in paths:
         source = path.src.theone
         if source in excluded_source:
@@ -133,7 +144,10 @@ def replace_all_refs(old, new):
         try:
             func = _RELATIONS[type(relation).__bases__[0]]
         except KeyError:
-            logger.warning(f"Unknown relation: {relation}, {type(source)}, {source}")
+            logger.warning(
+                f"Unknown relation: "
+                f"{type(relation).__bases__[0]}, {relation}, {type(source)}, {source}"
+            )
             continue
         func(source, relation.r, old, new)
 
@@ -142,3 +156,17 @@ def get_superclasses(cls: Type) -> List[str]:
     return [
         f"{superclass.__module__}.{superclass.__name__}" for superclass in cls.__mro__
     ]
+
+
+class Handler:
+    def __init__(self, container: List[Any], element: Any) -> None:
+        self.container = container
+        self.element = element
+        container.append(element)
+
+    def unregister(self):
+        self.container.remove(self.element)
+
+
+def register_handler(container: List[Any], element: Any) -> Handler:
+    return Handler(container, element)

@@ -2,8 +2,7 @@ import torch
 import torchvision
 
 import amanda  # noqa: F401
-
-from .trace_tool import TraceEffectivePathTool
+from examples.effective_path.pytorch.trace_tool import TraceEffectivePathTool
 
 """ graph_traverse(utils.Graph) -> None
 traverse a fw graph traced by TraceEffectivePathTool
@@ -22,22 +21,15 @@ def graph_traverse(graph):
                 continue
             _dfs(input_op)
 
-    op = graph.ops[-1]
+    op = graph.ops[-2]
 
     visited = list()
 
     _dfs(op)
 
 
-def test_graph_trace():
-    TEST_MODELS = {
-        "resnet": torchvision.models.resnet50,
-        "inception": torchvision.models.inception_v3,
-        "vgg": torchvision.models.vgg19_bn,
-    }
-
-    # model = TEST_MODELS["resnet"]()
-    model = TEST_MODELS["inception"]()
+def main():
+    model = torchvision.models.resnet50()
 
     x = torch.rand((4, 3, 500, 500))
 
@@ -47,4 +39,8 @@ def test_graph_trace():
         y = model(x)
         y[0].backward(torch.rand_like(y[0]))
 
-    # graph_traverse(tracer.graph)
+    graph_traverse(tracer.graph)
+
+
+if __name__ == "__main__":
+    main()

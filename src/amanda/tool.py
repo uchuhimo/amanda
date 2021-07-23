@@ -11,6 +11,7 @@ from amanda.event import (
     on_backward_op_call,
     on_op_call,
 )
+from amanda.lang import Handler, register_handler
 from amanda.threading import ThreadLocalStack
 
 ToolCallback = Union[EventCallback, OpCallback]
@@ -36,22 +37,19 @@ class Tool:
     def add_inst_for_op(
         self,
         callback: OpCallback,
+        backward: bool = False,
         require_outputs: bool = False,
     ) -> None:
-        if require_outputs:
-            self._event_to_callback[after_op_call] = callback
+        if backward:
+            if require_outputs:
+                self._event_to_callback[after_backward_op_call] = callback
+            else:
+                self._event_to_callback[on_backward_op_call] = callback
         else:
-            self._event_to_callback[on_op_call] = callback
-
-    def add_inst_for_backward_op(
-        self,
-        callback: OpCallback,
-        require_grad_inputs: bool = False,
-    ) -> None:
-        if require_grad_inputs:
-            self._event_to_callback[after_backward_op_call] = callback
-        else:
-            self._event_to_callback[on_backward_op_call] = callback
+            if require_outputs:
+                self._event_to_callback[after_op_call] = callback
+            else:
+                self._event_to_callback[on_op_call] = callback
 
     def get_callback(self, event: Event) -> ToolCallback:
         return self._event_to_callback[event]
@@ -105,18 +103,8 @@ def apply(*tools: Tool):
         _tools.pop()
 
 
-class Handler:
-    def __init__(self, scope, task) -> None:
-        self.scope = scope
-        self.task = task
-
-    def unregister(self):
-        self.scope.cleanup_tasks.remove(self.task)
-
-
 def register_cleanup_task(task: Callable[[], None]) -> Handler:
-    _apply_scopes.top().cleanup_tasks.append(task)
-    return Handler(_apply_scopes.top(), task)
+    return register_handler(_apply_scopes.top().cleanup_tasks, task)
 
 
 def get_tools() -> List[Tool]:

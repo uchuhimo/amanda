@@ -190,6 +190,21 @@ class Op:
     def json(self):
         return json.dumps(self.dict(), indent=4)
 
+    def to_expr(self) -> str:
+        inputs = [
+            f"{port.name}={edge.src.op.name}.{edge.src.name}"
+            for port in self.input_ports
+            for edge in port.in_edges
+        ]
+        output = self.name
+        if len(inputs) != 0:
+            args = ", ".join(inputs)
+            output += f"({args})"
+        if len(self.control_dependencies) != 0:
+            deps = ", ".join([op.name for op in self.control_dependencies])
+            output += "{" + deps + "}"
+        return output
+
 
 def create_op(
     type: str,
@@ -632,6 +647,9 @@ class Graph:
 
     def print(self) -> None:
         print(self.dump_to_str())
+
+    def list_exprs(self) -> List[str]:
+        return [op.to_expr() for op in self.ops]
 
 
 def create_graph(
