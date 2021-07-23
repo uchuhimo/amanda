@@ -36,3 +36,7 @@ def test_error_injection():
         output = model(input)
 
     print(output[0].shape)
+
+
+if __name__ == "__main__":
+    test_error_injection()
