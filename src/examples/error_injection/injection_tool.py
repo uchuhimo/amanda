@@ -5,7 +5,9 @@ class ErrorInjectionTool(amanda.Tool):
     def __init__(self, filter_fn, modify_fn):
         super(ErrorInjectionTool, self).__init__(namespace="amanda/pytorch")
 
-        self.add_inst_for_op(self.forward_injection, require_outputs=False)
+        self.add_inst_for_op(
+            self.forward_injection, backward=False, require_outputs=False
+        )
 
         self.injection_filter = filter_fn
         self.injection_flipper = modify_fn
