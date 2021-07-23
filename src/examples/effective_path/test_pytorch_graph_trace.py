@@ -2,8 +2,7 @@ import torch
 import torchvision
 
 import amanda  # noqa: F401
-
-from .trace_tool import TraceEffectivePathTool
+from examples.effective_path.trace_tool import TraceEffectivePathTool
 
 """ graph_traverse(utils.Graph) -> None
 traverse a fw graph traced by TraceEffectivePathTool
@@ -47,4 +46,4 @@ def test_graph_trace():
         y = model(x)
         y[0].backward(torch.rand_like(y[0]))
 
-    # graph_traverse(tracer.graph)
+    graph_traverse(tracer.graph)

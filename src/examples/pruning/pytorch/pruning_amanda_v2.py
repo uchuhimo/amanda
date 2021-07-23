@@ -1,3 +1,4 @@
+import amanda
 import os
 from timeit import default_timer as timer
 
@@ -6,7 +7,6 @@ import torch.nn as nn
 import torchvision
 import torchvision.transforms as transforms
 
-import amanda
 from examples.pruning.vector_wise_sparsity import create_mask
 
 
@@ -36,12 +36,12 @@ class PruneTool(amanda.Tool):
     def backward_instrumentation(self, context: amanda.OpContext):
         op = context.get_op()
         backward_op = context.get_backward_op()
-        print(
-            "bw_all",
-            op.__name__,
-            backward_op.__class__.__name__,
-            [tensor.shape for tensor in context.get_grad_inputs()],
-        )
+        # print(
+        #     "bw_all",
+        #     op.__name__,
+        #     backward_op.__class__.__name__,
+        #     [tensor.shape for tensor in context.get_grad_inputs()],
+        # )
         if (
             op.__name__ == "conv2d"
             and backward_op.__class__.__name__ == "CudnnConvolutionBackward"
@@ -89,13 +89,18 @@ class PruneTool(amanda.Tool):
 
     def mask_backward_gradient(self, weight_grad, mask):
         print("masked_bw")
-        return torch.mul(weight_grad, mask)
+        with torch.no_grad():
+            return torch.mul(weight_grad, mask)
 
     def get_mask(self, weight):
         return create_mask(weight)
 
 
 def main():
+
+    import logging
+
+    logging.basicConfig(level=logging.DEBUG)
 
     torch.manual_seed(42)
 
@@ -156,8 +161,8 @@ def main():
     total_step = len(train_loader)
     # curr_lr = learning_rate
 
-    tool = PruneTool()
-    # tool = None
+    # tool = PruneTool()
+    tool = None
 
     for epoch in range(num_epochs):
         for i, (images, labels) in enumerate(train_loader):

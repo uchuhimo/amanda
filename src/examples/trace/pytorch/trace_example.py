@@ -6,10 +6,13 @@ from examples.trace.pytorch.trace_tool import TraceTool
 
 
 def main():
-    model = torchvision.models.resnet50()
-    x = torch.rand((2, 3, 227, 227))
 
-    tool = TraceTool()
+    device = "cuda"
+
+    model = torchvision.models.resnet50().to(device)
+    x = torch.rand((2, 3, 227, 227)).to(device)
+
+    tool = TraceTool(output_dir="tmp/trace_resnet50/tracetool.txt")
 
     with amanda.tool.apply(tool):
 
