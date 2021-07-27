@@ -7,7 +7,7 @@ from tensorflow.python.ops.script_ops import _py_funcs
 
 import amanda
 from amanda import Graph, OutputPort
-from amanda.conversion.tensorflow import import_from_tf_func, insert_hooks
+from amanda.conversion.tensorflow import import_from_tf_func, insert_hooks_old
 from amanda.io.file import ensure_dir, root_dir
 from amanda.tests.test_tf_import_export import modify_model, run_model
 
@@ -136,7 +136,7 @@ def modify_graph_with_hook(graph: Graph):
     store_dir = root_dir() / "tmp" / "debug_info_with_new_hook" / arch_name
     ensure_dir(store_dir, is_file=False)
     tool = TestTool(store_dir)
-    insert_hooks(graph, [tool])
+    insert_hooks_old(graph, [tool])
 
 
 def main(arch_name, modify_graph_func):
