@@ -1548,7 +1548,6 @@ def insert_hooks_v4(
     remove_op_update = []
     updated_tensors = {}
     updated_ops = {}
-    session = tf.get_default_session()
 
     def collect_actions():
         actions = []
@@ -1565,7 +1564,6 @@ def insert_hooks_v4(
                 on_op_call,
                 op=op,
                 inputs=inputs,
-                session=session,
             )
             outputs = list(op.outputs)
             context.trigger(
@@ -1589,7 +1587,6 @@ def insert_hooks_v4(
                     op=op,
                     backward_op=backward_op,
                     grad_outputs=grad_outputs,
-                    session=session,
                 )
                 grad_inputs = list(backward_op.outputs)
                 backward_context.trigger(
@@ -1972,7 +1969,7 @@ def inject_hook(target: tf.estimator.Estimator) -> None:
     ):
         return train(
             input_fn,
-            [amanda_hook] if hooks is None else [*hooks],
+            [amanda_hook] if hooks is None else [*hooks, amanda_hook],
             steps,
             max_steps,
             saving_listeners,
