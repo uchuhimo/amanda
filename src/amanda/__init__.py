@@ -17,6 +17,7 @@ from .graph import (  # noqa: F401
     create_op,
 )
 from .import_hook import disabled, enabled, is_enabled  # noqa: F401
+from .mapping import Mapping  # noqa: F401
 from .namespace import (  # noqa: F401
     Namespace,
     Registry,

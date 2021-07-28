@@ -123,6 +123,9 @@ class OpContext(dict):
     def get_grad_inputs(self):
         return self["grad_inputs"]
 
+    def is_forward(self) -> bool:
+        return "backward_op" not in self
+
     def insert_before_op(self, func, inputs: List[int] = None, **kwargs):
         self.actions.append(
             Action(
