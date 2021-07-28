@@ -1,28 +1,25 @@
 import os
-import time
-import amanda
 import shutil
+import time
 
 import tensorflow as tf
-from pympler import tracker
-from examples.common.tensorflow.dataset.cifar100_main import input_fn
-from examples.common.tensorflow.utils import new_session_config
-from examples.common.tensorflow.dataset.envs import CIFAR100_RAW_DIR
-from amanda.io.file import abspath
-from examples.pruning.tensorflow.alexnet_imagenet_train import alexnet_model_fn
-from examples.pruning.tensorflow.pruning import PruningTool
-# from examples.pruning.tensorflow.pruning_test import PruningTool
-from examples.pruning.tensorflow.resnet_18_cifar100_train import cifar100_model_fn
 
+import amanda
+from amanda.io.file import abspath
 from examples.common.tensorflow.dataset import imagenet
+from examples.common.tensorflow.dataset.cifar100_main import input_fn
+from examples.common.tensorflow.dataset.envs import CIFAR100_RAW_DIR, IMAGENET_DIR
 from examples.common.tensorflow.dataset.imagenet_preprocessing import (
     alexnet_preprocess_image,
 )
+from examples.common.tensorflow.utils import new_session_config
+from examples.pruning.tensorflow.alexnet_imagenet_train import alexnet_model_fn
+from examples.pruning.tensorflow.pruning import PruningTool
+from examples.pruning.tensorflow.resnet_18_cifar100_train import cifar100_model_fn
 from examples.pruning.tensorflow.resnet_50_imagenet_train import (
     resnet_50_model_fn,
     validate_batch_size_for_multi_gpu,
 )
-from examples.common.tensorflow.dataset.envs import IMAGENET_DIR
 
 
 def train_resnet_18_cifar100(
@@ -31,7 +28,6 @@ def train_resnet_18_cifar100(
     epochs_between_evals: int = 10,
     multi_gpu: bool = False,
     label: str = None,
-    with_hook: bool = False,
     take_num: int = None,
 ):
     # Using the Winograd non-fused algorithms provides a small performance boost.
@@ -63,8 +59,6 @@ def train_resnet_18_cifar100(
         config=estimator_config,
         params={"batch_size": batch_size, "multi_gpu": multi_gpu, "loss_scale": 1},
     )
-    if with_hook:
-        amanda.tensorflow.inject_hook(classifier)
 
     # Train the model
     def train_input_fn():
@@ -80,9 +74,7 @@ def train_resnet_18_cifar100(
 
     # Set up training hook that logs the training accuracy every 100 steps.
     tensors_to_log = {"train_accuracy": "train_accuracy"}
-    logging_hook = tf.train.LoggingTensorHook(
-        tensors=tensors_to_log, every_n_iter=100
-    )
+    logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=100)
     start_time = time.time()
     classifier.train(input_fn=train_input_fn, hooks=[logging_hook])
     end_time = time.time()
@@ -95,7 +87,6 @@ def train_alexnet_imagenet(
     epochs_between_evals: int = 1,
     multi_gpu: bool = False,
     label: str = None,
-    with_hook: bool = False,
     take_num: int = None,
 ):
     tf.logging.set_verbosity(tf.logging.INFO)
@@ -127,8 +118,6 @@ def train_alexnet_imagenet(
         config=estimator_config,
         params={"multi_gpu": multi_gpu, "batch_size": batch_size},
     )
-    if with_hook:
-        amanda.tensorflow.inject_hook(classifier)
 
     # Evaluate the model and print results
     def train_input_fn():
@@ -147,9 +136,7 @@ def train_alexnet_imagenet(
         return input
 
     tensors_to_log = {"train_accuracy": "train_accuracy"}
-    logging_hook = tf.train.LoggingTensorHook(
-        tensors=tensors_to_log, every_n_iter=100
-    )
+    logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=100)
     start_time = time.time()
     classifier.train(input_fn=train_input_fn, hooks=[logging_hook])
     end_time = time.time()
@@ -170,7 +157,6 @@ def resnet_50_train(
     epochs_between_evals: int = 1,
     multi_gpu: bool = False,
     label: str = None,
-    with_hook: bool = False,
     take_num: int = None,
 ):
     # Using the Winograd non-fused algorithms provides a small performance boost.
@@ -204,8 +190,6 @@ def resnet_50_train(
         config=estimator_config,
         params={"batch_size": batch_size, "multi_gpu": multi_gpu},
     )
-    if with_hook:
-        amanda.tensorflow.inject_hook(classifier)
 
     # Train the model
     def train_input_fn():
@@ -223,9 +207,7 @@ def resnet_50_train(
 
     # Set up training hook that logs the training accuracy every 100 steps.
     tensors_to_log = {"train_accuracy": "train_accuracy"}
-    logging_hook = tf.train.LoggingTensorHook(
-        tensors=tensors_to_log, every_n_iter=100
-    )
+    logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=100)
     # tr = tracker.SummaryTracker()
     # tr_hook = TrackerHook(tr)
     start_time = time.time()
@@ -254,7 +236,6 @@ def main_v1(train_fn, model_name):
     tool = PruningTool(disabled=True)
     with amanda.tool.apply(tool):
         train_with_hook_time_warmup = train(
-            with_hook=True,
             take_num=1,
             epochs_between_evals=epochs_between_evals,
         )
@@ -264,7 +245,6 @@ def main_v1(train_fn, model_name):
     tool = PruningTool(disabled=False)
     with amanda.tool.apply(tool):
         train_with_pruning_time_warmup = train(
-            with_hook=True,
             take_num=1,
             epochs_between_evals=epochs_between_evals,
         )
@@ -282,7 +262,6 @@ def main_v1(train_fn, model_name):
     tool = PruningTool(disabled=True)
     with amanda.tool.apply(tool):
         train_with_hook_time = train(
-            with_hook=True,
             take_num=take_num + 1,
             epochs_between_evals=epochs_between_evals,
         )
@@ -292,18 +271,31 @@ def main_v1(train_fn, model_name):
     tool = PruningTool(disabled=False)
     with amanda.tool.apply(tool):
         train_with_pruning_time = train(
-            with_hook=True,
             take_num=take_num + 1,
             epochs_between_evals=epochs_between_evals,
         )
 
-    hook_overhead = ((train_with_hook_time - train_with_hook_time_warmup) / (train_time - train_time_warmup)) - 1
-    pruning_overhead = ((train_with_pruning_time - train_with_pruning_time_warmup) / (train_time - train_time_warmup)) - hook_overhead - 1
+    hook_overhead = (
+        (train_with_hook_time - train_with_hook_time_warmup)
+        / (train_time - train_time_warmup)
+    ) - 1
+    pruning_overhead = (
+        (
+            (train_with_pruning_time - train_with_pruning_time_warmup)
+            / (train_time - train_time_warmup)
+        )
+        - hook_overhead
+        - 1
+    )
     hook_overhead_warmup = (train_with_hook_time_warmup / train_time_warmup) - 1
-    pruning_overhead_warmup = (train_with_pruning_time_warmup / train_time_warmup) - hook_overhead_warmup - 1
+    pruning_overhead_warmup = (
+        (train_with_pruning_time_warmup / train_time_warmup) - hook_overhead_warmup - 1
+    )
     print(f"train: {(train_time - train_time_warmup) / take_num}s")
-    print(f"train_with_hook: {(train_with_hook_time - train_with_hook_time_warmup) / take_num}s")
-    print(f"train_with_pruning: {(train_with_pruning_time - train_with_pruning_time_warmup) / take_num}s")
+    time = (train_with_hook_time - train_with_hook_time_warmup) / take_num
+    print(f"train_with_hook: {time}s")
+    time = (train_with_pruning_time - train_with_pruning_time_warmup) / take_num
+    print(f"train_with_pruning: {time}s")
     print(f"train/warmup: {train_time_warmup}s")
     print(f"train_with_hook/warmup: {train_with_hook_time_warmup}s")
     print(f"train_with_pruning/warmup: {train_with_pruning_time_warmup}s")
@@ -333,7 +325,6 @@ def main(train_fn, model_name, prune_matmul: bool = True):
     tool = PruningTool(disabled=False, prune_matmul=prune_matmul)
     with amanda.tool.apply(tool):
         train_with_pruning_time = train(
-            with_hook=True,
             take_num=take_num,
             epochs_between_evals=epochs_between_evals,
         )
@@ -353,7 +344,6 @@ def main(train_fn, model_name, prune_matmul: bool = True):
     tool = PruningTool(disabled=True, prune_matmul=prune_matmul)
     with amanda.tool.apply(tool):
         train_with_hook_time = train(
-            with_hook=True,
             take_num=take_num,
             epochs_between_evals=epochs_between_evals,
         )
@@ -371,7 +361,9 @@ def main(train_fn, model_name, prune_matmul: bool = True):
 
     hook_overhead = (train_with_hook_time / train_time) - 1
     pruning_overhead = (train_with_pruning_time / train_time) - hook_overhead - 1
-    # pruning_overhead_warmup = (train_with_pruning_time_warmup / train_time) - hook_overhead - 1
+    # pruning_overhead_warmup = (
+    #     (train_with_pruning_time_warmup / train_time) - hook_overhead - 1
+    # )
     print(f"train: {train_time*1000}ms")
     print(f"train_with_hook: {train_with_hook_time*1000}ms")
     print(f"train_with_pruning: {train_with_pruning_time*1000}ms")

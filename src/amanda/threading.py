@@ -22,3 +22,6 @@ class ThreadLocalStack(threading.local):
 
     def __iter__(self):
         return reversed(self.stack).__iter__()
+
+    def __len__(self):
+        return len(self.stack)

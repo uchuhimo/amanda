@@ -17,8 +17,8 @@ from amanda.import_hook import (
     MatchedClassUpdater,
     MatchedFunctionUpdater,
     MethodUpdater,
+    check_enabled,
     disabled,
-    is_enabled,
     register_updater,
 )
 from amanda.lang import get_superclasses
@@ -268,59 +268,54 @@ def function_wrapper(func):
     def wrapper(*args, **kwargs):
         import torch
 
-        if is_enabled():
-            with disabled():
-                tools = get_tools()
-                if len(tools) == 0:
-                    return func(*args, **kwargs)
-                input_grad_fns = unpack_input_grad_fns(args) + unpack_input_grad_fns(
-                    kwargs.values()
-                )
-                context = OpContext(tools=tools)
-                inputs = [*args, kwargs]
-                context.trigger(
-                    on_op_call,
-                    op=func,
-                    inputs=inputs,
-                )
-                for action in list(context.actions):
-                    if action.type == "insert_before_op":
-                        apply_insert_before_op(action, inputs)
-                        context.actions.remove(action)
-                is_replaced = False
-                for action in list(context.actions):
-                    if action.type == "replace_op":
-                        output = apply_replace_op(action, inputs)
-                        context.actions.remove(action)
-                        is_replaced = True
-                        break
-                if not is_replaced:
-                    output = func(*args, **kwargs)
-                if isinstance(output, torch.Tensor):
-                    outputs = [output]
-                    is_output_nested = True
-                else:
-                    outputs = output
-                    is_output_nested = False
-                context.trigger(
-                    after_op_call,
-                    outputs=outputs,
-                )
-                for action in list(context.actions):
-                    if action.type == "insert_after_op":
-                        apply_insert_after_op(action, outputs)
-                        context.actions.remove(action)
-                if is_output_nested:
-                    output = outputs[0]
-                else:
-                    output = outputs
-                assert len(context.actions) == 0
-                register_bw_events_recursively(context, output, input_grad_fns)
-                return output
-        else:
-            return func(*args, **kwargs)
+        with disabled():
+            tools = get_tools()
+            input_grad_fns = unpack_input_grad_fns(args) + unpack_input_grad_fns(
+                kwargs.values()
+            )
+            context = OpContext(tools=tools)
+            inputs = [*args, kwargs]
+            context.trigger(
+                on_op_call,
+                op=func,
+                inputs=inputs,
+            )
+            for action in list(context.actions):
+                if action.type == "insert_before_op":
+                    apply_insert_before_op(action, inputs)
+                    context.actions.remove(action)
+            is_replaced = False
+            for action in list(context.actions):
+                if action.type == "replace_op":
+                    output = apply_replace_op(action, inputs)
+                    context.actions.remove(action)
+                    is_replaced = True
+                    break
+            if not is_replaced:
+                output = func(*args, **kwargs)
+            if isinstance(output, torch.Tensor):
+                outputs = [output]
+                is_output_nested = True
+            else:
+                outputs = output
+                is_output_nested = False
+            context.trigger(
+                after_op_call,
+                outputs=outputs,
+            )
+            for action in list(context.actions):
+                if action.type == "insert_after_op":
+                    apply_insert_after_op(action, outputs)
+                    context.actions.remove(action)
+            if is_output_nested:
+                output = outputs[0]
+            else:
+                output = outputs
+            assert len(context.actions) == 0
+            register_bw_events_recursively(context, output, input_grad_fns)
+            return output
 
-    return wrapper
+    return check_enabled(func, wrapper)
 
 
 class ModuleUpdater(MatchedClassUpdater):

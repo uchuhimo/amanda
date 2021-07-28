@@ -16,7 +16,6 @@ from tensorflow.core.framework.versions_pb2 import VersionDef
 from tensorflow.core.protobuf.meta_graph_pb2 import AssetFileDef, SignatureDef
 from tensorflow.core.protobuf.saved_object_graph_pb2 import SavedObjectGraph
 from tensorflow.core.protobuf.saver_pb2 import SaverDef
-from tensorflow.python import pywrap_tensorflow as tf_session
 from tensorflow.python import tensor_shape, types_pb2
 from tensorflow.python.eager.context import eager_mode
 from tensorflow.python.framework import dtypes, ops
@@ -33,13 +32,9 @@ from tensorflow.python.framework.op_def_library import (
 )
 from tensorflow.python.ops.script_ops import EagerFunc, _maybe_copy_to_context_device
 from tensorflow.python.ops.script_ops import _py_funcs as tf_py_funcs
-from tensorflow.python.util import compat, function_utils
+from tensorflow.python.util import compat
 
 from amanda.adapter import Adapter, get_adapter_registry
-from amanda.conversion.tensorflow_updater import (
-    record_session_run,
-    session_run_in_graph,
-)
 from amanda.conversion.utils import to_proto, without_internal_attrs
 from amanda.event import (
     EventContext,
@@ -56,12 +51,7 @@ from amanda.event import (
 )
 from amanda.exception import MismatchNamespaceError
 from amanda.graph import Graph, Op, OutputPort, create_graph, create_op
-from amanda.import_hook import (
-    InstScopeHook,
-    disabled,
-    is_enabled,
-    register_inst_scope_hook,
-)
+from amanda.import_hook import InstScopeHook, disabled
 from amanda.io.serde import (
     ProtoToDictSerde,
     Serde,
@@ -73,7 +63,7 @@ from amanda.io.serde import (
 )
 from amanda.lang import replace_all_refs
 from amanda.namespace import Namespace, default_namespace
-from amanda.tool import Tool, get_tools, register_cleanup_task
+from amanda.tool import Tool
 from amanda.type import DataType
 
 _namespace = default_namespace() / Namespace("tensorflow")
@@ -1166,9 +1156,6 @@ def insert_hooks(
 ) -> None:
     if len(tools) == 0:
         return
-    is_hooked = len(tf_graph.get_collection("amanda.is_hooked")) != 0
-    if is_hooked:
-        raise RuntimeError("graph is hooked")
     tf_graph_finalized = tf_graph._finalized
     tf_graph._finalized = False
     forward_ops = forward_ops or set()
@@ -1308,14 +1295,6 @@ def insert_hooks(
                         consumer._update_input(input_index, new_output)
                         break
 
-    with disabled():
-        actions = collect_actions()
-        apply_actions(actions)
-    update_graph(tf_graph)
-    tf_graph.add_to_collection("amanda.is_hooked", True)
-    if tf_graph_finalized:
-        tf_graph._finalized = True
-
     def get_from_new_graph(node: Union[tf.Operation, tf.Tensor]):
         name = node.name
         if ":" in name:
@@ -1329,6 +1308,15 @@ def insert_hooks(
             else:
                 return node
 
+    with disabled():
+        actions = collect_actions()
+        apply_actions(actions)
+    update_graph(tf_graph)
+    is_hooked = len(tf_graph.get_collection("amanda.is_hooked")) != 0
+    if not is_hooked:
+        tf_graph.add_to_collection("amanda.is_hooked", True)
+    if tf_graph_finalized:
+        tf_graph._finalized = True
     if spec is not None:
         with tf_graph.as_default():
             updated_spec = {}
@@ -1488,163 +1476,6 @@ def get_executed_ops(tf_graph, target):
     executed_ops = set()
     walk_op(tf_graph.get_operation_by_name(target))
     return executed_ops
-
-
-def update_graph_in_session(session, tf_graph):
-    opts = tf_session.TF_NewSessionOptions(
-        target=session._target, config=session._config
-    )
-    try:
-        new_raw_session = tf_session.TF_NewSessionRef(tf_graph._c_graph, opts)
-        session._session = new_raw_session
-    finally:
-        tf_session.TF_DeleteSessionOptions(opts)
-
-
-def inject_hook_to_graph(tf_graph: tf.Graph) -> None:
-    insert_hooks(
-        tf_graph, None, get_tools(), {op.name for op in tf_graph.get_operations()}
-    )
-    update_graph_in_session(tf.get_default_session(), tf_graph)
-
-
-def inject_hook(target: tf.estimator.Estimator) -> None:
-    from amanda.conversion.tensorflow_updater import forward_ops_in_graph
-
-    def model_fn_wrapper(model_fn):
-        def new_model_fn(features, labels, mode, params, config):
-            model_fn_args = function_utils.fn_args(model_fn)
-            kwargs = {}
-            if "labels" in model_fn_args:
-                kwargs["labels"] = labels
-            else:
-                if labels is not None:
-                    raise ValueError(
-                        "model_fn does not take labels, but input_fn returns labels."
-                    )
-            if "mode" in model_fn_args:
-                kwargs["mode"] = mode
-            if "params" in model_fn_args:
-                kwargs["params"] = params
-            if "config" in model_fn_args:
-                kwargs["config"] = config
-            if not is_enabled():
-                return model_fn(features, **kwargs)
-            nonlocal forward_ops
-            nonlocal tf_graph
-            nonlocal spec
-            tf_graph = tf.get_default_graph()
-            input_ops = set(op.name for op in tf_graph.get_operations())
-            filter_hook = FilterHook()
-            handler = register_inst_scope_hook(filter_hook)
-            spec = model_fn(features, **kwargs)
-            handler.unregister()
-            if tf_graph in forward_ops_in_graph:
-                forward_ops = forward_ops_in_graph[tf_graph] - input_ops
-            else:
-                forward_ops = (
-                    set(op.name for op in tf_graph.get_operations()) - input_ops
-                )
-            forward_ops = forward_ops - filter_hook.disabled_ops
-            return spec
-
-        return new_model_fn
-
-    def after_create_session(session, coord):
-        nonlocal forward_ops
-        nonlocal tf_graph
-        nonlocal spec
-        with session.as_default():
-            insert_hooks(tf_graph, spec, tools, forward_ops)
-        update_graph_in_session(session, tf_graph)
-        record_session_run.flag = False
-        if tf_graph in session_run_in_graph:
-            for args in session_run_in_graph[tf_graph]:
-                session.run(*args)
-            session_run_in_graph[tf_graph].clear()
-
-        forward_ops = None
-        tf_graph = None
-        spec = None
-
-    def begin():
-        record_session_run.flag = True
-
-    def train_with_tools(
-        target_self,
-        input_fn,
-        hooks=None,
-        steps=None,
-        max_steps=None,
-        saving_listeners=None,
-    ):
-        return train(
-            input_fn,
-            [amanda_hook] if hooks is None else [*hooks, amanda_hook],
-            steps,
-            max_steps,
-            saving_listeners,
-        )
-
-    def predict_with_tools(
-        target_self,
-        input_fn,
-        predict_keys=None,
-        hooks=None,
-        checkpoint_path=None,
-        yield_single_examples=True,
-    ):
-        return predict(
-            input_fn,
-            predict_keys,
-            [amanda_hook] if hooks is None else [*hooks, amanda_hook],
-            checkpoint_path,
-            yield_single_examples,
-        )
-
-    def evaluate_with_tools(
-        target_self,
-        input_fn,
-        steps=None,
-        hooks=None,
-        checkpoint_path=None,
-        name=None,
-    ):
-        return evaluate(
-            input_fn,
-            steps,
-            [amanda_hook] if hooks is None else [*hooks, amanda_hook],
-            checkpoint_path,
-            name,
-        )
-
-    def cleanup():
-        target._model_fn = target._original_model_fn
-        target.train = target._original_train
-        target.predict = target._original_predict
-        target.evaluate = target._original_evaluate
-        _py_funcs.clear()
-
-    forward_ops = None
-    tf_graph = None
-    spec = None
-    tools = get_tools()
-    target._original_model_fn = target._model_fn
-    target._model_fn = model_fn_wrapper(target._model_fn)
-    amanda_hook = FuncSessionHook(
-        begin=begin,
-        after_create_session=after_create_session,
-    )
-    train = target.train
-    target._original_train = train
-    target.train = MethodType(train_with_tools, target)
-    predict = target.predict
-    target._original_predict = predict
-    target.predict = MethodType(predict_with_tools, target)
-    evaluate = target.evaluate
-    target._original_evaluate = evaluate
-    target.evaluate = MethodType(evaluate_with_tools, target)
-    register_cleanup_task(cleanup)
 
 
 get_adapter_registry().register_adapter(tf.estimator.Estimator, EstimatorAdapter())

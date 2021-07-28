@@ -1,3 +1,4 @@
+import itertools
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Mapping, Set, Union
@@ -84,23 +85,22 @@ class Tool:
 @dataclass
 class ApplyScope:
     cleanup_tasks: List[Callable[[], None]] = field(default_factory=list)
+    tools: List[Tool] = field(default_factory=list)
 
 
-_tools = ThreadLocalStack()
 _apply_scopes = ThreadLocalStack()
 
 
 @contextmanager
 def apply(*tools: Tool):
+    apply_scope = ApplyScope()
     for tool in tools:
-        _tools.push(tool)
-    _apply_scopes.push(ApplyScope())
+        apply_scope.tools.append(tool)
+    _apply_scopes.push(apply_scope)
     yield
-    scope = _apply_scopes.pop()
-    for task in scope.cleanup_tasks:
+    _apply_scopes.pop()
+    for task in apply_scope.cleanup_tasks:
         task()
-    for _ in tools:
-        _tools.pop()
 
 
 def register_cleanup_task(task: Callable[[], None]) -> Handler:
@@ -108,4 +108,9 @@ def register_cleanup_task(task: Callable[[], None]) -> Handler:
 
 
 def get_tools() -> List[Tool]:
-    return list(_tools)
+    if len(_apply_scopes) == 1:
+        return _apply_scopes.top().tools
+    elif len(_apply_scopes) == 0:
+        return []
+    else:
+        return list(itertools.chain([scope.tools for scope in _apply_scopes]))

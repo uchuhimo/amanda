@@ -17,12 +17,12 @@ import os
 
 import fire
 import tensorflow as tf
-import amanda
 
-from examples.common.tensorflow.dataset.cifar100_main import input_fn
-from examples.common.tensorflow.utils import new_session_config
-from examples.common.tensorflow.dataset.envs import CIFAR100_RAW_DIR
+import amanda
 from amanda.io.file import abspath
+from examples.common.tensorflow.dataset.cifar100_main import input_fn
+from examples.common.tensorflow.dataset.envs import CIFAR100_RAW_DIR
+from examples.common.tensorflow.utils import new_session_config
 from examples.pruning.tensorflow.pruning import PruningTool
 from examples.pruning.tensorflow.resnet_18_cifar100_train import cifar100_model_fn
 
@@ -52,7 +52,9 @@ def train(
             model_function, loss_reduction=tf.losses.Reduction.MEAN
         )
 
-    checkpoint_file = tf.train.latest_checkpoint(abspath("tmp/tf/resnet-18-cifar100/model_train/"))
+    checkpoint_file = tf.train.latest_checkpoint(
+        abspath("tmp/tf/resnet-18-cifar100/model_train/")
+    )
     warm_start = tf.estimator.WarmStartSettings(ckpt_to_initialize_from=checkpoint_file)
     estimator_config = tf.estimator.RunConfig(
         save_checkpoints_secs=60 * 60,
@@ -69,8 +71,6 @@ def train(
 
     tool = PruningTool()
     with amanda.tool.apply(tool):
-        amanda.tensorflow.inject_hook(classifier)
-
         for epoch in range(train_epochs // epochs_between_evals):
             # Train the model
             def train_input_fn():
