@@ -6,6 +6,7 @@ import torchvision.models as models
 from loguru import logger
 
 import amanda
+from examples.common.pytorch.MOE.moe import MoE
 from examples.trace.pytorch.trace_tool import TraceTool
 
 logger.remove()
@@ -18,7 +19,8 @@ logger.add(sys.stderr, level="INFO")
         # models.resnet18,
         # models.inception_v3,
         # models.resnet50,
-        torch.nn.RNN,
+        # torch.nn.RNN,
+        MoE,
         pytest.param(models.inception_v3, marks=pytest.mark.slow),
         pytest.param(models.alexnet, marks=pytest.mark.slow),
         # models.vgg11,
@@ -39,6 +41,12 @@ def model_and_input(request):
         )
         model.eval()
         return model, torch.rand(16, 2, 128)
+    if request.param is MoE:
+        model = request.param(
+            input_size=128, output_size=10, num_experts=4, hidden_size=128, k=2
+        )
+        model.eval()
+        return model, torch.rand(1, 128)
     model = request.param(pretrained=False, progress=False)
     model.eval()
     if isinstance(model, models.Inception3):
@@ -56,7 +64,10 @@ def test_pytorch_trace(model_and_input):
 
     with amanda.tool.apply(tool):
         y = model(x)
-        if isinstance(y, tuple):
+        if isinstance(model, MoE):
+            y[0].backward(torch.rand_like(y[0]), retain_graph=True)
+            y[1].backward(torch.rand_like(y[1]))
+        elif isinstance(y, tuple):
             y[0].backward(torch.rand_like(y[0]))
         else:
             y.backward(torch.rand_like(y))
