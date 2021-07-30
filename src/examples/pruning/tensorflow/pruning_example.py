@@ -32,8 +32,6 @@ def train(
     epochs_between_evals: int = 1,
     multi_gpu: bool = False,
     label: str = None,
-    with_hook: bool = True,
-    take_num: int = None,
 ):
     # Using the Winograd non-fused algorithms provides a small performance boost.
     os.environ["TF_ENABLE_WINOGRAD_NONFUSED"] = "1"
@@ -64,8 +62,6 @@ def train(
         config=estimator_config,
         params={"batch_size": batch_size, "multi_gpu": multi_gpu, "loss_scale": 1},
     )
-    if with_hook:
-        amanda.tensorflow.inject_hook(classifier)
 
     # Train the model
     def train_input_fn():
@@ -75,8 +71,6 @@ def train(
             batch_size=batch_size,
             num_epochs=epochs_between_evals,
         )
-        if take_num is not None:
-            input = input.take(take_num)
         return input
 
     # Set up training hook that logs the training accuracy every 100 steps.

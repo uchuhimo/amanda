@@ -14,19 +14,17 @@
 """Convolutional Neural Network Estimator for MNIST, built with tf.layers."""
 
 import os
+import shutil
 import time
 from typing import Set
-import amanda
-import shutil
 
 import tensorflow as tf
 
-from examples.common.tensorflow.dataset.cifar100_main import input_fn
-from examples.common.tensorflow.utils import new_session_config
-from examples.common.tensorflow.dataset.envs import CIFAR100_RAW_DIR
+import amanda
 from amanda.io.file import abspath
-# from examples.pruning.tensorflow.pruning import PruningTool
-# from examples.pruning.tensorflow.pruning_test import PruningTool
+from examples.common.tensorflow.dataset.cifar100_main import input_fn
+from examples.common.tensorflow.dataset.envs import CIFAR100_RAW_DIR
+from examples.common.tensorflow.utils import new_session_config
 from examples.pruning.tensorflow.pruning_v2 import PruningTool
 from examples.pruning.tensorflow.resnet_18_cifar100_train import cifar100_model_fn
 
@@ -37,7 +35,6 @@ def train(
     epochs_between_evals: int = 1,
     multi_gpu: bool = False,
     label: str = None,
-    with_hook: bool = False,
     take_num: int = None,
 ):
     # Using the Winograd non-fused algorithms provides a small performance boost.
@@ -69,8 +66,6 @@ def train(
         config=estimator_config,
         params={"batch_size": batch_size, "multi_gpu": multi_gpu, "loss_scale": 1},
     )
-    if with_hook:
-        amanda.tensorflow.inject_hook(classifier)
 
     # Train the model
     def train_input_fn():
@@ -86,9 +81,7 @@ def train(
 
     # Set up training hook that logs the training accuracy every 100 steps.
     tensors_to_log = {"train_accuracy": "train_accuracy"}
-    logging_hook = tf.train.LoggingTensorHook(
-        tensors=tensors_to_log, every_n_iter=100
-    )
+    logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=100)
     classifier.train(input_fn=train_input_fn, hooks=[logging_hook])
 
     print(label)
@@ -129,20 +122,16 @@ class DummyTool(amanda.Tool):
             amanda.tools.EagerContextTool(),
         )
         self.register_event(
-            amanda.event.before_op_executed,
-            self.test_before_op_executed
+            amanda.event.before_op_executed, self.test_before_op_executed
         )
-        self.register_event(
-            amanda.event.after_op_executed,
-            self.test_after_op_executed
-        )
+        self.register_event(amanda.event.after_op_executed, self.test_after_op_executed)
         self.register_event(
             amanda.event.before_backward_op_executed,
-            self.test_before_backward_op_executed
+            self.test_before_backward_op_executed,
         )
         self.register_event(
             amanda.event.after_backward_op_executed,
-            self.test_after_backward_op_executed
+            self.test_after_backward_op_executed,
         )
         self.debug = debug
         self.before_executed_ops: Set[str] = set()
@@ -153,7 +142,9 @@ class DummyTool(amanda.Tool):
     def test_before_op_executed(self, context: amanda.EventContext):
         if self.debug:
             op = context["op"]
-            print("before", op.type, [input.dtype for input in context["inputs"]], op.name)
+            print(
+                "before", op.type, [input.dtype for input in context["inputs"]], op.name
+            )
             self.before_executed_ops.add(op.name)
         return
 
@@ -167,7 +158,9 @@ class DummyTool(amanda.Tool):
         if self.debug:
             op = context["op"]
             backward_op = context["backward_op"]
-            print("before_backward", op.type, op.name, backward_op.type, backward_op.name)
+            print(
+                "before_backward", op.type, op.name, backward_op.type, backward_op.name
+            )
             self.before_executed_backward_ops.add(backward_op.name)
         return
 
@@ -201,7 +194,6 @@ def main():
     tool = DummyTool()
     with amanda.tool.apply(tool):
         train(
-            with_hook=True,
             take_num=take_num,
             epochs_between_evals=epochs_between_evals,
         )
@@ -209,7 +201,7 @@ def main():
     train_with_hook_time = end_time - start_time
     print(f"train_with_hook: {train_with_hook_time}")
 
-    overhead = (train_with_hook_time / train_time)
+    overhead = train_with_hook_time / train_time
     print(f"overhead: {overhead}")
 
 
@@ -235,7 +227,6 @@ def main_pruning():
     tool = PruningTool(disabled=True)
     with amanda.tool.apply(tool):
         train(
-            with_hook=True,
             take_num=take_num,
             epochs_between_evals=epochs_between_evals,
         )
@@ -248,7 +239,6 @@ def main_pruning():
     tool = PruningTool(disabled=False)
     with amanda.tool.apply(tool):
         train(
-            with_hook=True,
             take_num=take_num,
             epochs_between_evals=epochs_between_evals,
         )
@@ -267,8 +257,8 @@ def main_pruning():
 def test():
     tool = DummyTool(debug=True)
     with amanda.tool.apply(tool):
-        train(batch_size=1, with_hook=True, take_num=1)
-        # train(batch_size=1, with_hook=False, take_num=1)
+        train(batch_size=1, take_num=1)
+        # train(batch_size=1, take_num=1)
     assert len(tool.before_executed_ops) != 0
     assert tool.before_executed_ops == tool.after_executed_ops
     assert len(tool.before_executed_backward_ops) != 0
@@ -278,7 +268,7 @@ def test():
 def test_pruning():
     tool = PruningTool(disabled=False)
     with amanda.tool.apply(tool):
-        train(batch_size=1, with_hook=True, take_num=1)
+        train(batch_size=1, take_num=1)
 
 
 if __name__ == "__main__":

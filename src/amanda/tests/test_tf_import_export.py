@@ -168,8 +168,6 @@ def run_model_with_estimator(arch_name, model_dir, input, tool=None):
         )
         if tool is not None:
             amanda.apply(estimator, tool)
-        else:
-            amanda.tensorflow.inject_hook(estimator)
         estimator.train(input_fn=input_fn, steps=1)
     finally:
         shutil.rmtree(model_dir)
@@ -424,12 +422,11 @@ class HookGraphTool(amanda.Tool):
 def test_tf_inject_hook_to_graph():
     tool = HookGraphTool()
     with amanda.tool.apply(tool):
-        with tf.Graph().as_default() as tf_graph:
+        with tf.Graph().as_default():
             input1 = tf.constant([1, 2, 3, 4, 5, 6])
             input2 = tf.constant([1, 2, 3, 4, 5, 6])
             output = input1 + input2
             with tf.Session() as session:
-                amanda.tensorflow.inject_hook_to_graph(tf_graph)
                 np_output = session.run(output.name)
     assert tool.count_before == 3
     assert tool.count_after == 3
