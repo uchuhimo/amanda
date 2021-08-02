@@ -285,22 +285,20 @@ class TestTool(amanda.Tool):
         op_set.add(str(store_dir))
         if len(tensors) == 0:
             return
-        new_tensors = []
-        for index, tensor in enumerate(tensors):
-            if not tensor.dtype._is_ref_dtype:
-                new_tensors.append(
-                    tf.numpy_function(
-                        partial(
-                            self.store_as_numpy,
-                            store_dir=f"{store_dir}/{index}",
-                            tensor_set=tensor_set,
-                        ),
-                        [tensor],
-                        tensor.dtype,
-                    )
-                )
-            else:
-                new_tensors.append(tensor)
+        new_tensors = [
+            tf.numpy_function(
+                partial(
+                    self.store_as_numpy,
+                    store_dir=f"{store_dir}/{index}",
+                    tensor_set=tensor_set,
+                ),
+                [tensor],
+                tensor.dtype,
+            )
+            if not tensor.dtype._is_ref_dtype
+            else tensor
+            for index, tensor in enumerate(tensors)
+        ]
         return new_tensors
 
     def instrumentation(self, context: OpContext):
@@ -347,7 +345,6 @@ class TestTool(amanda.Tool):
 
 def test_tf_modify_graph_with_new_hook(arch_name):
     input = np.random.rand(*input_shapes[arch_name])
-    run_model(arch_name, model_dir="downloads/model", input=input)
     store_dir = root_dir() / "tmp" / "debug_info_with_new_hook" / arch_name
     tool = TestTool(store_dir)
     with amanda.tool.apply(tool):
@@ -386,11 +383,11 @@ class HookGraphTool(amanda.Tool):
 
     def store_before_tensor(self, input: np.array):
         self.count_before_tensor += 1
-        return input + 1
+        return input + 100
 
     def store_after_tensor(self, input: np.array):
         self.count_after_tensor += 1
-        return input + 2
+        return input + 10
 
     def count_before_op(self, *tensors):
         self.count_before += 1
@@ -400,6 +397,8 @@ class HookGraphTool(amanda.Tool):
                 [tensor],
                 tensor.dtype,
             )
+            if not tensor.dtype._is_ref_dtype
+            else tensor
             for tensor in tensors
         ]
 
@@ -411,6 +410,8 @@ class HookGraphTool(amanda.Tool):
                 [tensor],
                 tensor.dtype,
             )
+            if not tensor.dtype._is_ref_dtype
+            else tensor
             for tensor in tensors
         ]
 
@@ -423,8 +424,8 @@ def test_tf_inject_hook_to_graph():
     tool = HookGraphTool()
     with amanda.tool.apply(tool):
         with tf.Graph().as_default():
-            input1 = tf.constant([1, 2, 3, 4, 5, 6])
-            input2 = tf.constant([1, 2, 3, 4, 5, 6])
+            input1 = tf.constant([1, 2, 3, 4])
+            input2 = tf.constant([1, 2, 3, 4])
             output = input1 + input2
             with tf.Session() as session:
                 np_output = session.run(output.name)
@@ -432,7 +433,43 @@ def test_tf_inject_hook_to_graph():
     assert tool.count_after == 3
     assert tool.count_before_tensor == 2
     assert tool.count_after_tensor == 2
-    np.testing.assert_array_equal(np_output, [8, 10, 12, 14, 16, 18])
+    np.testing.assert_array_equal(np_output, [222, 224, 226, 228])
+
+
+def test_tf_inject_multiple_hooks_to_graph():
+    tool = HookGraphTool()
+    tool2 = HookGraphTool()
+    with amanda.tool.apply(tool, tool2):
+        with tf.Graph().as_default():
+            input1 = tf.constant([1, 2, 3, 4])
+            input2 = tf.constant([1, 2, 3, 4])
+            output = input1 + input2
+            with tf.Session() as session:
+                np_output = session.run(output.name)
+    assert tool.count_before == 3
+    assert tool.count_after == 3
+    assert tool.count_before_tensor == 2
+    assert tool.count_after_tensor == 2
+    assert tool2.count_before == 3
+    assert tool2.count_after == 3
+    assert tool2.count_before_tensor == 2
+    assert tool2.count_after_tensor == 2
+    np.testing.assert_array_equal(np_output, [442, 444, 446, 448])
+
+
+def test_session_run_with_side_effect():
+    tool = HookGraphTool()
+    with tf.Graph().as_default():
+        global_step = tf.train.create_global_step()
+        output = global_step + 1
+        with tf.Session() as session:
+            session.run(tf.initialize_all_variables())
+            session.run(tf.assign_add(global_step, 1))
+            with amanda.tool.apply(tool):
+                np_global_step = session.run(global_step)
+                np_output = session.run(output)
+    np.testing.assert_array_equal(np_global_step, 221)
+    np.testing.assert_array_equal(np_output, 442)
 
 
 def check_modified_graph(graph_def, new_graph_def):

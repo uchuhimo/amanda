@@ -190,10 +190,12 @@ def disabled():
     _enabled.push(False)
     for hook in _inst_scope_hooks:
         hook.begin(False)
-    yield
-    for hook in _inst_scope_hooks:
-        hook.end(False)
-    _enabled.pop()
+    try:
+        yield
+    finally:
+        for hook in _inst_scope_hooks:
+            hook.end(False)
+        _enabled.pop()
 
 
 @contextmanager
@@ -201,10 +203,12 @@ def enabled():
     _enabled.push(True)
     for hook in _inst_scope_hooks:
         hook.begin(True)
-    yield
-    for hook in _inst_scope_hooks:
-        hook.end(True)
-    _enabled.pop()
+    try:
+        yield
+    finally:
+        for hook in _inst_scope_hooks:
+            hook.end(True)
+        _enabled.pop()
 
 
 def is_enabled() -> bool:

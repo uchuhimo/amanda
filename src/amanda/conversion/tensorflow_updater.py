@@ -1,6 +1,7 @@
-import threading
 from functools import wraps
 from typing import List, Set
+
+from loguru import logger
 
 from amanda.import_hook import (
     FunctionUpdater,
@@ -13,9 +14,6 @@ from amanda.import_hook import (
 )
 from amanda.tool import get_tools
 
-record_session_run = threading.local()
-record_session_run.flag = False
-
 
 def gradients_wrapper(func):
     import tensorflow as tf
@@ -23,13 +21,19 @@ def gradients_wrapper(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         tf_graph = tf.get_default_graph()
-        tf_graph._forward_ops = set(op.name for op in tf_graph.get_operations())
-        return func(*args, **kwargs)
+        if not hasattr(tf_graph, "_backward_ops"):
+            tf_graph._backward_ops = set()
+        last_id = tf_graph._last_id
+        result = func(*args, **kwargs)
+        new_last_id = tf_graph._last_id
+        for id in range(last_id + 1, new_last_id + 1):
+            tf_graph._backward_ops.add(tf_graph._nodes_by_id[id].name)
+        return result
 
     return check_enabled(func, wrapper)
 
 
-def update_graph_in_session(session, tf_graph):
+def update_session(session, tf_graph):
     from tensorflow.python import pywrap_tensorflow as tf_session
 
     opts = tf_session.TF_NewSessionOptions(
@@ -37,59 +41,68 @@ def update_graph_in_session(session, tf_graph):
     )
     try:
         new_raw_session = tf_session.TF_NewSessionRef(tf_graph._c_graph, opts)
+        tf_session.TF_CloseSession(session._session)
         session._session = new_raw_session
     finally:
         tf_session.TF_DeleteSessionOptions(opts)
 
 
 def session_run_wrapper(func):
+    def record_session_run(session, args):
+        logger.debug("record session run: {} {}", session, args)
+        if hasattr(session, "_session_runs"):
+            session._session_runs.append(args)
+        else:
+            session._session_runs = [args]
+
     @wraps(func)
     def wrapper(self, fetches, feed_dict=None, options=None, run_metadata=None):
         from amanda.conversion.tensorflow import insert_hooks
 
         tf_graph = self.graph
-        if record_session_run.flag:
-            if hasattr(tf_graph, "_session_runs"):
-                tf_graph._session_runs.append(
-                    [fetches, feed_dict, options, run_metadata]
-                )
-            else:
-                tf_graph._session_runs = [[fetches, feed_dict, options, run_metadata]]
-            return func(self, fetches, feed_dict, options, run_metadata)
+        forward_ops = {op.name for op in tf_graph.get_operations()}
+        if hasattr(tf_graph, "_backward_ops"):
+            forward_ops = forward_ops - tf_graph._backward_ops
+        if hasattr(tf_graph, "_disabled_ops"):
+            forward_ops = forward_ops - tf_graph._disabled_ops
+        if hasattr(tf_graph, "_spec"):
+            spec = tf_graph._spec
         else:
-            if hasattr(tf_graph, "_forward_ops"):
-                forward_ops = tf_graph._forward_ops
-            else:
-                forward_ops = {op.name for op in tf_graph.get_operations()}
-                tf_graph._forward_ops = forward_ops
-            if hasattr(tf_graph, "_spec"):
-                spec = tf_graph._spec
-            else:
-                spec = None
-            is_hooked = len(tf_graph.get_collection("amanda.is_hooked")) != 0
-            if not is_hooked:
-                with self.as_default():
-                    insert_hooks(tf_graph, spec, get_tools(), forward_ops)
-                update_graph_in_session(self, tf_graph)
-            if hasattr(tf_graph, "_session_runs"):
-                with disabled():
-                    for args in tf_graph._session_runs:
-                        self.run(*args)
-                tf_graph._session_runs.clear()
-            return func(self, fetches, feed_dict, options, run_metadata)
+            spec = None
+        with self.as_default():
+            is_graph_updated = insert_hooks(tf_graph, spec, get_tools(), forward_ops)
+        if is_graph_updated:
+            logger.debug("update session: {}", self)
+            update_session(self, tf_graph)
+            if hasattr(self, "_session_runs"):
+                for args in self._session_runs:
+                    logger.debug("replay session run: {} {}", self, args)
+                    func(self, *args)
+        args = [fetches, feed_dict, options, run_metadata]
+        logger.debug("hook session run: {} {}", self, args)
+        record_session_run(self, args)
+        return func(self, fetches, feed_dict, options, run_metadata)
 
-    return check_enabled(func, wrapper)
+    @wraps(func)
+    def recorded_func(self, fetches, feed_dict=None, options=None, run_metadata=None):
+        record_session_run(self, [fetches, feed_dict, options, run_metadata])
+        return func(self, fetches, feed_dict, options, run_metadata)
+
+    return check_enabled(recorded_func, wrapper)
 
 
 def create_amanda_hook():
     from amanda.conversion.tensorflow import FuncSessionHook
 
-    def after_create_session(session, coord):
-        record_session_run.flag = False
-
     def begin():
-        record_session_run.flag = True
+        nonlocal context
+        context = disabled()
+        context.__enter__()
 
+    def after_create_session(session, coord):
+        context.__exit__(None, None, None)
+
+    context = None
     return FuncSessionHook(
         begin=begin,
         after_create_session=after_create_session,
@@ -154,11 +167,7 @@ def model_fn_wrapper(model_fn):
         handler = register_inst_scope_hook(filter_hook)
         spec = model_fn(features, **kwargs)
         handler.unregister()
-        if hasattr(tf_graph, "_forward_ops"):
-            forward_ops = tf_graph._forward_ops
-        else:
-            forward_ops = set(op.name for op in tf_graph.get_operations())
-        tf_graph._forward_ops = forward_ops - input_ops - filter_hook.disabled_ops
+        tf_graph._disabled_ops = input_ops.union(filter_hook.disabled_ops)
         tf_graph._spec = spec
         return spec
 

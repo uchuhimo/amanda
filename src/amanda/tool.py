@@ -97,10 +97,12 @@ def apply(*tools: Tool):
     for tool in tools:
         apply_scope.tools.append(tool)
     _apply_scopes.push(apply_scope)
-    yield
-    _apply_scopes.pop()
-    for task in apply_scope.cleanup_tasks:
-        task()
+    try:
+        yield
+    finally:
+        _apply_scopes.pop()
+        for task in apply_scope.cleanup_tasks:
+            task()
 
 
 def register_cleanup_task(task: Callable[[], None]) -> Handler:
