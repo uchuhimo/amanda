@@ -14,6 +14,9 @@ class TraceTool(amanda.Tool):
 
         self.output_file = open(ensure_dir(output_dir), "w")
 
+    def __del__(self):
+        self.output_file.close()
+
     def forward_instrumentation(self, context: amanda.OpContext):
         op = context.get_op()
 
