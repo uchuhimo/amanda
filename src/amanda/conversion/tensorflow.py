@@ -30,7 +30,7 @@ from tensorflow.python.framework.op_def_library import (
     _MakeTensor,
     _MakeType,
 )
-from tensorflow.python.ops.script_ops import EagerFunc, _maybe_copy_to_context_device
+from tensorflow.python.ops.script_ops import EagerFunc
 from tensorflow.python.ops.script_ops import _py_funcs as tf_py_funcs
 from tensorflow.python.util import compat
 
@@ -843,6 +843,19 @@ class AmandaHook(tf.train.SessionRunHook):
                 replace_all_refs(tf_graph, new_tf_graph)
             else:
                 tf_graph.finalize()
+
+
+def _maybe_copy_to_context_device(tensor, device_name):
+    """Copy an EagerTensor to the current device if it's not on `device_name`."""
+    in_device = tensor.backing_device
+    if device_name == in_device:
+        return tensor
+    else:
+        # Note that EagerTensor._copy bypasses the placer and copies to the context
+        # device, which means e.g. int32 Tensors which would normally be forced onto
+        # the CPU can instead be placed on the GPU. This is necessary so that the
+        # PyFunc kernel always returns Tensors on the device it's executing on.
+        return tensor._copy()  # pylint: disable=protected-access
 
 
 class NoGradEagerFunc(EagerFunc):

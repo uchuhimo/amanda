@@ -29,6 +29,7 @@ from amanda.conversion.tensorflow import (
 )
 from amanda.event import OpContext
 from amanda.io.file import ensure_dir, root_dir
+from amanda.lang import profile
 from amanda.tests.utils import diff_graph_def, get_diff_after_conversion
 
 
@@ -343,6 +344,7 @@ class TestTool(amanda.Tool):
         )
 
 
+@profile(sort_by="cumulative", lines_to_print=100, strip_dirs=True)
 def test_tf_modify_graph_with_new_hook(arch_name):
     input = np.random.rand(*input_shapes[arch_name])
     store_dir = root_dir() / "tmp" / "debug_info_with_new_hook" / arch_name
@@ -588,4 +590,4 @@ def test_tf_import_export_partitioned_graph(partitioned_graph_file):
 
 
 if __name__ == "__main__":
-    test_tf_modify_graph(arch_name="vgg16")
+    test_tf_modify_graph_with_new_hook(arch_name="vgg16")

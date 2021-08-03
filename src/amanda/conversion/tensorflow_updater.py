@@ -1,3 +1,4 @@
+import time
 from functools import wraps
 from typing import List, Set
 
@@ -76,17 +77,29 @@ def session_run_wrapper(func):
             update_session(self, tf_graph)
             if hasattr(self, "_session_runs"):
                 for args in self._session_runs:
-                    logger.debug("replay session run: {} {}", self, args)
+                    start_time = time.time()
                     func(self, *args)
+                    run_time = time.time() - start_time
+                    logger.debug(
+                        "replay session run ({:.3f}s): {} {}", run_time, self, args
+                    )
         args = [fetches, feed_dict, options, run_metadata]
-        logger.debug("hook session run: {} {}", self, args)
         record_session_run(self, args)
-        return func(self, fetches, feed_dict, options, run_metadata)
+        start_time = time.time()
+        result = func(self, fetches, feed_dict, options, run_metadata)
+        run_time = time.time() - start_time
+        logger.debug("hook session run ({:.3f}s): {} {}", run_time, self, args)
+        return result
 
     @wraps(func)
     def recorded_func(self, fetches, feed_dict=None, options=None, run_metadata=None):
-        record_session_run(self, [fetches, feed_dict, options, run_metadata])
-        return func(self, fetches, feed_dict, options, run_metadata)
+        args = [fetches, feed_dict, options, run_metadata]
+        record_session_run(self, args)
+        start_time = time.time()
+        result = func(self, fetches, feed_dict, options, run_metadata)
+        run_time = time.time() - start_time
+        logger.debug("original session run ({:.3f}s): {} {}", run_time, self, args)
+        return result
 
     return check_enabled(recorded_func, wrapper)
 
