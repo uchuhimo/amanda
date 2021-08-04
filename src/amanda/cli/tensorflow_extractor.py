@@ -2,14 +2,14 @@ import tensorflow as tf
 from loguru import logger
 from tensorflow.contrib.slim.nets import inception, resnet_v1, resnet_v2, vgg
 
-from amanda.tests.tensorflow.models import (
+from amanda.models.tf import (
     inception_resnet_v1,
     inception_resnet_v2,
     mobilenet_v1,
     nasnet,
     test_rnn,
 )
-from amanda.tests.tensorflow.models.mobilenet import mobilenet_v2
+from amanda.models.tf.mobilenet import mobilenet_v2
 
 slim = tf.contrib.slim
 

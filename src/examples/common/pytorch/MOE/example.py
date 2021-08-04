@@ -6,9 +6,10 @@
 #
 
 import torch
-from moe import MoE
 from torch import nn
 from torch.optim import Adam
+
+from examples.common.pytorch.MOE.moe import MoE
 
 
 def train(x, y, model, loss_fn, optim):
@@ -56,24 +57,27 @@ def dummy_data(batch_size, input_size, num_classes):
     return x, y
 
 
-# arguments
-input_size = 1000
-num_classes = 20
-num_experts = 10
-hidden_size = 64
-batch_size = 5
-k = 4
+if __name__ == "__main__":
+    # arguments
+    input_size = 1000
+    num_classes = 20
+    num_experts = 10
+    hidden_size = 64
+    batch_size = 5
+    k = 4
 
-# instantiate the MoE layer
-model = MoE(input_size, num_classes, num_experts, hidden_size, k=k, noisy_gating=True)
+    # instantiate the MoE layer
+    model = MoE(
+        input_size, num_classes, num_experts, hidden_size, k=k, noisy_gating=True
+    )
 
-loss_fn = nn.NLLLoss()
-optim = Adam(model.parameters())
+    loss_fn = nn.NLLLoss()
+    optim = Adam(model.parameters())
 
-x, y = dummy_data(batch_size, input_size, num_classes)
+    x, y = dummy_data(batch_size, input_size, num_classes)
 
-# train
-model = train(x, y, model, loss_fn, optim)
-# evaluate
-x, y = dummy_data(batch_size, input_size, num_classes)
-eval(x, y, model, loss_fn)
+    # train
+    model = train(x, y, model, loss_fn, optim)
+    # evaluate
+    x, y = dummy_data(batch_size, input_size, num_classes)
+    eval(x, y, model, loss_fn)

@@ -5,10 +5,10 @@ import torch
 import torch.nn as nn
 import torchvision
 import torchvision.transforms as transforms
-from apex.contrib.sparsity import ASP
 
 
 def main():
+    from apex.contrib.sparsity import ASP
 
     torch.manual_seed(42)
 

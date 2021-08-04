@@ -7,8 +7,8 @@ from timeit import default_timer as timer
 import torch
 import torch.nn.utils.prune as prune
 
-from .treelstm import TreeLSTM, calculate_evaluation_orders
-from .vector_wise_sparsity import create_mask
+from examples.pruning.treelstm import TreeLSTM, calculate_evaluation_orders
+from examples.pruning.vector_wise_sparsity import create_mask
 
 
 class VectorWisePruningMethod(prune.BasePruningMethod):

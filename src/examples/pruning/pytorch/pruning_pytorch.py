@@ -7,7 +7,7 @@ import torch.nn.utils.prune as prune
 import torchvision
 import torchvision.transforms as transforms
 
-from .vector_wise_sparsity import create_mask
+from examples.pruning.vector_wise_sparsity import create_mask
 
 
 class VectorWisePruningMethod(prune.BasePruningMethod):
