@@ -21,7 +21,7 @@ def graph_traverse(graph):
                 continue
             _dfs(input_op)
 
-    op = graph.ops[-2]
+    op = graph.ops[-1]
 
     visited = list()
 

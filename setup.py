@@ -48,9 +48,7 @@ setup(
     },
     packages=[
         'amanda', 'amanda.cli', 'amanda.conversion', 'amanda.io',
-        'amanda.tests', 'amanda.tests.tensorflow',
-        'amanda.tests.tensorflow.models',
-        'amanda.tests.tensorflow.models.mobilenet', 'amanda.tools',
+        'amanda.tests', 'amanda.tools',
         'amanda.tools.byteps', 'amanda.tools.byteps.tensorflow',
         'amanda.tools.debugging', 'amanda.tools.path', 'amanda.tools.pruning'
     ],
