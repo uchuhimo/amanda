@@ -15,13 +15,16 @@
 
 import os
 import shutil
+import sys
 import time
 from typing import Set
 
 import tensorflow as tf
+from loguru import logger
 
 import amanda
 from amanda.io.file import abspath
+from amanda.lang import profile
 from examples.common.tensorflow.dataset.cifar100_main import input_fn
 from examples.common.tensorflow.dataset.envs import CIFAR100_RAW_DIR
 from examples.common.tensorflow.utils import new_session_config
@@ -206,8 +209,8 @@ def main():
 
 
 def main_pruning():
-    take_num = 1
-    epochs_between_evals = 1
+    take_num = None
+    epochs_between_evals = 10
     model_dir = abspath("tmp/tf/resnet-18-cifar100/model_overhead/")
 
     if os.path.exists(model_dir):
@@ -265,14 +268,18 @@ def test():
     assert tool.before_executed_backward_ops == tool.after_executed_backward_ops
 
 
+@profile(sort_by="cumulative", lines_to_print=100, strip_dirs=True)
 def test_pruning():
     tool = PruningTool(disabled=False)
     with amanda.tool.apply(tool):
-        train(batch_size=1, take_num=1)
+        # train(batch_size=1, take_num=1)
+        train()
 
 
 if __name__ == "__main__":
+    logger.remove()
+    logger.add(sys.stderr, level="INFO")
     # main()
-    # main_pruning()
+    main_pruning()
     # test()
-    test_pruning()
+    # test_pruning()

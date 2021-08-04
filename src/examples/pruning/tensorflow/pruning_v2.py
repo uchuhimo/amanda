@@ -1,5 +1,3 @@
-from typing import Dict
-
 import tensorflow as tf
 import torch
 
@@ -16,7 +14,6 @@ class PruningTool(amanda.Tool):
             backward=True,
             require_outputs=True,
         )
-        self.masks: Dict[str, tf.Tensor] = {}
         self.disabled = disabled
 
     def instrumentation(self, context: amanda.OpContext):
@@ -29,7 +26,7 @@ class PruningTool(amanda.Tool):
         if ("Conv2D" == op.type and weight.shape.as_list()[3] % 4 == 0) or (
             "MatMul" == op.type and len(weight.shape) == 2
         ):
-            mask = self.get_mask(weight, context["session"])
+            mask = self.get_mask(weight)
             context["mask"] = mask
             context.insert_before_op(self.mask_forward_weight, inputs=[1], mask=mask)
 
@@ -67,7 +64,7 @@ class PruningTool(amanda.Tool):
     def mask_backward_gradient(self, weight_grad, mask):
         return weight_grad * mask
 
-    def get_mask(self, weight, session):
+    def get_mask(self, weight):
         torch_weight = torch.from_numpy(weight.eval())
         if len(torch_weight.shape) == 4:
             torch_weight = torch_weight.permute(2, 3, 0, 1)

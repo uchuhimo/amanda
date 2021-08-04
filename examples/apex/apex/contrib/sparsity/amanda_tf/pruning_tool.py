@@ -1,18 +1,17 @@
+import numpy as np
 import tensorflow as tf
 import torch
+from apex.contrib.sparsity.sparse_masklib import create_mask
 
 import amanda
-from apex.contrib.sparsity.sparse_masklib import create_mask
-import numpy as np
+
 
 class PruningTool(amanda.Tool):
     def __init__(self, mask_calculator="m4n2_1d", whitelist=None):
         super(PruningTool, self).__init__(namespace="amanda/tensorflow")
         self.mask_names = {}
         self.weight_names = {}
-        self.whitelist = whitelist or [
-            "MatMul"
-        ]
+        self.whitelist = whitelist or ["MatMul"]
         if isinstance(mask_calculator, str):
 
             def create_mask_from_pattern(param):
@@ -23,13 +22,13 @@ class PruningTool(amanda.Tool):
             self.calculate_mask = mask_calculator
 
     def init_masks(self):
-        self.unregister_event(amanda.event.on_graph_loaded)
         self.register_event(amanda.event.on_graph_loaded, self.mask_weights)
 
     def mask_weights(self, context: amanda.EventContext):
         def mask_weight(weight, mask, name):
             mask_var = tf.constant(mask, name=name)
             return weight * mask_var
+
         graph = context["graph"]
         for op in graph.ops:
             if op.type in self.whitelist and not op.name.startswith("gradients/"):
@@ -41,7 +40,9 @@ class PruningTool(amanda.Tool):
                 mask = np.ones_like(weight)
                 read_op_output = op.in_ops[1].output_port(0)
                 graph.remove_edge(op.input_port(1).in_edges[0])
-                masked_output = amanda.tensorflow.import_from_tf_func(mask_weight)(graph)(
+                masked_output = amanda.tensorflow.import_from_tf_func(mask_weight)(
+                    graph
+                )(
                     read_op_output,
                     mask,
                     self.mask_names[name],
@@ -49,18 +50,20 @@ class PruningTool(amanda.Tool):
                 graph.create_edge(masked_output, op.input_port(1))
 
     def compute_masks(self):
-        self.unregister_event(amanda.event.on_graph_loaded)
         self.register_event(amanda.event.on_graph_loaded, self.update_masks)
 
     def update_masks(self, context: amanda.EventContext):
         graph: amanda.Graph = context["graph"]
         for op_name, weight_name in self.weight_names.items():
             weight = graph.get_op(weight_name).attrs["value"]
-            updated_mask = self.calculate_mask(torch.from_numpy(weight).cuda()).cpu().numpy()
-            graph.get_op(self.mask_names[op_name]).attrs["value"] = tf.make_tensor_proto(updated_mask)
+            updated_mask = (
+                self.calculate_mask(torch.from_numpy(weight).cuda()).cpu().numpy()
+            )
+            graph.get_op(self.mask_names[op_name]).attrs[
+                "value"
+            ] = tf.make_tensor_proto(updated_mask)
 
     def remove_masks(self):
-        self.unregister_event(amanda.event.on_graph_loaded)
         self.register_event(amanda.event.on_graph_loaded, self.recover_graph)
 
     def recover_graph(self, context: amanda.EventContext):

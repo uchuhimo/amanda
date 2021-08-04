@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Any, Callable, Dict, Iterable, List, Set
+from typing import Any, Callable, Dict, Iterable, List
 
 
 @dataclass(frozen=True)
@@ -72,10 +72,9 @@ class OpContext(dict):
 
     def trigger(self, event: Event, **kwargs) -> None:
         self.update(**kwargs)
-        triggered_tools: Set[str] = set()
         for tool in self.tools:
             if tool and tool.is_registered(event):
-                tool.trigger(event, self, triggered_tools)
+                tool.trigger(event, self)
 
     def is_registered(self, event: Event) -> bool:
         for tool in self.tools:
@@ -206,10 +205,9 @@ class EventContext(dict):
 
     def trigger(self, event: Event, **kwargs) -> None:
         self.update(**kwargs)
-        triggered_tools: Set[str] = set()
         for tool in self.tools:
             if tool and tool.is_registered(event):
-                tool.trigger(event, self, triggered_tools)
+                tool.trigger(event, self)
 
     def is_registered(self, event: Event) -> bool:
         for tool in self.tools:

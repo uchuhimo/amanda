@@ -1165,7 +1165,6 @@ def insert_hooks(
     tf_graph: tf.Graph,
     spec: tf.estimator.EstimatorSpec,
     tools: List[Tool],
-    forward_ops: Set[str] = None,
 ) -> bool:
     def collect_actions():
         actions = []
@@ -1345,7 +1344,11 @@ def insert_hooks(
         if tf_graph_finalized:
             tf_graph._finalized = True
         return False
-    forward_ops = forward_ops or set()
+    forward_ops = {op.name for op in tf_graph.get_operations()}
+    if hasattr(tf_graph, "_backward_ops"):
+        forward_ops = forward_ops - tf_graph._backward_ops
+    if hasattr(tf_graph, "_disabled_ops"):
+        forward_ops = forward_ops - tf_graph._disabled_ops
     op_names = np.array([op.name for op in tf_graph.get_operations()])
     updated_inputs: Dict[tf.Tensor, tf.Tensor] = {}
     updated_outputs: Dict[tf.Tensor, tf.Tensor] = {}

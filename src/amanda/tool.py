@@ -1,4 +1,5 @@
 import itertools
+from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Mapping, Set, Union
@@ -21,16 +22,31 @@ ToolCallback = Union[EventCallback, OpCallback]
 @dataclass
 class Tool:
     namespace: str = None
-    _event_to_callback: Dict[Event, ToolCallback] = field(default_factory=dict)
+    _event_to_callbacks: Dict[Event, List[ToolCallback]] = field(
+        default_factory=lambda: defaultdict(list)
+    )
+    _event_to_all_callbacks: Dict[Event, List[ToolCallback]] = field(
+        default_factory=lambda: defaultdict(list)
+    )
     _mappings: List[Mapping] = field(default_factory=list)
     dependencies: List["Tool"] = field(default_factory=list)
 
-    def register_event(self, event: Event, callback: ToolCallback) -> None:
-        self._event_to_callback[event] = callback
+    def __post_init__(self):
+        callback_set: Set[ToolCallback] = set()
+        for event, callbacks in self._event_to_callbacks.items():
+            for callback in callbacks:
+                if callback not in callback_set:
+                    self._event_to_all_callbacks[event].append(callback)
+                    callback_set.add(callback)
+        for dependency in self.dependencies:
+            for event, callbacks in dependency._event_to_all_callbacks.items():
+                for callback in callbacks:
+                    if callback not in callback_set:
+                        self._event_to_all_callbacks[event].append(callback)
+                        callback_set.add(callback)
 
-    def unregister_event(self, event: Event) -> None:
-        if event in self._event_to_callback:
-            del self._event_to_callback[event]
+    def register_event(self, event: Event, callback: ToolCallback) -> None:
+        self._event_to_callbacks[event].append(callback)
 
     def register_mapping(self, mapping: Mapping):
         self._mappings.append(mapping)
@@ -43,25 +59,17 @@ class Tool:
     ) -> None:
         if backward:
             if require_outputs:
-                self._event_to_callback[after_backward_op_call] = callback
+                self._event_to_callbacks[after_backward_op_call].append(callback)
             else:
-                self._event_to_callback[on_backward_op_call] = callback
+                self._event_to_callbacks[on_backward_op_call].append(callback)
         else:
             if require_outputs:
-                self._event_to_callback[after_op_call] = callback
+                self._event_to_callbacks[after_op_call].append(callback)
             else:
-                self._event_to_callback[on_op_call] = callback
-
-    def get_callback(self, event: Event) -> ToolCallback:
-        return self._event_to_callback[event]
+                self._event_to_callbacks[on_op_call].append(callback)
 
     def is_registered(self, event: Event) -> bool:
-        if event in self._event_to_callback:
-            return True
-        for dependency in self.dependencies:
-            if dependency.is_registered(event):
-                return True
-        return False
+        return event in self._event_to_all_callbacks
 
     def depends_on(self, *tools: "Tool") -> None:
         self.dependencies.extend(tools)
@@ -69,17 +77,10 @@ class Tool:
     def get_id(self) -> str:
         return None
 
-    def trigger(self, event: Event, context, triggered_tools: Set[str] = None) -> None:
-        triggered_tools = triggered_tools or set()
-        tool_id = self.get_id()
-        if tool_id is not None and tool_id in triggered_tools:
-            return
-        if tool_id is not None:
-            triggered_tools.add(tool_id)
-        for dependency in self.dependencies:
-            dependency.trigger(event, context, triggered_tools)
-        if event in self._event_to_callback:
-            self.get_callback(event)(context)
+    def trigger(self, event: Event, context) -> None:
+        if event in self._event_to_all_callbacks:
+            for callback in self._event_to_all_callbacks[event]:
+                callback(context)
 
 
 @dataclass

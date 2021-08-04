@@ -50,7 +50,7 @@ def update_session(session, tf_graph):
 
 def session_run_wrapper(func):
     def record_session_run(session, args):
-        logger.debug("record session run: {} {}", session, args)
+        # logger.debug("record session run: {} {}", session, args)
         if hasattr(session, "_session_runs"):
             session._session_runs.append(args)
         else:
@@ -61,17 +61,12 @@ def session_run_wrapper(func):
         from amanda.conversion.tensorflow import insert_hooks
 
         tf_graph = self.graph
-        forward_ops = {op.name for op in tf_graph.get_operations()}
-        if hasattr(tf_graph, "_backward_ops"):
-            forward_ops = forward_ops - tf_graph._backward_ops
-        if hasattr(tf_graph, "_disabled_ops"):
-            forward_ops = forward_ops - tf_graph._disabled_ops
         if hasattr(tf_graph, "_spec"):
             spec = tf_graph._spec
         else:
             spec = None
         with self.as_default():
-            is_graph_updated = insert_hooks(tf_graph, spec, get_tools(), forward_ops)
+            is_graph_updated = insert_hooks(tf_graph, spec, get_tools())
         if is_graph_updated:
             logger.debug("update session: {}", self)
             update_session(self, tf_graph)
