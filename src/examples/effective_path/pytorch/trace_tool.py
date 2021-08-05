@@ -1,5 +1,5 @@
 import amanda
-from examples.effective_path.utils import Graph, Op
+from examples.effective_path.graph import Graph, Op
 
 
 class TraceEffectivePathTool(amanda.Tool):
@@ -12,7 +12,7 @@ class TraceEffectivePathTool(amanda.Tool):
 
     def trace_forward_graph(self, context):
         op = Op(
-            raw_op=context["op"],
+            raw_op=context.get_op(),
             input_ops=[
                 self.tensor_output_ops[i]
                 for i in self.unpack_inputs(context["inputs"])

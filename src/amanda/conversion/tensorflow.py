@@ -1245,6 +1245,11 @@ def insert_hooks(
                 if new_inputs is not None:
                     if isinstance(new_inputs, tf.Tensor):
                         new_inputs = [new_inputs]
+                    if len(inputs) != len(new_inputs):
+                        raise RuntimeError(
+                            f"the number of inputs({len(inputs)}) is not equal to "
+                            f"the number of updated inputs({len(new_inputs)})"
+                        ).with_traceback(action.traceback)
                     for index, input, new_input in zip(
                         action.inputs or range(len(inputs)), inputs, new_inputs
                     ):

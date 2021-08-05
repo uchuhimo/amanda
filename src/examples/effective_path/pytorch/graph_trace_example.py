@@ -1,7 +1,7 @@
 import torch
 import torchvision
 
-import amanda  # noqa: F401
+import amanda
 from examples.effective_path.pytorch.trace_tool import TraceEffectivePathTool
 
 

@@ -25,25 +25,27 @@ class Tool:
     _event_to_callbacks: Dict[Event, List[ToolCallback]] = field(
         default_factory=lambda: defaultdict(list)
     )
-    _event_to_all_callbacks: Dict[Event, List[ToolCallback]] = field(
-        default_factory=lambda: defaultdict(list)
-    )
+    _event_to_all_callbacks: Dict[Event, List[ToolCallback]] = None
     _mappings: List[Mapping] = field(default_factory=list)
     dependencies: List["Tool"] = field(default_factory=list)
 
-    def __post_init__(self):
-        callback_set: Set[ToolCallback] = set()
+    def collect_callbacks(self):
+        if self._event_to_all_callbacks is not None:
+            return
+        self._event_to_all_callbacks = defaultdict(list)
+        callback_set: Set[int] = set()
         for event, callbacks in self._event_to_callbacks.items():
             for callback in callbacks:
-                if callback not in callback_set:
+                if id(callback) not in callback_set:
                     self._event_to_all_callbacks[event].append(callback)
-                    callback_set.add(callback)
+                    callback_set.add(id(callback))
         for dependency in self.dependencies:
+            dependency.collect_callbacks()
             for event, callbacks in dependency._event_to_all_callbacks.items():
                 for callback in callbacks:
-                    if callback not in callback_set:
+                    if id(callback) not in callback_set:
                         self._event_to_all_callbacks[event].append(callback)
-                        callback_set.add(callback)
+                        callback_set.add(id(callback))
 
     def register_event(self, event: Event, callback: ToolCallback) -> None:
         self._event_to_callbacks[event].append(callback)
@@ -69,6 +71,8 @@ class Tool:
                 self._event_to_callbacks[on_op_call].append(callback)
 
     def is_registered(self, event: Event) -> bool:
+        if self._event_to_all_callbacks is None:
+            self.collect_callbacks()
         return event in self._event_to_all_callbacks
 
     def depends_on(self, *tools: "Tool") -> None:
@@ -78,6 +82,8 @@ class Tool:
         return None
 
     def trigger(self, event: Event, context) -> None:
+        if self._event_to_all_callbacks is None:
+            self.collect_callbacks()
         if event in self._event_to_all_callbacks:
             for callback in self._event_to_all_callbacks[event]:
                 callback(context)

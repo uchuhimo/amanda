@@ -34,6 +34,7 @@ def update_method(updater, cls):
     if hasattr(new_method, "__dict__"):
         new_method.original = method
         new_method.updated = True
+    logger.debug("hook method: {}.{}.{}", cls.__module__, cls.__name__, method.__name__)
     setattr(cls, updater.method, new_method)
 
 
@@ -80,6 +81,7 @@ def update_func(updater, module, func_name):
     new_func = updater.decorator(func)
     new_func.original = func
     new_func.updated = True
+    logger.debug("hook function: {}.{}", module.__name__, func.__name__)
     module.__dict__[func_name] = new_func
 
 
