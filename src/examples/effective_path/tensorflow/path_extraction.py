@@ -135,6 +135,12 @@ class TraceKey:
         return TraceKey.TRIVIAL in op.attrs and op.attrs[TraceKey.TRIVIAL]
 
 
+def to_mask(x, shape):
+    mask = np.zeros(np.prod(shape), dtype=np.bool)
+    mask[x] = True
+    return mask
+
+
 def compact_path(graph: Graph) -> Graph:
     if graph is None:
         return graph
@@ -143,8 +149,8 @@ def compact_path(graph: Graph) -> Graph:
         for attr_name, attr in attrs.items():
 
             def to_bitmap(shape):
-                mask = np.zeros(np.prod(shape), dtype=np.int8)
-                mask[TraceKey.to_array(attr)] = 1
+                mask = np.zeros(np.prod(shape), dtype=np.bool)
+                mask[TraceKey.to_array(attr)] = True
                 return np.packbits(mask)
 
             if attr_name in [TraceKey.POINT, TraceKey.WEIGHT, TraceKey.EDGE]:
@@ -359,8 +365,6 @@ def get_path(
     select_fn: Callable[[np.ndarray], np.ndarray],
     select_seed_fn: Callable[[np.ndarray], np.ndarray] = None,
     stop_hook: Callable[[Op], bool] = None,
-    *args,
-    **kwargs,
 ) -> Graph:
     unsupported_ops = get_unsupported_ops(ops_in_path)
     if len(unsupported_ops) != 0:
@@ -395,9 +399,6 @@ def get_path(
             ready_op,
             select_fn=select_fn,
             batch_index=batch_index,
-            debug=False,
-            *args,
-            **kwargs,
         )
         if stop_hook(ready_op):
             break
@@ -440,11 +441,8 @@ def merge_traced_points(
     traced_points: np.ndarray,
     flip_sign: Optional[np.ndarray],
     is_unique: bool = False,
-    update_input: bool = True,
 ):
     tensor.attrs[TraceKey.POINT_SHAPE] = tensor.value.shape[1:]
-    if not update_input:
-        return
     if not is_unique:
         if flip_sign is None:
             traced_points = np.unique(traced_points)
@@ -565,11 +563,6 @@ def linear_layer_trace(
     op: Op,
     select_fn: Callable[[np.ndarray], np.ndarray],
     batch_index: int,
-    debug: bool,
-    update_input: bool = True,
-    collect_metrics: bool = False,
-    *args,
-    **kwargs,
 ):
     weight = op.attrs["weight"].value
     weight = np.transpose(weight, (1, 0))
@@ -581,37 +574,22 @@ def linear_layer_trace(
     flip_sign = output_tensor.attrs[TraceKey.FLIP_SIGN]
     output_trace_points = []
     input_trace_points = []
-    weighted_inputs = []
     flip_sign_inputs: List[Any] = []
-    receptive_field_density = []
-    receptive_field_threshold = []
     for index, output_point in enumerate(output_points):
         weighted_input = weight[output_point] * input
         output_value = output[output_point]
-        result = calc_flip_sign(
+        input_points = calc_flip_sign(
             flip_sign=flip_sign,
             index=index,
             output_value=output_value,
             weighted_input=weighted_input,
             select_fn=select_fn,
             flip_sign_inputs=flip_sign_inputs,
-            return_threshold=collect_metrics,
         )
-        if collect_metrics:
-            input_points, threshold = result
-            receptive_field_threshold.append(threshold)
-            receptive_field_density.append(input_points.size / weighted_input.size)
-        else:
-            input_points = result
         output_trace_points.append(repeat(output_point, input_points.size))
         input_trace_points.append(input_points)
-        if debug:
-            weighted_inputs.append(weighted_input[input_points])
     output_trace_points = concatenate(output_trace_points, dtype=np.int32)
     input_trace_points = concatenate(input_trace_points, dtype=np.int32)
-    if debug:
-        weighted_inputs = concatenate(weighted_inputs, dtype=np.float32)
-        op.attrs[TraceKey.WEIGHTED_INPUT] = weighted_inputs
     if flip_sign is not None:
         flip_sign_inputs = concatenate(flip_sign_inputs, dtype=np.int32)
     else:
@@ -625,30 +603,22 @@ def linear_layer_trace(
     )
     op.attrs[TraceKey.EDGE_SHAPE] = edge_shape
     op.attrs[TraceKey.WEIGHT_SHAPE] = weight.shape
-
-    if collect_metrics:
-        op.attrs[TraceKey.OUTPUT_DENSITY] = len(output_points) / output.size
-        op.attrs[TraceKey.OUTPUT_THRESHOLD] = np.sort(np.abs(output), axis=None)[
-            output.size - len(output_points)
-        ]
-        op.attrs[TraceKey.RECEPTIVE_FIELD_DENSITY] = np.average(receptive_field_density)
-        op.attrs[TraceKey.RECEPTIVE_FIELD_THRESHOLD] = np.average(
-            receptive_field_threshold
-        )
-
     merge_traced_points(
         input_tensor,
         op,
         input_trace_points,
         flip_sign=flip_sign_inputs,
-        update_input=update_input,
     )
 
 
 register_op("MatMul", linear_layer_trace)
 
 
-def max_layer_trace(op: Op, batch_index: int, debug: bool, *args, **kwargs):
+def max_layer_trace(
+    op: Op,
+    select_fn: Callable[[np.ndarray], np.ndarray],
+    batch_index: int,
+):
     kernel_size = np.array(op.attrs["kernel_size"])
     stride = np.array(op.attrs["strides"])
     input_tensor: Tensor = op.inputs[0]
@@ -676,7 +646,6 @@ def max_layer_trace(op: Op, batch_index: int, debug: bool, *args, **kwargs):
     input_trace_points = []
     unaligned_input_trace_points = []
     output_trace_points = []
-    weighted_inputs = []
     flip_sign_inputs = []
     for (output_point_pos, output_point), output_point_index in zip(
         enumerate(output_points), zip(*np.unravel_index(output_points, output.shape))
@@ -703,7 +672,6 @@ def max_layer_trace(op: Op, batch_index: int, debug: bool, *args, **kwargs):
                 slice(start_index[1], end_index[1] + 1),
             )
         ]
-        output_value = output[output_point_index]
 
         for unaligned_max_input_pos in np.argwhere(
             receptive_field == np.max(receptive_field)
@@ -720,14 +688,9 @@ def max_layer_trace(op: Op, batch_index: int, debug: bool, *args, **kwargs):
             input_trace_points.append(np.ravel_multi_index(max_input_pos, input.shape))
             if flip_sign is not None:
                 flip_sign_inputs.append(flip_sign[output_point_pos])
-            if debug:
-                weighted_inputs.append(output_value)
 
     output_trace_points = np.array(output_trace_points, dtype=np.int32)
     input_trace_points = np.array(input_trace_points, dtype=np.int32)
-    if debug:
-        weighted_inputs = np.array(weighted_inputs)
-        op.attrs[TraceKey.WEIGHTED_INPUT] = weighted_inputs
     edge_shape = (kernel_size[0] * kernel_size[1], output.size)
     op.attrs[TraceKey.EDGE] = np.ravel_multi_index(
         (unaligned_input_trace_points, output_trace_points), edge_shape
@@ -749,9 +712,6 @@ def avg_layer_trace(
     op: Op,
     select_fn: Callable[[np.ndarray], np.ndarray],
     batch_index: int,
-    debug: bool,
-    *args,
-    **kwargs,
 ):
     kernel_size = np.array(op.attrs["kernel_size"])
     stride = np.array(op.attrs["strides"])
@@ -780,7 +740,6 @@ def avg_layer_trace(
     input_trace_points = []
     unaligned_input_trace_points = []
     output_trace_points = []
-    weighted_inputs = []
     flip_sign_inputs: List[Any] = []
     for (output_point_pos, output_point), output_point_index in zip(
         enumerate(output_points), zip(*np.unravel_index(output_points, output.shape))
@@ -830,17 +789,12 @@ def avg_layer_trace(
         output_trace_points.append(repeated_output)
         input_points = np.ravel_multi_index(input_index, input.shape)
         input_trace_points.append(input_points)
-        if debug:
-            weighted_inputs.append(weighted_input[unaligned_input_index])
 
     output_trace_points = concatenate(output_trace_points, dtype=np.int32)
     input_trace_points = concatenate(input_trace_points, dtype=np.int32)
     unaligned_input_trace_points = concatenate(
         unaligned_input_trace_points, dtype=np.int32
     )
-    if debug:
-        weighted_inputs = concatenate(weighted_inputs, dtype=np.float32)
-        op.attrs[TraceKey.WEIGHTED_INPUT] = weighted_inputs
     if flip_sign is not None:
         flip_sign_inputs = concatenate(flip_sign_inputs, dtype=np.int32)
     else:
@@ -862,9 +816,6 @@ def mean_layer_trace(
     op: Op,
     select_fn: Callable[[np.ndarray], np.ndarray],
     batch_index: int,
-    debug: bool,
-    *args,
-    **kwargs,
 ):
     reduction_indices = list(np.array(op.attrs["reduction_indices"].value) - 1)
     input_tensor: Tensor = op.inputs[0]
@@ -874,7 +825,6 @@ def mean_layer_trace(
     output_points = output_tensor.attrs[TraceKey.POINT]
     flip_sign = output_tensor.attrs[TraceKey.FLIP_SIGN]
     input_trace_points = []
-    weighted_inputs = []
     flip_sign_inputs: List[Any] = []
     for (output_point_pos, output_point), output_point_index in zip(
         enumerate(output_points), zip(*np.unravel_index(output_points, output.shape))
@@ -911,13 +861,8 @@ def mean_layer_trace(
         input_index = tuple(input_index)
         input_points = np.ravel_multi_index(input_index, input.shape)
         input_trace_points.append(input_points)
-        if debug:
-            weighted_inputs.append(weighted_input[unaligned_input_index])
 
     input_trace_points = concatenate(input_trace_points, dtype=np.int32)
-    if debug:
-        weighted_inputs = concatenate(weighted_inputs, dtype=np.float32)
-        op.attrs[TraceKey.WEIGHTED_INPUT] = weighted_inputs
     if flip_sign is not None:
         flip_sign_inputs = concatenate(flip_sign_inputs, dtype=np.int32)
     else:
@@ -936,11 +881,6 @@ def conv2d_layer_trace(
     op: Op,
     select_fn: Callable[[np.ndarray], np.ndarray],
     batch_index: int,
-    debug: bool,
-    update_input: bool = True,
-    collect_metrics: bool = False,
-    *args,
-    **kwargs,
 ):
     weight: np.ndarray = op.attrs["kernel"].value
     kernel_size = op.attrs["kernel_size"]
@@ -971,10 +911,7 @@ def conv2d_layer_trace(
     input_trace_points = []
     unaligned_input_trace_points = []
     weight_indices = []
-    weighted_inputs = []
     flip_sign_inputs: List[Any] = []
-    receptive_field_threshold = []
-    receptive_field_density = []
     for (output_point_pos, output_point), output_point_index in zip(
         enumerate(output_points), zip(*np.unravel_index(output_points, output.shape))
     ):
@@ -1009,23 +946,14 @@ def conv2d_layer_trace(
                 bound_filter[i + 1] = slice(None, end_bound - 1 - end_index[i])
                 weighted_input = weighted_input[tuple(bound_filter)]
                 end_index[i] = end_bound - 1
-        result = calc_flip_sign(
+        unaligned_input_points = calc_flip_sign(
             flip_sign=flip_sign,
             index=output_point_pos,
             output_value=output_value,
             weighted_input=weighted_input,
             select_fn=select_fn,
             flip_sign_inputs=flip_sign_inputs,
-            return_threshold=collect_metrics,
         )
-        if collect_metrics:
-            unaligned_input_points, threshold = result
-            receptive_field_threshold.append(threshold)
-            receptive_field_density.append(
-                unaligned_input_points.size / weighted_input.size
-            )
-        else:
-            unaligned_input_points = result
         unaligned_input_trace_points.append(unaligned_input_points)
         unaligned_input_index = np.unravel_index(
             unaligned_input_points, weighted_input.shape
@@ -1045,17 +973,12 @@ def conv2d_layer_trace(
             weight.shape,
         )
         weight_indices.append(weight_index)
-        if debug:
-            weighted_inputs.append(weighted_input[unaligned_input_index])
     output_trace_points = concatenate(output_trace_points, dtype=np.int32)
     input_trace_points = concatenate(input_trace_points, dtype=np.int32)
     unaligned_input_trace_points = concatenate(
         unaligned_input_trace_points, dtype=np.int32
     )
     weight_indices = concatenate(weight_indices, dtype=np.int32)
-    if debug:
-        weighted_inputs = concatenate(weighted_inputs, dtype=np.float32)
-        op.attrs[TraceKey.WEIGHTED_INPUT] = weighted_inputs
     if flip_sign is not None:
         flip_sign_inputs = concatenate(flip_sign_inputs, dtype=np.int32)
     else:
@@ -1069,23 +992,11 @@ def conv2d_layer_trace(
         (input.shape[0],) + tuple(kernel_size) + output.shape
     )
     op.attrs[TraceKey.WEIGHT_SHAPE] = weight.shape
-
-    if collect_metrics:
-        op.attrs[TraceKey.OUTPUT_DENSITY] = len(output_points) / output.size
-        op.attrs[TraceKey.OUTPUT_THRESHOLD] = float(
-            np.sort(np.abs(output), axis=None)[output.size - max(1, len(output_points))]
-        )
-        op.attrs[TraceKey.RECEPTIVE_FIELD_DENSITY] = np.average(receptive_field_density)
-        op.attrs[TraceKey.RECEPTIVE_FIELD_THRESHOLD] = np.average(
-            receptive_field_threshold
-        )
-
     merge_traced_points(
         input_tensor,
         op,
         input_trace_points,
         flip_sign=flip_sign_inputs,
-        update_input=update_input,
     )
 
 
@@ -1096,11 +1007,6 @@ def dw_conv2d_layer_trace(
     op: Op,
     select_fn: Callable[[np.ndarray], np.ndarray],
     batch_index: int,
-    debug: bool,
-    update_input: bool = True,
-    collect_metrics: bool = False,
-    *args,
-    **kwargs,
 ):
     weight: np.ndarray = op.attrs["kernel"].value
     kernel_size = op.attrs["kernel_size"]
@@ -1134,10 +1040,7 @@ def dw_conv2d_layer_trace(
     input_trace_points = []
     unaligned_input_trace_points = []
     weight_indices = []
-    weighted_inputs = []
     flip_sign_inputs: List[Any] = []
-    receptive_field_threshold = []
-    receptive_field_density = []
     for (output_point_pos, output_point), output_point_index in zip(
         enumerate(output_points), zip(*np.unravel_index(output_points, output.shape))
     ):
@@ -1177,23 +1080,14 @@ def dw_conv2d_layer_trace(
                 bound_filter[i] = slice(None, end_bound - 1 - end_index[i])
                 weighted_input = weighted_input[tuple(bound_filter)]
                 end_index[i] = end_bound - 1
-        result = calc_flip_sign(
+        unaligned_input_points = calc_flip_sign(
             flip_sign=flip_sign,
             index=output_point_pos,
             output_value=output_value,
             weighted_input=weighted_input,
             select_fn=select_fn,
             flip_sign_inputs=flip_sign_inputs,
-            return_threshold=collect_metrics,
         )
-        if collect_metrics:
-            unaligned_input_points, threshold = result
-            receptive_field_threshold.append(threshold)
-            receptive_field_density.append(
-                unaligned_input_points.size / weighted_input.size
-            )
-        else:
-            unaligned_input_points = result
         unaligned_input_trace_points.append(unaligned_input_points)
         unaligned_input_index = np.unravel_index(
             unaligned_input_points, weighted_input.shape
@@ -1216,17 +1110,12 @@ def dw_conv2d_layer_trace(
             weight.shape,
         )
         weight_indices.append(weight_index)
-        if debug:
-            weighted_inputs.append(weighted_input[unaligned_input_index])
     output_trace_points = concatenate(output_trace_points, dtype=np.int32)
     input_trace_points = concatenate(input_trace_points, dtype=np.int32)
     unaligned_input_trace_points = concatenate(
         unaligned_input_trace_points, dtype=np.int32
     )
     weight_indices = concatenate(weight_indices, dtype=np.int32)
-    if debug:
-        weighted_inputs = concatenate(weighted_inputs, dtype=np.float32)
-        op.attrs[TraceKey.WEIGHTED_INPUT] = weighted_inputs
     if flip_sign is not None:
         flip_sign_inputs = concatenate(flip_sign_inputs, dtype=np.int32)
     else:
@@ -1238,23 +1127,11 @@ def dw_conv2d_layer_trace(
     op.attrs[TraceKey.WEIGHT] = np.unique(weight_indices)
     op.attrs[TraceKey.EDGE_SHAPE] = tuple(kernel_size) + output.shape
     op.attrs[TraceKey.WEIGHT_SHAPE] = weight.shape
-
-    if collect_metrics:
-        op.attrs[TraceKey.OUTPUT_DENSITY] = len(output_points) / output.size
-        op.attrs[TraceKey.OUTPUT_THRESHOLD] = float(
-            np.sort(np.abs(output), axis=None)[output.size - max(1, len(output_points))]
-        )
-        op.attrs[TraceKey.RECEPTIVE_FIELD_DENSITY] = np.average(receptive_field_density)
-        op.attrs[TraceKey.RECEPTIVE_FIELD_THRESHOLD] = np.average(
-            receptive_field_threshold
-        )
-
     merge_traced_points(
         input_tensor,
         op,
         input_trace_points,
         flip_sign=flip_sign_inputs,
-        update_input=update_input,
     )
 
 
@@ -1265,9 +1142,6 @@ def add_layer_trace(
     op: Op,
     select_fn: Callable[[np.ndarray], np.ndarray],
     batch_index: int,
-    debug: bool,
-    *args,
-    **kwargs,
 ):
     left_input_tensor: Tensor = op.inputs[0]
     left_input: np.ndarray = left_input_tensor.value[batch_index]
@@ -1281,7 +1155,6 @@ def add_layer_trace(
     flip_sign = output_tensor.attrs[TraceKey.FLIP_SIGN]
     left_input_trace_points = []
     right_input_trace_points = []
-    weighted_inputs = []
     left_flip_sign_inputs = []
     right_flip_sign_inputs = []
     output_size = output.size
@@ -1311,13 +1184,8 @@ def add_layer_trace(
             if flip_sign is not None:
                 left_flip_sign_inputs.append(flip_sign_inputs[0])
                 right_flip_sign_inputs.append(flip_sign_inputs[1])
-        if debug:
-            weighted_inputs.append(both_input[output_point, input_points])
     left_input_trace_points = np.array(left_input_trace_points, dtype=np.int32)
     right_input_trace_points = np.array(right_input_trace_points, dtype=np.int32)
-    if debug:
-        weighted_inputs = concatenate(weighted_inputs, dtype=np.float32)
-        op.attrs[TraceKey.WEIGHTED_INPUT] = weighted_inputs
     op.attrs[TraceKey.EDGE] = np.concatenate(
         [left_input_trace_points, right_input_trace_points + output_size]
     )
@@ -1356,7 +1224,11 @@ register_op("Add", add_layer_trace)
 register_op("AddV2", add_layer_trace)
 
 
-def transpose_layer_trace(op: Op, *args, **kwargs):
+def transpose_layer_trace(
+    op: Op,
+    select_fn: Callable[[np.ndarray], np.ndarray],
+    batch_index: int,
+):
     perm = np.array(op.attrs["perm"].value[1:]) - 1
     input_tensor: Tensor = op.inputs[0]
     input_shape = input_tensor.value.shape[1:]
@@ -1384,7 +1256,11 @@ def transpose_layer_trace(op: Op, *args, **kwargs):
 register_op("Transpose", transpose_layer_trace)
 
 
-def pad_layer_trace(op: Op, batch_index: int, *args, **kwargs):
+def pad_layer_trace(
+    op: Op,
+    select_fn: Callable[[np.ndarray], np.ndarray],
+    batch_index: int,
+):
     paddings = op.attrs["paddings"].value[1:]
     input_tensor: Tensor = op.inputs[0]
     input_shape = input_tensor.value.shape[1:]
@@ -1427,7 +1303,11 @@ def pad_layer_trace(op: Op, batch_index: int, *args, **kwargs):
 register_op("Pad", pad_layer_trace)
 
 
-def concat_layer_trace(op: Op, batch_index: int, *args, **kwargs):
+def concat_layer_trace(
+    op: Op,
+    select_fn: Callable[[np.ndarray], np.ndarray],
+    batch_index: int,
+):
     axis = op.attrs["axis"].value - 1
     input_tensors: List[Tensor] = op.inputs[:-1]
     input_shapes = list(map(lambda tensor: tensor.value.shape[1:], input_tensors))
@@ -1459,7 +1339,11 @@ register_op("Concat", concat_layer_trace)
 register_op("ConcatV2", concat_layer_trace)
 
 
-def batch_norm_layer_trace(op: Op, batch_index: int, *args, **kwargs):
+def batch_norm_layer_trace(
+    op: Op,
+    select_fn: Callable[[np.ndarray], np.ndarray],
+    batch_index: int,
+):
     input_tensor: Tensor = op.inputs[0]
     input = input_tensor.value[batch_index]
     output_tensor: Tensor = op.outputs[0]
@@ -1481,7 +1365,11 @@ register_op("FusedBatchNormV2", batch_norm_layer_trace)
 register_op("FusedBatchNormV3", batch_norm_layer_trace)
 
 
-def trivial_layer_trace(op, *args, **kwargs):
+def trivial_layer_trace(
+    op: Op,
+    select_fn: Callable[[np.ndarray], np.ndarray],
+    batch_index: int,
+):
     input_tensor: Tensor = op.inputs[0]
     output_tensor: Tensor = op.outputs[0]
     merge_traced_points(
