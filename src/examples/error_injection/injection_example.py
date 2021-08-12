@@ -1,10 +1,9 @@
 from typing import Callable
 
+import amanda
 import torch
 import torchvision
 from injection_tool import ErrorInjectionTool
-
-import amanda
 
 
 def gen_op_names_filter(op_names) -> Callable:

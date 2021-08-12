@@ -1,10 +1,10 @@
 from typing import List
 
+import amanda
 import numpy as np
 import pandas as pd
 import tensorflow as tf
 
-import amanda
 from examples.effective_path.graph import Graph, Op, Tensor
 from examples.effective_path.tensorflow.path_extraction import (
     TraceKey,

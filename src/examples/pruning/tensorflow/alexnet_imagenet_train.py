@@ -15,19 +15,19 @@
 
 import fire
 import tensorflow as tf
+from amanda.io.file import abspath
 
 from examples.common.tensorflow.dataset import imagenet
+from examples.common.tensorflow.dataset.envs import IMAGENET_DIR
 from examples.common.tensorflow.dataset.imagenet_preprocessing import (
     alexnet_preprocess_image,
 )
 from examples.common.tensorflow.model.alexnet import AlexNet
+from examples.common.tensorflow.utils import new_session_config
 from examples.pruning.tensorflow.resnet_50_imagenet_train import (
     learning_rate_with_decay,
     validate_batch_size_for_multi_gpu,
 )
-from examples.common.tensorflow.utils import new_session_config
-from examples.common.tensorflow.dataset.envs import IMAGENET_DIR
-from amanda.io.file import abspath
 
 
 def alexnet_model_fn(features, labels, mode, params):

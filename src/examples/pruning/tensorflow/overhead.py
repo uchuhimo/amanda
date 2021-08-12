@@ -2,24 +2,21 @@ import os
 import shutil
 import time
 
-import tensorflow as tf
-
 import amanda
+import tensorflow as tf
 from amanda.io.file import abspath
-from examples.common.tensorflow.dataset import imagenet
+
+from examples.common.tensorflow.dataset import alexnet_preprocess_image, imagenet
 from examples.common.tensorflow.dataset.cifar100_main import input_fn
 from examples.common.tensorflow.dataset.envs import CIFAR100_RAW_DIR, IMAGENET_DIR
-from examples.common.tensorflow.dataset.imagenet_preprocessing import (
-    alexnet_preprocess_image,
-)
 from examples.common.tensorflow.utils import new_session_config
-from examples.pruning.tensorflow.alexnet_imagenet_train import alexnet_model_fn
-from examples.pruning.tensorflow.pruning import PruningTool
-from examples.pruning.tensorflow.resnet_18_cifar100_train import cifar100_model_fn
-from examples.pruning.tensorflow.resnet_50_imagenet_train import (
+from examples.pruning.tensorflow import (
+    cifar100_model_fn,
     resnet_50_model_fn,
     validate_batch_size_for_multi_gpu,
 )
+from examples.pruning.tensorflow.alexnet_imagenet_train import alexnet_model_fn
+from examples.pruning.tensorflow.pruning import PruningTool
 
 
 def train_resnet_18_cifar100(

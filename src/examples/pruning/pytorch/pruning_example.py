@@ -2,13 +2,13 @@ import os
 import sys
 from timeit import default_timer as timer
 
+import amanda
 import torch
 import torch.nn as nn
 import torchvision
 import torchvision.transforms as transforms
 from loguru import logger
 
-import amanda
 from examples.pruning.pytorch.pruning_tool import PruneTool
 
 

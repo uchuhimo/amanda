@@ -1,11 +1,11 @@
 import sys
 
+import amanda
 import pytest
 import torch
 import torchvision.models as models
 from loguru import logger
 
-import amanda
 from examples.common.pytorch.MOE.moe import MoE
 from examples.trace.pytorch.trace_tool import TraceTool
 

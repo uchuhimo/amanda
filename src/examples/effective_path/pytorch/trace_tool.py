@@ -1,4 +1,5 @@
 import amanda
+
 from examples.effective_path.graph import Graph, Op
 
 

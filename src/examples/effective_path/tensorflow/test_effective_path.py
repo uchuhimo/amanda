@@ -1,12 +1,12 @@
 import os
 
+import amanda
 import numpy as np
 import pytest
 import tensorflow as tf
-
-import amanda
 from amanda.io.file import root_dir
-from examples.effective_path.tensorflow.effective_path_tool import EffectivePathTool
+
+from examples.effective_path.tensorflow import EffectivePathTool
 
 
 @pytest.fixture(

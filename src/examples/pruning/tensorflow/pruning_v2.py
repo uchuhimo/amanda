@@ -1,7 +1,7 @@
+import amanda
 import tensorflow as tf
 import torch
 
-import amanda
 from examples.pruning.vector_wise_sparsity import create_mask
 
 

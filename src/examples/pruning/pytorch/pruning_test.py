@@ -1,8 +1,7 @@
 import inspect
 
-import torch
-
 import amanda
+import torch
 
 # import torch.nn
 

@@ -17,12 +17,12 @@ import os
 
 import fire
 import tensorflow as tf
+from amanda.io.file import abspath
 
 from examples.common.tensorflow.dataset.cifar100_main import input_fn
-from examples.common.tensorflow.model.resnet_18_cifar100 import ResNet18Cifar100
-from examples.common.tensorflow.utils import new_session_config
 from examples.common.tensorflow.dataset.envs import CIFAR100_RAW_DIR
-from amanda.io.file import abspath
+from examples.common.tensorflow.model import ResNet18Cifar100
+from examples.common.tensorflow.utils import new_session_config
 
 _NUM_IMAGES = {"train": 50000, "validation": 10000}
 

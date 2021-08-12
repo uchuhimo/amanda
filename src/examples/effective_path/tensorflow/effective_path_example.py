@@ -1,6 +1,6 @@
+import amanda
 import tensorflow as tf
 
-import amanda
 from examples.common.tensorflow.model.resnet_18_cifar100 import ResNet18Cifar100
 from examples.effective_path.tensorflow.effective_path_tool import EffectivePathTool
 

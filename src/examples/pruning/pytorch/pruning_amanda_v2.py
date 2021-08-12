@@ -1,7 +1,7 @@
-import amanda
 import os
 from timeit import default_timer as timer
 
+import amanda
 import torch
 import torch.nn as nn
 import torchvision

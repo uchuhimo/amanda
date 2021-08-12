@@ -1,12 +1,11 @@
 import os.path as osp
 
+import amanda
 import torch
 import torch.nn.functional as F
 import torch_geometric.transforms as T
 from torch_geometric.datasets import Planetoid
 from torch_geometric.nn import GATConv
-
-import amanda
 
 dataset = "Cora"
 path = osp.join(osp.dirname(osp.realpath(__file__)), "..", "data", dataset)

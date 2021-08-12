@@ -1,8 +1,10 @@
 from typing import Dict
-import torch
+
 import amanda
-from examples.pruning.vector_wise_sparsity import create_mask
 import tensorflow as tf
+import torch
+
+from examples.pruning.vector_wise_sparsity import create_mask
 
 
 class PruningTool(amanda.Tool):
@@ -12,13 +14,9 @@ class PruningTool(amanda.Tool):
             amanda.tools.FilterOpTool(filter_fn=self.filter_fn),
             amanda.tools.EagerContextTool(),
         )
+        self.register_event(amanda.event.before_op_executed, self.mask_forward_weight)
         self.register_event(
-            amanda.event.before_op_executed,
-            self.mask_forward_weight
-        )
-        self.register_event(
-            amanda.event.after_backward_op_executed,
-            self.mask_backward_gradient
+            amanda.event.after_backward_op_executed, self.mask_backward_gradient
         )
         self.masks: Dict[str, tf.Tensor] = {}
         self.disabled = disabled
@@ -61,7 +59,9 @@ class PruningTool(amanda.Tool):
                 mask = mask.permute(2, 3, 0, 1)
             with tf.device(weight.device):
                 self.masks[op.name] = tf.convert_to_tensor(mask.cpu().numpy())
-            # print(op.name, "mask", self.masks[op.name].shape, self.masks[op.name].device)
+            # print(
+            #     op.name, "mask", self.masks[op.name].shape, self.masks[op.name].device
+            # )
         # print(op.name, "weight", weight.device)
         context["inputs"][1] = weight * self.masks[op.name]
 
@@ -70,7 +70,10 @@ class PruningTool(amanda.Tool):
             return
         op = context["op"]
         backward_op = context["backward_op"]
-        if op.type not in ["Conv2D", "MatMul"] or backward_op.type not in ["Conv2DBackpropFilter", "MatMul"]:
+        if op.type not in ["Conv2D", "MatMul"] or backward_op.type not in [
+            "Conv2DBackpropFilter",
+            "MatMul",
+        ]:
             return
         weight_grad = context["grad_inputs"][0]
         if backward_op.type == "MatMul":

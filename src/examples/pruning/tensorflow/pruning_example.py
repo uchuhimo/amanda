@@ -15,15 +15,15 @@
 
 import os
 
-import tensorflow as tf
-
 import amanda
+import tensorflow as tf
 from amanda.io.file import abspath
+
 from examples.common.tensorflow.dataset.cifar100_main import input_fn
 from examples.common.tensorflow.dataset.envs import CIFAR100_RAW_DIR
 from examples.common.tensorflow.utils import new_session_config
+from examples.pruning.tensorflow import cifar100_model_fn
 from examples.pruning.tensorflow.pruning_tool import PruningTool
-from examples.pruning.tensorflow.resnet_18_cifar100_train import cifar100_model_fn
 
 
 def train(

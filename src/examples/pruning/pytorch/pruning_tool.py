@@ -1,7 +1,7 @@
+import amanda
 import torch
 from loguru import logger
 
-import amanda
 from examples.pruning.vector_wise_sparsity import create_mask
 
 

@@ -17,12 +17,12 @@ import os
 
 import fire
 import tensorflow as tf
+from amanda.io.file import abspath
 
 from examples.common.tensorflow.dataset import imagenet
+from examples.common.tensorflow.dataset.envs import IMAGENET_DIR
 from examples.common.tensorflow.model.resnet_50 import ResNet50
 from examples.common.tensorflow.utils import new_session_config
-from examples.common.tensorflow.dataset.envs import IMAGENET_DIR
-from amanda.io.file import abspath
 
 
 ################################################################################

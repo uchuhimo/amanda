@@ -1,12 +1,12 @@
 import os
 from timeit import default_timer as timer
 
+import amanda
 import torch
 import torch.nn as nn
 import torchvision
 import torchvision.transforms as transforms
 
-import amanda
 from examples.pruning.vector_wise_sparsity import create_mask
 
 
