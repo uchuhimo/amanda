@@ -17,8 +17,8 @@ import_types.update(amanda_import_types)
 export_types.update(amanda_export_types)
 
 if find_spec("tensorflow"):
-    from amanda.conversion.tensorflow import export_types as tf_export_types
-    from amanda.conversion.tensorflow import import_types as tf_import_types
+    from amanda.conversion.tf import export_types as tf_export_types
+    from amanda.conversion.tf import import_types as tf_import_types
 
     import_types.update(tf_import_types)
     export_types.update(tf_export_types)

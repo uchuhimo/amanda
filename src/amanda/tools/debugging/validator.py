@@ -7,7 +7,7 @@ from tensorflow.python.ops.script_ops import _py_funcs
 
 import amanda
 from amanda import Graph, OutputPort
-from amanda.conversion.tensorflow import import_from_tf_func, insert_hooks_old
+from amanda.conversion.tf import import_from_tf_func, insert_hooks_old
 from amanda.io.file import ensure_dir, root_dir
 from amanda.tests.test_tf_import_export import modify_model, run_model
 

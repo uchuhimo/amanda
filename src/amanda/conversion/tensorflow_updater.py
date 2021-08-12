@@ -1,6 +1,6 @@
 import time
 from functools import wraps
-from typing import List, Set
+from typing import List, NamedTuple, OrderedDict, Set
 
 from loguru import logger
 
@@ -10,6 +10,7 @@ from amanda.import_hook import (
     MethodUpdater,
     check_enabled,
     disabled,
+    is_enabled,
     register_inst_scope_hook,
     register_updater,
 )
@@ -56,17 +57,84 @@ def session_run_wrapper(func):
         else:
             session._session_runs = [args]
 
+    def update_node(tf_graph, node):
+        name = node.name
+        if ":" in name:
+            if node in tf_graph._updated_outputs:
+                updated_node = tf_graph._updated_outputs[node]
+                while updated_node in tf_graph._updated_outputs:
+                    updated_node = tf_graph._updated_outputs[updated_node]
+                return updated_node, True
+            else:
+                return node, False
+        else:
+            if node in tf_graph._updated_ops:
+                updated_node = tf_graph._updated_ops[node]
+                while updated_node in tf_graph._updated_ops:
+                    updated_node = tf_graph._updated_ops[updated_node]
+                return updated_node, True
+            else:
+                return node, False
+
+    def update_fetches(tf_graph, fetches):
+        import tensorflow as tf
+
+        is_updated = False
+        if isinstance(fetches, list):
+            for index, element in enumerate(fetches):
+                new_element, is_element_updated = update_fetches(tf_graph, element)
+                if is_element_updated:
+                    fetches[index] = new_element
+                    is_updated = True
+        elif isinstance(fetches, tuple):
+            fetches_list, is_list_updated = update_fetches(tf_graph, list(fetches))
+            if is_list_updated:
+                is_updated = True
+                fetches = tuple(fetches_list)
+        elif isinstance(fetches, dict):
+            for key, value in fetches.items():
+                new_value, is_value_updated = update_fetches(tf_graph, value)
+                if is_value_updated:
+                    fetches[key] = new_value
+                    is_updated = True
+        elif isinstance(fetches, OrderedDict):
+            for key, value in fetches.items():
+                new_value, is_value_updated = update_fetches(tf_graph, value)
+                if is_value_updated:
+                    fetches[key] = new_value
+                    is_updated = True
+        elif isinstance(fetches, NamedTuple):
+            fetches_list, is_list_updated = update_fetches(tf_graph, list(fetches))
+            if is_list_updated:
+                is_updated = True
+                fetches = type(fetches)._make(fetches_list)
+        elif isinstance(fetches, (tf.Operation, tf.Tensor, tf.sparse.SparseTensor)):
+            new_fetches, is_node_updated = update_node(tf_graph, fetches)
+            if is_node_updated:
+                fetches = new_fetches
+                is_updated = True
+        elif isinstance(fetches, str):
+            name = fetches
+            if ":" in name:
+                node = tf_graph.get_tensor_by_name(name)
+            else:
+                node = tf_graph.get_operation_by_name(name)
+            new_node, is_node_updated = update_node(tf_graph, node)
+            if is_node_updated:
+                fetches = new_node.name
+                is_updated = True
+        else:
+            raise RuntimeError(f"{fetches} is unsupported as a part of fetches")
+        return fetches, is_updated
+
     @wraps(func)
     def wrapper(self, fetches, feed_dict=None, options=None, run_metadata=None):
-        from amanda.conversion.tensorflow import insert_hooks
+        from amanda.conversion.tf import insert_hooks
 
         tf_graph = self.graph
-        if hasattr(tf_graph, "_spec"):
-            spec = tf_graph._spec
-        else:
-            spec = None
         with self.as_default():
-            is_graph_updated = insert_hooks(tf_graph, spec, get_tools())
+            is_graph_updated = insert_hooks(tf_graph, get_tools())
+            fetches, _ = update_fetches(tf_graph, fetches)
         if is_graph_updated:
             logger.debug("update session: {}", self)
             update_session(self, tf_graph)
@@ -100,7 +168,7 @@ def session_run_wrapper(func):
 
 
 def create_amanda_hook():
-    from amanda.conversion.tensorflow import FuncSessionHook
+    from amanda.conversion.tf import FuncSessionHook
 
     def begin():
         nonlocal context
@@ -169,14 +237,19 @@ def model_fn_wrapper(model_fn):
             kwargs["params"] = params
         if "config" in model_fn_args:
             kwargs["config"] = config
-        tf_graph = tf.get_default_graph()
-        input_ops = {op.name for op in tf_graph.get_operations()}
-        filter_hook = FilterHook()
-        handler = register_inst_scope_hook(filter_hook)
-        spec = model_fn(features, **kwargs)
-        handler.unregister()
-        tf_graph._disabled_ops = input_ops.union(filter_hook.disabled_ops)
-        tf_graph._spec = spec
+
+        if is_enabled():
+            tf_graph = tf.get_default_graph()
+            input_ops = {op.name for op in tf_graph.get_operations()}
+            filter_hook = FilterHook()
+            handler = register_inst_scope_hook(filter_hook)
+            spec = model_fn(features, **kwargs)
+            handler.unregister()
+            forward_ops = {op.name for op in tf_graph.get_operations()}
+            forward_ops = forward_ops - input_ops - filter_hook.disabled_ops
+            tf_graph._forward_ops = forward_ops
+        else:
+            spec = model_fn(features, **kwargs)
         return spec
 
     return new_model_fn

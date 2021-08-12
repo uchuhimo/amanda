@@ -5,7 +5,7 @@ import onnx
 import tensorflow as tf
 from google.protobuf import json_format
 
-from amanda.conversion.tensorflow import export_to_graph_def, import_from_graph_def
+from amanda.conversion.tf import export_to_graph_def, import_from_graph_def
 from amanda.conversion.utils import recursionlimit, repeated_fields_to_dict
 from amanda.namespace import Namespace, default_namespace
 

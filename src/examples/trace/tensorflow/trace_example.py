@@ -7,7 +7,7 @@ from examples.trace.tensorflow.trace_tool import TraceTool
 
 def main():
     model = ResNet50()
-    x = tf.random.uniform(shape=[2, 227, 227, 3])
+    x = tf.random.uniform(shape=[8, 224, 224, 3])
 
     tool = TraceTool(output_dir="tmp/trace_resnet50_tf/tracetool.txt")
 
@@ -16,6 +16,7 @@ def main():
         z = y + 1
         with tf.Session() as session:
             session.run(tf.initialize_all_variables())
+            print(session.run(y).shape)
             session.run(tf.gradients(y, x))
             session.run(tf.gradients(z, x))
 

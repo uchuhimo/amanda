@@ -1163,7 +1163,6 @@ def insert_hooks_old(graph: Graph, tools: List[Tool], forward_ops: Set[str] = No
 
 def insert_hooks(
     tf_graph: tf.Graph,
-    spec: tf.estimator.EstimatorSpec,
     tools: List[Tool],
 ) -> bool:
     def collect_actions():
@@ -1326,19 +1325,6 @@ def insert_hooks(
                         consumer._update_input(input_index, new_output)
                         break
 
-    def get_from_new_graph(node: Union[tf.Operation, tf.Tensor]):
-        name = node.name
-        if ":" in name:
-            if node in updated_outputs:
-                return updated_outputs[node]
-            else:
-                return node
-        else:
-            if node in updated_ops:
-                return updated_ops[node]
-            else:
-                return node
-
     if len(tools) == 0:
         return False
     tf_graph_finalized = tf_graph._finalized
@@ -1349,15 +1335,28 @@ def insert_hooks(
         if tf_graph_finalized:
             tf_graph._finalized = True
         return False
-    forward_ops = {op.name for op in tf_graph.get_operations()}
+    if hasattr(tf_graph, "_forward_ops"):
+        forward_ops = tf_graph._forward_ops
+    else:
+        forward_ops = {op.name for op in tf_graph.get_operations()}
     if hasattr(tf_graph, "_backward_ops"):
         forward_ops = forward_ops - tf_graph._backward_ops
-    if hasattr(tf_graph, "_disabled_ops"):
-        forward_ops = forward_ops - tf_graph._disabled_ops
     op_names = np.array([op.name for op in tf_graph.get_operations()])
     updated_inputs: Dict[tf.Tensor, tf.Tensor] = {}
     updated_outputs: Dict[tf.Tensor, tf.Tensor] = {}
     updated_ops: Dict[tf.Operation, tf.Operation] = {}
+    if hasattr(tf_graph, "_updated_inputs"):
+        updated_inputs = tf_graph._updated_inputs
+    else:
+        tf_graph._updated_inputs = updated_inputs
+    if hasattr(tf_graph, "_updated_outputs"):
+        updated_outputs = tf_graph._updated_outputs
+    else:
+        tf_graph._updated_outputs = updated_outputs
+    if hasattr(tf_graph, "_updated_ops"):
+        updated_ops = tf_graph._updated_ops
+    else:
+        tf_graph._updated_ops = updated_ops
     if not hasattr(tf_graph, "_op_contexts"):
         tf_graph._op_contexts = {}
     with disabled():
@@ -1379,24 +1378,6 @@ def insert_hooks(
                 return False
     if tf_graph_finalized:
         tf_graph._finalized = True
-    if spec is not None:
-        with tf_graph.as_default():
-            updated_spec = {}
-            if isinstance(spec.predictions, dict):
-                for name, tensor in spec.predictions.items():
-                    spec.predictions[name] = get_from_new_graph(tensor)
-            elif spec.predictions is not None:
-                updated_spec["predictions"] = get_from_new_graph(spec.predictions)
-            if spec.loss is not None:
-                updated_spec["loss"] = get_from_new_graph(spec.loss)
-            if spec.train_op is not None:
-                updated_spec["train_op"] = get_from_new_graph(spec.train_op)
-            for name in spec.eval_metric_ops.keys():
-                spec.eval_metric_ops[name] = (
-                    get_from_new_graph(spec.eval_metric_ops[name][0]),
-                    get_from_new_graph(spec.eval_metric_ops[name][1]),
-                )
-            spec = spec._replace(**updated_spec)
     return True
 
 

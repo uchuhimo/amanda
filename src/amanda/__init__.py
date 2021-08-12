@@ -30,7 +30,7 @@ from .tool import Tool  # noqa: F401
 from .type import DataType, unknown_type  # noqa: F401
 
 if find_spec("tensorflow"):
-    from .conversion import tensorflow  # noqa: F401
+    from .conversion import tf as tensorflow  # noqa: F401
 if find_spec("torch"):
     from .conversion import pytorch  # noqa: F401
 if find_spec("onnx"):

@@ -14,7 +14,7 @@ from loguru import logger
 
 import amanda
 from amanda import Graph, create_op
-from amanda.conversion.tensorflow import (
+from amanda.conversion.tf import (
     export_to_checkpoint,
     export_to_graph,
     export_to_graph_def,
@@ -434,8 +434,8 @@ def test_tf_inject_hook_to_graph():
     assert tool.count_before == 3
     assert tool.count_after == 3
     assert tool.count_before_tensor == 2
-    assert tool.count_after_tensor == 2
-    np.testing.assert_array_equal(np_output, [222, 224, 226, 228])
+    assert tool.count_after_tensor == 3
+    np.testing.assert_array_equal(np_output, [232, 234, 236, 238])
 
 
 def test_tf_inject_multiple_hooks_to_graph():
@@ -451,12 +451,12 @@ def test_tf_inject_multiple_hooks_to_graph():
     assert tool.count_before == 3
     assert tool.count_after == 3
     assert tool.count_before_tensor == 2
-    assert tool.count_after_tensor == 2
+    assert tool.count_after_tensor == 3
     assert tool2.count_before == 3
     assert tool2.count_after == 3
     assert tool2.count_before_tensor == 2
-    assert tool2.count_after_tensor == 2
-    np.testing.assert_array_equal(np_output, [442, 444, 446, 448])
+    assert tool2.count_after_tensor == 3
+    np.testing.assert_array_equal(np_output, [462, 464, 466, 468])
 
 
 def test_session_run_with_side_effect():
