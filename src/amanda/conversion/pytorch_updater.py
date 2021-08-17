@@ -17,6 +17,7 @@ from amanda.import_hook import (
     MatchedClassUpdater,
     MatchedFunctionUpdater,
     MethodUpdater,
+    Updater,
     check_enabled,
     disabled,
     register_updater,
@@ -411,17 +412,14 @@ def listener_callback(op_name: str) -> str:
     return op_name
 
 
-class ListenerFunctionalUpdater(MatchedFunctionUpdater):
-    def __init__(self, modules: List[str], submodules: List[str]):
-        super().__init__(module="", decorator=function_wrapper)
-        self.modules = modules
-        self.submodules = submodules
+class ListenerFunctionalUpdater(Updater):
+    def __init__(self, module: str, submodules: List[str]):
+        self.module = module
+        self.submodules = set(submodules)
+        self.decorator = function_wrapper
 
     def is_match(self, name: str) -> bool:
-        return name in self.modules
-
-    def is_match_func(self, module: str, name: str, func) -> bool:
-        pass
+        return name == self.module
 
     def update_module(self, module, submodule_name, func_name):
         func = getattr(module.__dict__[submodule_name], func_name)
@@ -599,9 +597,7 @@ def register_import_hook() -> None:
     # )
     register_updater(
         ListenerFunctionalUpdater(
-            modules=[
-                "torch._C",
-            ],
+            module="torch._C",
             submodules=[
                 "_nn",
                 "_fft",

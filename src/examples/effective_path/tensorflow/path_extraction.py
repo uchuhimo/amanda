@@ -30,6 +30,11 @@ class TraceKey:
     FLIP_SIGN = "trace.flip_sign"
     FLIP_SIGN_CONFLICT = "trace.flip_sign_conflict"
 
+    POINT_MASK = "trace.point_mask"
+    EDGE_MASK = "trace.edge_mask"
+    WEIGHT_MASK = "trace.weight_mask"
+    FLIP_SIGN_MASK = "trace.flip_sign_mask"
+
     POINT_SHAPE = "trace.point_shape"
     EDGE_SHAPE = "trace.edge_shape"
     WEIGHT_SHAPE = "trace.weight_shape"
@@ -147,19 +152,37 @@ def to_mask(x, shape):
     return mask
 
 
+def from_mask(x):
+    return np.nonzero(x)[0]
+
+
+def get_point(tensor):
+    if TraceKey.POINT not in tensor.attrs:
+        tensor.attrs[TraceKey.POINT] = from_mask(tensor.attrs[TraceKey.POINT_MASK])
+    return tensor.attrs[TraceKey.POINT]
+
+
+def get_flip_sign(tensor):
+    if TraceKey.FLIP_SIGN not in tensor.attrs:
+        if TraceKey.FLIP_SIGN_MASK not in tensor.attrs:
+            tensor.attrs[TraceKey.FLIP_SIGN] = None
+        else:
+            point = get_point(tensor)
+            flip_sign = np.ones((len(point),), np.int32)
+            flip_sign_mask = tensor.attrs[TraceKey.FLIP_SIGN_MASK]
+            flip_sign[flip_sign_mask[point]] = -1
+            tensor.attrs[TraceKey.FLIP_SIGN] = flip_sign
+    return tensor.attrs[TraceKey.FLIP_SIGN]
+
+
 def compact_path(graph: Graph) -> Graph:
     if graph is None:
         return graph
     for op in graph.ops.values():
         attrs = op.attrs
-        for attr_name, attr in attrs.items():
-
-            def to_bitmap(shape):
-                mask = to_mask(TraceKey.to_array(attr), shape)
-                return np.packbits(mask)
-
+        for attr_name in attrs.keys():
             if attr_name in [TraceKey.POINT, TraceKey.WEIGHT, TraceKey.EDGE]:
-                attrs[attr_name] = to_bitmap(attrs[attr_name + "_shape"])
+                attrs[attr_name] = np.packbits(attrs[attr_name + "_mask"])
     return graph
 
 
@@ -445,73 +468,26 @@ def merge_traced_points(
     op: Op,
     traced_points: np.ndarray,
     flip_sign: Optional[np.ndarray],
-    is_unique: bool = False,
 ):
-    tensor.attrs[TraceKey.POINT_SHAPE] = tensor.value.shape[1:]
-    if not is_unique:
-        if flip_sign is None:
-            traced_points = np.unique(traced_points)
-        else:
-            df = pd.DataFrame(dict(point=traced_points, flip_sign=flip_sign))
-            merged_df = (
-                df["flip_sign"]
-                .groupby(df["point"])
-                .aggregate(lambda flip_signs: flip_signs.values[0])
-            )
-            traced_points = merged_df.index.values
-            flip_sign = merged_df.values
     op_index = tensor.outputs.index(op)
-    tensor.attrs[TraceKey.POINT + f".{op_index}"] = traced_points
-    tensor.attrs[TraceKey.FLIP_SIGN + f".{op_index}"] = flip_sign
-    if TraceKey.POINT in tensor.attrs:
-        if tensor.attrs[TraceKey.FLIP_SIGN] is None and flip_sign is None:
-            tensor.attrs[TraceKey.POINT] = np.unique(
-                concatenate(
-                    [traced_points, tensor.attrs[TraceKey.POINT]], dtype=np.int32
-                )
-            )
-            tensor.attrs[TraceKey.FLIP_SIGN] = None
-        else:
-            if tensor.attrs[TraceKey.FLIP_SIGN] is None:
-                tensor.attrs[TraceKey.FLIP_SIGN] = np.repeat(
-                    1, tensor.attrs[TraceKey.POINT].size
-                )
-            if flip_sign is None:
-                flip_sign = np.repeat(1, traced_points.size)
-
-            def merge_flip_sign(flip_signs: pd.Series):
-                flip_signs = flip_signs.values
-                if flip_signs.size == 1:
-                    return flip_signs[0]
-                else:
-                    assert flip_signs.size == 2
-                    if flip_signs[0] == flip_signs[1]:
-                        return flip_signs[0]
-                    else:
-                        if TraceKey.FLIP_SIGN_CONFLICT not in tensor.attrs:
-                            tensor.attrs[TraceKey.FLIP_SIGN_CONFLICT] = 0
-                        tensor.attrs[TraceKey.FLIP_SIGN_CONFLICT] += 1
-                        return 1
-
-            all_traced_points = concatenate(
-                [tensor.attrs[TraceKey.POINT], traced_points], dtype=np.int32
-            )
-            all_flip_sign = concatenate(
-                [tensor.attrs[TraceKey.FLIP_SIGN], flip_sign], dtype=np.int32
-            )
-            df = pd.DataFrame(dict(point=all_traced_points, flip_sign=all_flip_sign))
-            merged_df = df["flip_sign"].groupby(df["point"]).aggregate(merge_flip_sign)
-            tensor.attrs[TraceKey.POINT] = merged_df.index.values
-            if np.all(merged_df.values == 1):
-                tensor.attrs[TraceKey.FLIP_SIGN] = None
-            else:
-                tensor.attrs[TraceKey.FLIP_SIGN] = merged_df.values
+    tensor.attrs[TraceKey.POINT_SHAPE] = tensor.value.shape[1:]
+    traced_points_mask = to_mask(traced_points, tensor.value.shape)
+    tensor.attrs[TraceKey.POINT_MASK + f".{op_index}"] = traced_points_mask
+    if TraceKey.POINT_MASK in tensor.attrs:
+        tensor.attrs[TraceKey.POINT_MASK] = np.logical_or(
+            traced_points_mask, tensor.attrs[TraceKey.POINT_MASK]
+        )
     else:
-        tensor.attrs[TraceKey.POINT] = traced_points
-        if flip_sign is not None and np.all(flip_sign == 1):
-            tensor.attrs[TraceKey.FLIP_SIGN] = None
+        tensor.attrs[TraceKey.POINT_MASK] = traced_points_mask
+    if flip_sign is not None:
+        flip_sign_mask = to_mask(traced_points[flip_sign < 0], tensor.value.shape)
+        tensor.attrs[TraceKey.FLIP_SIGN_MASK + f".{op_index}"] = flip_sign_mask
+        if TraceKey.FLIP_SIGN_MASK in tensor.attrs:
+            tensor.attrs[TraceKey.FLIP_SIGN_MASK] = np.logical_and(
+                flip_sign_mask, tensor.attrs[TraceKey.FLIP_SIGN_MASK]
+            )
         else:
-            tensor.attrs[TraceKey.FLIP_SIGN] = flip_sign
+            tensor.attrs[TraceKey.FLIP_SIGN_MASK] = flip_sign_mask
 
 
 def calc_padding(
@@ -581,9 +557,9 @@ def calc_flip_sign_batch(
     flip_sign_inputs = np.ones((len(input_points[0]),), np.int32)
     if flip_sign is not None:
         flip_sign_inputs[
-            np.logical_and(
-                flip_sign[input_points[0]] == -1, flipped_weighed_input.max(axis=-1) < 0
-            )
+            np.logical_and(flip_sign == -1, flipped_weighed_input.max(axis=-1) < 0)[
+                input_points[0]
+            ]
         ] = -1
     return input_points, flip_sign_inputs
 
@@ -599,8 +575,8 @@ def linear_layer_trace(
     input = input_tensor.value[batch_index]
     output_tensor: Tensor = op.outputs[0]
     output: np.ndarray = output_tensor.value[batch_index]
-    output_points = output_tensor.attrs[TraceKey.POINT]
-    flip_sign = output_tensor.attrs[TraceKey.FLIP_SIGN]
+    output_points = get_point(output_tensor)
+    flip_sign = get_flip_sign(output_tensor)
     output_trace_points = []
     input_trace_points = []
     flip_sign_inputs: List[Any] = []
@@ -624,14 +600,17 @@ def linear_layer_trace(
     else:
         flip_sign_inputs = None
     edge_shape = (input.size, output.size)
+    weight_shape = weight.shape
     op.attrs[TraceKey.EDGE] = np.ravel_multi_index(
         (input_trace_points, output_trace_points), edge_shape
     )
     op.attrs[TraceKey.WEIGHT] = np.ravel_multi_index(
-        (output_trace_points, input_trace_points), weight.shape
+        (output_trace_points, input_trace_points), weight_shape
     )
     op.attrs[TraceKey.EDGE_SHAPE] = edge_shape
-    op.attrs[TraceKey.WEIGHT_SHAPE] = weight.shape
+    op.attrs[TraceKey.WEIGHT_SHAPE] = weight_shape
+    op.attrs[TraceKey.EDGE_MASK] = to_mask(op.attrs[TraceKey.EDGE], edge_shape)
+    op.attrs[TraceKey.WEIGHT_MASK] = to_mask(op.attrs[TraceKey.WEIGHT], weight_shape)
     merge_traced_points(
         input_tensor,
         op,
@@ -654,8 +633,8 @@ def max_layer_trace(
     input = input_tensor.value[batch_index]
     output_tensor: Tensor = op.outputs[0]
     output = output_tensor.value[batch_index]
-    output_points = output_tensor.attrs[TraceKey.POINT]
-    flip_sign = output_tensor.attrs[TraceKey.FLIP_SIGN]
+    output_points = get_point(output_tensor)
+    flip_sign = get_flip_sign(output_tensor)
     if op.attrs["data_format"] == "NHWC":
         input = np.rollaxis(input, 2)
         output = np.rollaxis(output, 2)
@@ -720,11 +699,13 @@ def max_layer_trace(
 
     output_trace_points = np.array(output_trace_points, dtype=np.int32)
     input_trace_points = np.array(input_trace_points, dtype=np.int32)
-    edge_shape = (kernel_size[0] * kernel_size[1], output.size)
+    edge_shape = tuple(kernel_size) + output.shape
     op.attrs[TraceKey.EDGE] = np.ravel_multi_index(
-        (unaligned_input_trace_points, output_trace_points), edge_shape
+        (unaligned_input_trace_points, output_trace_points),
+        (kernel_size[0] * kernel_size[1], output.size),
     )
-    op.attrs[TraceKey.EDGE_SHAPE] = tuple(kernel_size) + output.shape
+    op.attrs[TraceKey.EDGE_SHAPE] = edge_shape
+    op.attrs[TraceKey.EDGE_MASK] = to_mask(op.attrs[TraceKey.EDGE], edge_shape)
     if flip_sign is not None:
         flip_sign_inputs = np.array(flip_sign_inputs, dtype=np.int32)
     else:
@@ -748,8 +729,8 @@ def avg_layer_trace(
     input = input_tensor.value[batch_index]
     output_tensor: Tensor = op.outputs[0]
     output = output_tensor.value[batch_index]
-    output_points = output_tensor.attrs[TraceKey.POINT]
-    flip_sign = output_tensor.attrs[TraceKey.FLIP_SIGN]
+    output_points = get_point(output_tensor)
+    flip_sign = get_flip_sign(output_tensor)
     if op.attrs["data_format"] == "NHWC":
         input = np.rollaxis(input, 2)
         output = np.rollaxis(output, 2)
@@ -828,11 +809,13 @@ def avg_layer_trace(
         flip_sign_inputs = concatenate(flip_sign_inputs, dtype=np.int32)
     else:
         flip_sign_inputs = None
-    edge_shape = (kernel_size[0] * kernel_size[1], output.size)
+    edge_shape = tuple(kernel_size) + output.shape
     op.attrs[TraceKey.EDGE] = np.ravel_multi_index(
-        (unaligned_input_trace_points, output_trace_points), edge_shape
+        (unaligned_input_trace_points, output_trace_points),
+        (kernel_size[0] * kernel_size[1], output.size),
     )
-    op.attrs[TraceKey.EDGE_SHAPE] = tuple(kernel_size) + output.shape
+    op.attrs[TraceKey.EDGE_SHAPE] = edge_shape
+    op.attrs[TraceKey.EDGE_MASK] = to_mask(op.attrs[TraceKey.EDGE], edge_shape)
     merge_traced_points(
         input_tensor, op, input_trace_points, flip_sign=flip_sign_inputs
     )
@@ -851,8 +834,8 @@ def mean_layer_trace(
     input = input_tensor.value[batch_index]
     output_tensor: Tensor = op.outputs[0]
     output = output_tensor.value[batch_index]
-    output_points = output_tensor.attrs[TraceKey.POINT]
-    flip_sign = output_tensor.attrs[TraceKey.FLIP_SIGN]
+    output_points = get_point(output_tensor)
+    flip_sign = get_flip_sign(output_tensor)
     input_trace_points = []
     flip_sign_inputs: List[Any] = []
     for (output_point_pos, output_point), output_point_index in zip(
@@ -896,8 +879,10 @@ def mean_layer_trace(
         flip_sign_inputs = concatenate(flip_sign_inputs, dtype=np.int32)
     else:
         flip_sign_inputs = None
+    edge_shape = input.shape
     op.attrs[TraceKey.EDGE] = input_trace_points
-    op.attrs[TraceKey.EDGE_SHAPE] = input.shape
+    op.attrs[TraceKey.EDGE_SHAPE] = edge_shape
+    op.attrs[TraceKey.EDGE_MASK] = to_mask(op.attrs[TraceKey.EDGE], edge_shape)
     merge_traced_points(
         input_tensor, op, input_trace_points, flip_sign=flip_sign_inputs
     )
@@ -918,8 +903,8 @@ def conv2d_layer_trace(
     input = input_tensor.value[batch_index]
     output_tensor: Tensor = op.outputs[0]
     output = output_tensor.value[batch_index]
-    output_points = output_tensor.attrs[TraceKey.POINT]
-    flip_sign = output_tensor.attrs[TraceKey.FLIP_SIGN]
+    output_points = get_point(output_tensor)
+    flip_sign = get_flip_sign(output_tensor)
     if op.attrs["data_format"] == "NHWC":
         input = np.rollaxis(input, 2)
         output = np.rollaxis(output, 2)
@@ -981,13 +966,17 @@ def conv2d_layer_trace(
         (output_point_index[0][unaligned_input_points[0]], unaligned_input_points[1]),
         (out_channels, receptive_field_size),
     )
-    edge_shape = (receptive_field_size, output.size)
+    edge_shape = receptive_field_shape + output.shape
+    weight_shape = weight.shape
+    op.attrs[TraceKey.EDGE_SHAPE] = edge_shape
+    op.attrs[TraceKey.WEIGHT_SHAPE] = weight_shape
     op.attrs[TraceKey.EDGE] = np.ravel_multi_index(
-        (unaligned_input_points[1], output_trace_points), edge_shape
+        (unaligned_input_points[1], output_trace_points),
+        (receptive_field_size, output.size),
     )
-    op.attrs[TraceKey.WEIGHT] = np.unique(weight_indices)
-    op.attrs[TraceKey.EDGE_SHAPE] = receptive_field_shape + output.shape
-    op.attrs[TraceKey.WEIGHT_SHAPE] = weight.shape
+    op.attrs[TraceKey.EDGE_MASK] = to_mask(op.attrs[TraceKey.EDGE], edge_shape)
+    op.attrs[TraceKey.WEIGHT_MASK] = to_mask(weight_indices, weight_shape)
+    op.attrs[TraceKey.WEIGHT] = from_mask(op.attrs[TraceKey.WEIGHT_MASK])
     merge_traced_points(
         input_tensor,
         op,
@@ -1011,8 +1000,8 @@ def dw_conv2d_layer_trace(
     input = input_tensor.value[batch_index]
     output_tensor: Tensor = op.outputs[0]
     output = output_tensor.value[batch_index]
-    output_points = output_tensor.attrs[TraceKey.POINT]
-    flip_sign = output_tensor.attrs[TraceKey.FLIP_SIGN]
+    output_points = get_point(output_tensor)
+    flip_sign = get_flip_sign(output_tensor)
     if op.attrs["data_format"] == "NHWC":
         input = np.rollaxis(input, 2)
         output = np.rollaxis(output, 2)
@@ -1116,13 +1105,17 @@ def dw_conv2d_layer_trace(
         flip_sign_inputs = concatenate(flip_sign_inputs, dtype=np.int32)
     else:
         flip_sign_inputs = None
-    edge_shape = (kernel_size[0] * kernel_size[1], output.size)
+    edge_shape = tuple(kernel_size) + output.shape
+    weight_shape = weight.shape
     op.attrs[TraceKey.EDGE] = np.ravel_multi_index(
-        (unaligned_input_trace_points, output_trace_points), edge_shape
+        (unaligned_input_trace_points, output_trace_points),
+        (kernel_size[0] * kernel_size[1], output.size),
     )
-    op.attrs[TraceKey.WEIGHT] = np.unique(weight_indices)
-    op.attrs[TraceKey.EDGE_SHAPE] = tuple(kernel_size) + output.shape
-    op.attrs[TraceKey.WEIGHT_SHAPE] = weight.shape
+    op.attrs[TraceKey.EDGE_SHAPE] = edge_shape
+    op.attrs[TraceKey.WEIGHT_SHAPE] = weight_shape
+    op.attrs[TraceKey.EDGE_MASK] = to_mask(op.attrs[TraceKey.EDGE], edge_shape)
+    op.attrs[TraceKey.WEIGHT_MASK] = to_mask(weight_indices, weight_shape)
+    op.attrs[TraceKey.WEIGHT] = from_mask(op.attrs[TraceKey.WEIGHT_MASK])
     merge_traced_points(
         input_tensor,
         op,
@@ -1146,57 +1139,28 @@ def add_layer_trace(
     both_input = np.transpose(np.array([left_input.flatten(), right_input.flatten()]))
     output_tensor: Tensor = op.outputs[0]
     output: np.ndarray = output_tensor.value[batch_index]
-    flatten_output = output.flatten()
-    output_points = output_tensor.attrs[TraceKey.POINT]
-    flip_sign = output_tensor.attrs[TraceKey.FLIP_SIGN]
-    left_input_trace_points = []
-    right_input_trace_points = []
-    left_flip_sign_inputs = []
-    right_flip_sign_inputs = []
+    output_points = get_point(output_tensor)
+    flip_sign = get_flip_sign(output_tensor)
     output_size = output.size
-    for index, output_point in enumerate(output_points):
-        output_value = flatten_output[output_point]
-        flip_sign_inputs: List[Any] = []
-        input_points = calc_flip_sign(
-            flip_sign=flip_sign,
-            index=index,
-            output_value=output_value,
-            weighted_input=both_input[output_point],
-            select_fn=select_fn,
-            flip_sign_inputs=flip_sign_inputs,
-        )
-        if input_points.size == 1:
-            if input_points[0] == 0:
-                left_input_trace_points.append(output_point)
-                if flip_sign is not None:
-                    left_flip_sign_inputs.append(flip_sign_inputs[0])
-            else:
-                right_input_trace_points.append(output_point)
-                if flip_sign is not None:
-                    right_flip_sign_inputs.append(flip_sign_inputs[0])
-        else:
-            left_input_trace_points.append(output_point)
-            right_input_trace_points.append(output_point)
-            if flip_sign is not None:
-                left_flip_sign_inputs.append(flip_sign_inputs[0])
-                right_flip_sign_inputs.append(flip_sign_inputs[1])
-    left_input_trace_points = np.array(left_input_trace_points, dtype=np.int32)
-    right_input_trace_points = np.array(right_input_trace_points, dtype=np.int32)
+    output_point_index_tuple = np.unravel_index(output_points, output.shape)
+    output_value = output[output_point_index_tuple]
+    input_points, flip_sign_inputs = calc_flip_sign_batch(
+        flip_sign=flip_sign,
+        output_value=output_value,
+        weighted_input=both_input[output_points],
+        select_fn=lambda input: arg_approx_batch(input, 0.5),
+    )
+    left_input_trace_points = input_points[0][input_points[1] == 0]
+    right_input_trace_points = input_points[0][input_points[1] == 1]
+    edge_shape = (2, output_size)
     op.attrs[TraceKey.EDGE] = np.concatenate(
         [left_input_trace_points, right_input_trace_points + output_size]
     )
-    op.attrs[TraceKey.EDGE_SHAPE] = (2, output_size)
+    op.attrs[TraceKey.EDGE_SHAPE] = edge_shape
+    op.attrs[TraceKey.EDGE_MASK] = to_mask(op.attrs[TraceKey.EDGE], edge_shape)
     if flip_sign is not None:
-        left_flip_sign_inputs = (
-            concatenate(left_flip_sign_inputs, dtype=np.int32)
-            if len(left_flip_sign_inputs) > 0
-            else None
-        )
-        right_flip_sign_inputs = (
-            concatenate(right_flip_sign_inputs, dtype=np.int32)
-            if len(right_flip_sign_inputs) > 0
-            else None
-        )
+        left_flip_sign_inputs = flip_sign_inputs[input_points[1] == 0]
+        right_flip_sign_inputs = flip_sign_inputs[input_points[1] == 1]
     else:
         left_flip_sign_inputs = None
         right_flip_sign_inputs = None
@@ -1205,14 +1169,12 @@ def add_layer_trace(
         op,
         left_input_trace_points,
         flip_sign=left_flip_sign_inputs,
-        is_unique=True,
     )
     merge_traced_points(
         right_input_tensor,
         op,
         right_input_trace_points,
         flip_sign=right_flip_sign_inputs,
-        is_unique=True,
     )
 
 
@@ -1229,7 +1191,8 @@ def transpose_layer_trace(
     input_tensor: Tensor = op.inputs[0]
     input_shape = input_tensor.value.shape[1:]
     output_tensor: Tensor = op.outputs[0]
-    output_points = output_tensor.attrs[TraceKey.POINT]
+    output_points = get_point(output_tensor)
+    flip_sign = get_flip_sign(output_tensor)
     output_shape = output_tensor.value.shape[1:]
     output_point_index = np.unravel_index(output_points, output_shape)
     input_to_output_perm = {
@@ -1243,8 +1206,7 @@ def transpose_layer_trace(
         input_tensor,
         op,
         np.ravel_multi_index(input_point_index, input_shape),
-        flip_sign=output_tensor.attrs[TraceKey.FLIP_SIGN],
-        is_unique=True,
+        flip_sign=flip_sign,
     )
     op.attrs[TraceKey.TRIVIAL] = True
 
@@ -1261,7 +1223,8 @@ def pad_layer_trace(
     input_tensor: Tensor = op.inputs[0]
     input_shape = input_tensor.value.shape[1:]
     output_tensor: Tensor = op.outputs[0]
-    output_points = output_tensor.attrs[TraceKey.POINT]
+    output_points = get_point(output_tensor)
+    flip_sign = get_flip_sign(output_tensor)
     output = output_tensor.value[batch_index]
     output_point_index = np.unravel_index(output_points, output.shape)
     input_point_index = tuple(
@@ -1291,8 +1254,7 @@ def pad_layer_trace(
         input_tensor,
         op,
         np.ravel_multi_index(filtered_input_point_index, input_shape),
-        flip_sign=output_tensor.attrs[TraceKey.FLIP_SIGN],
-        is_unique=True,
+        flip_sign=flip_sign,
     )
 
 
@@ -1308,7 +1270,8 @@ def concat_layer_trace(
     input_tensors: List[Tensor] = op.inputs[:-1]
     input_shapes = list(map(lambda tensor: tensor.value.shape[1:], input_tensors))
     output_tensor: Tensor = op.outputs[0]
-    output_points = output_tensor.attrs[TraceKey.POINT]
+    output_points = get_point(output_tensor)
+    flip_sign = get_flip_sign(output_tensor)
     output = output_tensor.value[batch_index]
     output_point_index = np.unravel_index(output_points, output.shape)
     start_index = 0
@@ -1324,8 +1287,7 @@ def concat_layer_trace(
             input_tensor,
             op,
             np.ravel_multi_index(input_point_index, input_shape),
-            flip_sign=None,
-            is_unique=True,
+            flip_sign=flip_sign[input_filter],
         )
         start_index = end_index
     op.attrs[TraceKey.TRIVIAL] = True
@@ -1344,15 +1306,13 @@ def batch_norm_layer_trace(
     input = input_tensor.value[batch_index]
     output_tensor: Tensor = op.outputs[0]
     output = output_tensor.value[batch_index]
-    output_points = output_tensor.attrs[TraceKey.POINT]
+    output_points = get_point(output_tensor)
     index = np.unravel_index(output_points, output.shape)
     flip_sign = np.sign(input[index], dtype=np.int32, casting="unsafe") * np.sign(
         output[index], dtype=np.int32, casting="unsafe"
     )
     flip_sign[flip_sign == 0] = 1
-    merge_traced_points(
-        input_tensor, op, output_points, flip_sign=flip_sign, is_unique=True
-    )
+    merge_traced_points(input_tensor, op, output_points, flip_sign=flip_sign)
     op.attrs[TraceKey.TRIVIAL] = True
 
 
@@ -1368,12 +1328,13 @@ def trivial_layer_trace(
 ):
     input_tensor: Tensor = op.inputs[0]
     output_tensor: Tensor = op.outputs[0]
+    output_points = get_point(output_tensor)
+    flip_sign = get_flip_sign(output_tensor)
     merge_traced_points(
         input_tensor,
         op,
-        output_tensor.attrs[TraceKey.POINT],
-        flip_sign=output_tensor.attrs[TraceKey.FLIP_SIGN],
-        is_unique=True,
+        output_points,
+        flip_sign=flip_sign,
     )
     op.attrs[TraceKey.TRIVIAL] = True
 
