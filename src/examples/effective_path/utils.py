@@ -54,6 +54,23 @@ def arg_approx(array: np.ndarray, precision: float) -> np.ndarray:
         return argtopk(input, topk + 1)
 
 
+def arg_approx_batch(array: np.ndarray, precision: float) -> np.ndarray:
+    if (1 / array.shape[-1]) >= precision:
+        return np.argmax(array, axis=-1)[:, np.newaxis]
+    input_sum = array.sum(axis=-1)
+    input = array
+    threshold = input_sum * precision
+    sorted_input = input.copy()
+    sorted_input[:, ::-1].sort(axis=-1)
+    topk = np.zeros_like(threshold, dtype=np.int32)
+    input_sum = sorted_input.cumsum(axis=-1)
+    for i in range(topk.size):
+        topk[i] = np.searchsorted(input_sum[i], threshold[i])
+    topk[topk >= input.shape[-1]] = input.shape[-1] - 1
+    input_threshold = sorted_input[np.arange(input.shape[0]), topk]
+    return np.nonzero(input > input_threshold[:, np.newaxis])
+
+
 # def arg_approx(array: np.ndarray, precision: float) -> np.ndarray:
 #     input_sum = array.sum()
 #     if input_sum == 0:

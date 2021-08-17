@@ -1,5 +1,5 @@
 import gc
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 from contextlib import ExitStack
 from dataclasses import dataclass
 from functools import lru_cache
@@ -10,30 +10,6 @@ from typing import Any, Callable, Dict, List, Set, Tuple, Union
 import google.protobuf.text_format
 import numpy as np
 import tensorflow as tf
-from tensorflow.core.framework import tensor_pb2, variable_pb2
-from tensorflow.core.framework.op_def_pb2 import OpDef
-from tensorflow.core.framework.versions_pb2 import VersionDef
-from tensorflow.core.protobuf.meta_graph_pb2 import AssetFileDef, SignatureDef
-from tensorflow.core.protobuf.saved_object_graph_pb2 import SavedObjectGraph
-from tensorflow.core.protobuf.saver_pb2 import SaverDef
-from tensorflow.python import tensor_shape, types_pb2
-from tensorflow.python.eager.context import eager_mode
-from tensorflow.python.framework import dtypes, ops
-from tensorflow.python.framework.meta_graph import stripped_op_list_for_graph
-from tensorflow.python.framework.op_def_library import (
-    _IsListValue,
-    _MakeBool,
-    _MakeFloat,
-    _MakeInt,
-    _MakeShape,
-    _MakeStr,
-    _MakeTensor,
-    _MakeType,
-)
-from tensorflow.python.ops.script_ops import EagerFunc
-from tensorflow.python.ops.script_ops import _py_funcs as tf_py_funcs
-from tensorflow.python.util import compat
-
 from amanda.adapter import Adapter, get_adapter_registry
 from amanda.conversion.utils import to_proto, without_internal_attrs
 from amanda.event import (
@@ -65,6 +41,29 @@ from amanda.lang import replace_all_refs
 from amanda.namespace import Namespace, default_namespace
 from amanda.tool import Tool
 from amanda.type import DataType
+from tensorflow.core.framework import tensor_pb2, variable_pb2
+from tensorflow.core.framework.op_def_pb2 import OpDef
+from tensorflow.core.framework.versions_pb2 import VersionDef
+from tensorflow.core.protobuf.meta_graph_pb2 import AssetFileDef, SignatureDef
+from tensorflow.core.protobuf.saved_object_graph_pb2 import SavedObjectGraph
+from tensorflow.core.protobuf.saver_pb2 import SaverDef
+from tensorflow.python import tensor_shape, types_pb2
+from tensorflow.python.eager.context import eager_mode
+from tensorflow.python.framework import dtypes, ops
+from tensorflow.python.framework.meta_graph import stripped_op_list_for_graph
+from tensorflow.python.framework.op_def_library import (
+    _IsListValue,
+    _MakeBool,
+    _MakeFloat,
+    _MakeInt,
+    _MakeShape,
+    _MakeStr,
+    _MakeTensor,
+    _MakeType,
+)
+from tensorflow.python.ops.script_ops import EagerFunc
+from tensorflow.python.ops.script_ops import _py_funcs as tf_py_funcs
+from tensorflow.python.util import compat
 
 _namespace = default_namespace() / Namespace("tensorflow")
 _internal_namespace = _namespace / Namespace("internal")
@@ -1175,6 +1174,11 @@ def insert_hooks(
             tf_graph._nodes_by_id[id].name
             for id in range(start_id, tf_graph._last_id + 1)
         ]
+        for op_name in new_op_names:
+            if op_name.startswith("gradients/"):
+                name = op_name[len("gradients/") :]
+                forward_op_name = name[: name.find("_grad/")]
+                tf_graph._backward_ops[forward_op_name].append(op_name)
         for op_id in range(1, tf_graph._last_id + 1):
             op = tf_graph._nodes_by_id[op_id]
             if op.name not in forward_ops:
@@ -1196,9 +1200,10 @@ def insert_hooks(
                 for action in context.actions:
                     actions.append((action, op))
 
-            backward_op_names = op_names[
-                np.char.startswith(op_names, f"gradients/{op.name}_grad/")
-            ]
+            if op.name in tf_graph._backward_ops:
+                backward_op_names = tf_graph._backward_ops[op.name]
+            else:
+                continue
             if backward_op_names.size == 0:
                 continue
             for backward_op_name in backward_op_names:
@@ -1341,7 +1346,6 @@ def insert_hooks(
         forward_ops = {op.name for op in tf_graph.get_operations()}
     if hasattr(tf_graph, "_backward_ops"):
         forward_ops = forward_ops - tf_graph._backward_ops
-    op_names = np.array([op.name for op in tf_graph.get_operations()])
     updated_inputs: Dict[tf.Tensor, tf.Tensor] = {}
     updated_outputs: Dict[tf.Tensor, tf.Tensor] = {}
     updated_ops: Dict[tf.Operation, tf.Operation] = {}
@@ -1359,6 +1363,8 @@ def insert_hooks(
         tf_graph._updated_ops = updated_ops
     if not hasattr(tf_graph, "_op_contexts"):
         tf_graph._op_contexts = {}
+    if not hasattr(tf_graph, "_backward_ops"):
+        tf_graph._backward_ops = defaultdict(default_factory=list)
     with disabled():
         actions = collect_actions()
         before_op_update, after_op_update, remove_op_update = apply_actions(actions)

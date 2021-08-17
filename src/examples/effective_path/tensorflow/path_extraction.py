@@ -5,7 +5,13 @@ import numpy as np
 import pandas as pd
 
 from examples.effective_path.graph import Graph, Op, Tensor
-from examples.effective_path.utils import argtopk, concatenate, filter_not_null, repeat
+from examples.effective_path.utils import (
+    arg_approx_batch,
+    argtopk,
+    concatenate,
+    filter_not_null,
+    repeat,
+)
 
 _trace_func_by_op: Dict[str, Callable[..., None]] = {}
 
@@ -149,8 +155,7 @@ def compact_path(graph: Graph) -> Graph:
         for attr_name, attr in attrs.items():
 
             def to_bitmap(shape):
-                mask = np.zeros(np.prod(shape), dtype=np.bool)
-                mask[TraceKey.to_array(attr)] = True
+                mask = to_mask(TraceKey.to_array(attr), shape)
                 return np.packbits(mask)
 
             if attr_name in [TraceKey.POINT, TraceKey.WEIGHT, TraceKey.EDGE]:
@@ -559,6 +564,30 @@ def calc_flip_sign(
         return input_points
 
 
+def calc_flip_sign_batch(
+    flip_sign,
+    output_value,
+    weighted_input,
+    select_fn,
+):
+    if flip_sign is not None:
+        flipped_output_value = output_value * flip_sign
+    else:
+        flipped_output_value = output_value
+    flipped_weighed_input = weighted_input.copy()
+    flipped = flipped_output_value < 0
+    flipped_weighed_input[flipped] = -weighted_input[flipped]
+    input_points = select_fn(flipped_weighed_input)
+    flip_sign_inputs = np.ones((len(input_points[0]),), np.int32)
+    if flip_sign is not None:
+        flip_sign_inputs[
+            np.logical_and(
+                flip_sign[input_points[0]] == -1, flipped_weighed_input.max(axis=-1) < 0
+            )
+        ] = -1
+    return input_points, flip_sign_inputs
+
+
 def linear_layer_trace(
     op: Op,
     select_fn: Callable[[np.ndarray], np.ndarray],
@@ -895,102 +924,69 @@ def conv2d_layer_trace(
         input = np.rollaxis(input, 2)
         output = np.rollaxis(output, 2)
 
-    radius = np.zeros_like(kernel_size)
-    for i in [0, 1]:
-        if kernel_size[i] % 2 == 0:
-            radius[i] = kernel_size[i] // 2
-        else:
-            radius[i] = (kernel_size[i] - 1) // 2
-
+    in_channels = input.shape[0]
+    out_channels = output.shape[0]
+    receptive_field_shape = weight.shape[1:]
+    receptive_field_size = np.prod(receptive_field_shape)
     padding = calc_padding(
         np.array(input.shape)[1:], np.array(output.shape)[1:], stride, kernel_size
     )
     padded_input = np.pad(input, padding, mode="constant")
 
-    output_trace_points = []
-    input_trace_points = []
-    unaligned_input_trace_points = []
-    weight_indices = []
-    flip_sign_inputs: List[Any] = []
-    for (output_point_pos, output_point), output_point_index in zip(
-        enumerate(output_points), zip(*np.unravel_index(output_points, output.shape))
-    ):
-        output_value = output[output_point_index]
-        index = np.array(output_point_index)[1:]
-        center_index = radius + index * stride
-        start_index = center_index - radius
-        end_index = np.zeros_like(center_index)
-        for i in [0, 1]:
-            if kernel_size[i] % 2 == 0:
-                end_index[i] = center_index[i] + radius[i] - 1
-            else:
-                end_index[i] = center_index[i] + radius[i]
-        receptive_field = padded_input[
-            (
-                slice(None),
-                slice(start_index[0], end_index[0] + 1),
-                slice(start_index[1], end_index[1] + 1),
-            )
+    output_point_index_tuple = np.unravel_index(output_points, output.shape)
+    output_point_index = np.array(output_point_index_tuple)  # [out_ch + h + w, out]
+    output_point_size = output_point_index.shape[1]
+    output_value = output[output_point_index_tuple]  # (out)
+    index = output_point_index[1:]  # [h + w, out]
+    start_index = index * stride[:, np.newaxis]  # [h + w, out]
+    receptive_field = padded_input[
+        np.arange(in_channels)[np.newaxis, :, np.newaxis, np.newaxis],
+        start_index[0][:, np.newaxis, np.newaxis, np.newaxis]
+        + np.arange(kernel_size[0])[np.newaxis, np.newaxis, :, np.newaxis],
+        start_index[1][:, np.newaxis, np.newaxis, np.newaxis]
+        + np.arange(kernel_size[1])[np.newaxis, np.newaxis, np.newaxis, :],
+    ]  # (out, in_ch, kh, kw)
+    weighted_input = (
+        receptive_field
+        * weight[
+            output_point_index[0][:, np.newaxis, np.newaxis, np.newaxis],
+            np.arange(weight.shape[1])[np.newaxis, :, np.newaxis, np.newaxis],
+            np.arange(weight.shape[2])[np.newaxis, np.newaxis, :, np.newaxis],
+            np.arange(weight.shape[3])[np.newaxis, np.newaxis, np.newaxis, :],
         ]
-        weighted_input = receptive_field * weight[output_point_index[0], ...]
-        for i in [0, 1]:
-            start_bound = padding[i + 1][0]
-            end_bound = input.shape[i + 1] + start_bound
-            if start_index[i] < start_bound:
-                bound_filter = [slice(None), slice(None), slice(None)]
-                bound_filter[i + 1] = slice(start_bound - start_index[i], None)
-                weighted_input = weighted_input[tuple(bound_filter)]
-                start_index[i] = start_bound
-            if end_index[i] >= end_bound:
-                bound_filter = [slice(None), slice(None), slice(None)]
-                bound_filter[i + 1] = slice(None, end_bound - 1 - end_index[i])
-                weighted_input = weighted_input[tuple(bound_filter)]
-                end_index[i] = end_bound - 1
-        unaligned_input_points = calc_flip_sign(
-            flip_sign=flip_sign,
-            index=output_point_pos,
-            output_value=output_value,
-            weighted_input=weighted_input,
-            select_fn=select_fn,
-            flip_sign_inputs=flip_sign_inputs,
-        )
-        unaligned_input_trace_points.append(unaligned_input_points)
-        unaligned_input_index = np.unravel_index(
-            unaligned_input_points, weighted_input.shape
-        )
-        input_index = (
-            unaligned_input_index[0],
-            unaligned_input_index[1] + start_index[0] - padding[1][0],
-            unaligned_input_index[2] + start_index[1] - padding[2][0],
-        )
-        repeated_output = repeat(output_point, input_index[0].size)
-        output_trace_points.append(repeated_output)
-        input_points = np.ravel_multi_index(input_index, input.shape)
-        input_trace_points.append(input_points)
-        weight_index = np.ravel_multi_index(
-            (repeat(output_point_index[0], unaligned_input_index[0].size),)
-            + unaligned_input_index,
-            weight.shape,
-        )
-        weight_indices.append(weight_index)
-    output_trace_points = concatenate(output_trace_points, dtype=np.int32)
-    input_trace_points = concatenate(input_trace_points, dtype=np.int32)
-    unaligned_input_trace_points = concatenate(
-        unaligned_input_trace_points, dtype=np.int32
+    )  # (out, in_ch, kh, kw)
+    unaligned_input_points, flip_sign_inputs = calc_flip_sign_batch(
+        flip_sign=flip_sign,
+        output_value=output_value,
+        weighted_input=weighted_input.reshape(
+            (output_point_size, receptive_field_size)
+        ),
+        select_fn=lambda input: arg_approx_batch(input, 0.5),
+    )  # [out + in_ch*kh*kw, rf]
+    unaligned_input_index = np.unravel_index(
+        unaligned_input_points[1], receptive_field_shape
+    )  # [in_ch + kh + kw, rf]
+    input_index = (
+        unaligned_input_index[0],
+        unaligned_input_index[1]
+        + start_index[0][unaligned_input_points[0]]
+        - padding[1][0],
+        unaligned_input_index[2]
+        + start_index[1][unaligned_input_points[0]]
+        - padding[2][0],
+    )  # [in_ch + h + w, in]
+    output_trace_points = output_points[unaligned_input_points[0]]
+    input_trace_points = np.ravel_multi_index(input_index, input.shape)
+    weight_indices = np.ravel_multi_index(
+        (output_point_index[0][unaligned_input_points[0]], unaligned_input_points[1]),
+        (out_channels, receptive_field_size),
     )
-    weight_indices = concatenate(weight_indices, dtype=np.int32)
-    if flip_sign is not None:
-        flip_sign_inputs = concatenate(flip_sign_inputs, dtype=np.int32)
-    else:
-        flip_sign_inputs = None
-    edge_shape = (input.shape[0] * kernel_size[0] * kernel_size[1], output.size)
+    edge_shape = (receptive_field_size, output.size)
     op.attrs[TraceKey.EDGE] = np.ravel_multi_index(
-        (unaligned_input_trace_points, output_trace_points), edge_shape
+        (unaligned_input_points[1], output_trace_points), edge_shape
     )
     op.attrs[TraceKey.WEIGHT] = np.unique(weight_indices)
-    op.attrs[TraceKey.EDGE_SHAPE] = (
-        (input.shape[0],) + tuple(kernel_size) + output.shape
-    )
+    op.attrs[TraceKey.EDGE_SHAPE] = receptive_field_shape + output.shape
     op.attrs[TraceKey.WEIGHT_SHAPE] = weight.shape
     merge_traced_points(
         input_tensor,

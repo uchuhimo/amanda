@@ -6,8 +6,9 @@ from examples.effective_path.tensorflow.effective_path_tool import EffectivePath
 
 
 def main():
+    batch_size = 4
     model = ResNet18Cifar100()
-    x = tf.random.uniform(shape=[4, 32, 32, 3])
+    x = tf.random.uniform(shape=[batch_size, 32, 32, 3])
 
     tool = EffectivePathTool()
 
@@ -17,7 +18,7 @@ def main():
             session.run(tf.initialize_all_variables())
             session.run(y)
 
-    tool.extract_path(entry_points=[y.op.name], batch=4)
+    tool.extract_path(entry_points=[y.op.name], batch=batch_size)
     density = tool.calc_density_per_layer()
     print(density)
 
