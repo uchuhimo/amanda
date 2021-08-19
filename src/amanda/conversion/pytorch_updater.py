@@ -4,6 +4,11 @@ from typing import Any, List, Set
 
 from loguru import logger
 
+from amanda.conversion.listener.build.amanda_pybind import (  # noqa: F401
+    HookRegisterer,
+    amanda_add_pre_hook,
+    amanda_remove_pre_hook,
+)
 from amanda.event import (
     OpContext,
     after_backward_op_call,
@@ -162,6 +167,7 @@ def register_bw_events_recursively(context, output, input_grad_fns):
         for grad_output, new_grad_output in zip(grad_outputs, new_grad_outputs):
             grad_output.data = new_grad_output
         handle.remove()
+        # amanda_remove_pre_hook(bw_op, handle)
 
     def _register_bw_events(context, grad_fn):
         def after_bw_op_hook(grad_input, grad_output, context, bw_op, handle):
@@ -237,6 +243,18 @@ def register_bw_events_recursively(context, output, input_grad_fns):
                 handle=handle,
             )
         )
+    # if output.grad_fn:
+    #     print(f"register pre hook for {output.grad_fn.__name__}")
+    #     bw_context = context.inherite()
+    #     handle = amanda_add_pre_hook(
+    #         output.grad_fn,
+    #         lambda grad_output: before_bw_op_hook(
+    #             grad_output,
+    #             context=bw_context,
+    #             bw_op=output.grad_fn,
+    #             handle=handle,
+    #         )
+    #     )
 
     if hasattr(output, "grad_fn"):
         _register_bw_events(bw_context or context, output.grad_fn)
@@ -616,6 +634,4 @@ def register_import_hook() -> None:
 
 
 def register_listener():
-    from amanda.conversion.listener.build.listener import HookRegisterer
-
     HookRegisterer(listener_callback)

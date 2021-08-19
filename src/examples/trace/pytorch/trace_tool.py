@@ -9,7 +9,6 @@ class TraceTool(amanda.Tool):
         self.add_inst_for_op(
             self.backward_instrumentation,
             backward=True,
-            require_outputs=True,
         )
 
         self.output_file = open(ensure_dir(output_dir), "w")
