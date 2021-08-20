@@ -10,4 +10,5 @@ PYBIND11_MODULE(amanda_pybind, m) {
         .def(pybind11::init<const std::function<std::string(std::string)> &>());
     m.def("amanda_add_pre_hook", &amanda_add_pre_hook, "function to add a hook");
     m.def("amanda_remove_pre_hook", &amanda_remove_pre_hook, "function to remove hook by handle");
+    m.def("init_THPVariableClass", &init_THPVariableClass, "function to init THPVariableClass with torch.tensor");
 }

@@ -36,8 +36,25 @@ private:
     T *ptr = nullptr;
 };
 
-auto tensor_module = amanda_THPPointer<PyObject>(PyImport_ImportModule("torch.tensor"));
-PyObject* THPVariableClass = PyObject_GetAttrString(tensor_module, "Tensor");
+PyObject* THPVariableClass = nullptr;
+bool amanda_pybind_init = false;
+
+// auto tensor_module = amanda_THPPointer<PyObject>(PyImport_ImportModule("torch.tensor"));
+// PyObject* THPVariableClass = PyObject_GetAttrString(tensor_module, "Tensor");
+// bool amanda_pybind_init = true;
+
+void init_THPVariableClass()
+{
+    if (amanda_pybind_init) {
+        return ;
+    }
+    else {
+        auto tensor_module = amanda_THPPointer<PyObject>(PyImport_ImportModule("torch.tensor"));
+        THPVariableClass = PyObject_GetAttrString(tensor_module, "Tensor");
+        amanda_pybind_init = true;
+        return ;
+    }
+}
 
 PyObject* amanda_THPVariable_NewWithVar(PyTypeObject* type, torch::autograd::Variable var)
 {
@@ -60,7 +77,6 @@ PyObject * amanda_THPVariable_Wrap(torch::autograd::Variable var)
         Py_INCREF(obj);
         return obj;
     }
-
     return amanda_THPVariable_NewWithVar((PyTypeObject *)THPVariableClass, std::move(var));
 }
 
@@ -122,31 +138,10 @@ protected:
     PyObject* fn_;
 };
 
-// int add_pre_hook(const std::shared_ptr<torch::autograd::Node> grad_fn, PyObject* hook)
-// {
-//     std::unique_ptr<torch::autograd::FunctionPreHook> pre_hook(new AmandaPreHook(hook));
-//     grad_fn->add_pre_hook(std::move(pre_hook));
-//     return grad_fn->pre_hooks().size() - 1;
-// }
-
-// void remove_pre_hook(const std::shared_ptr<torch::autograd::Node> &grad_fn, int pos)
-// {
-//     grad_fn->pre_hooks().erase(grad_fn->pre_hooks().begin() + pos);
-// }
-
-// void py_add_pre_hook(const pybind11::object &grad_fn, const pybind11::object & hook)
-// {
-//     PyObject *raw_grad_fn = grad_fn.ptr();
-//     PyObject *raw_hook = hook.ptr();
-//     torch::autograd::THPCppFunction *cast_grad_fn = (torch::autograd::THPCppFunction *)raw_grad_fn;
-//     auto final_grad_fn = cast_grad_fn->cdata;
-//     int handle = add_pre_hook(final_grad_fn, raw_hook);
-//     // int handle = add_pre_hook(final_grad_fn, dummy_pre_hook);
-//     // std::cout << cast_grad_fn->cdata->pre_hooks().size() << std::endl;
-// }
-
 int amanda_add_pre_hook(const pybind11::object &grad_fn, const pybind11::object & hook)
 {
+    assert(amanda_pybind_init==true);
+
     PyObject *raw_grad_fn = grad_fn.ptr();
     PyObject *raw_hook = hook.ptr();
     torch::autograd::THPCppFunction *cast_grad_fn = (torch::autograd::THPCppFunction *)raw_grad_fn;
@@ -163,15 +158,3 @@ void amanda_remove_pre_hook(const pybind11::object &grad_fn, int pos)
     auto final_grad_fn = cast_grad_fn->cdata;
     final_grad_fn->pre_hooks().erase(final_grad_fn->pre_hooks().begin() + pos);
 }
-
-
-// PYBIND11_MODULE(amanda, m)
-// {
-//     m.doc() = "amanda binding for function pre hook";
-
-//     //   pybind11::class_<HookRegisterer>(m, "HookRegisterer")
-//     // .def(pybind11::init<const std::function<std::string(std::string)> &>());
-//     m.def("add_pre_hook", &add_pre_hook, "function to add a hook");
-//     m.def("remove_pre_hook", &remove_pre_hook, "function to remove hook by handle");
-//     m.def("py_add_pre_hook", &py_add_pre_hook, "duumy test");
-// }

@@ -258,6 +258,9 @@ def init() -> None:
 
         tensorflow_register_import_hook()
     init_import_hook()
+    from amanda.conversion.listener.build.amanda_pybind import init_THPVariableClass
+
+    init_THPVariableClass()
     _inited = True
 
 
