@@ -12,9 +12,11 @@ def main():
 
     tool = EffectivePathTool()
 
+    session_config = tf.ConfigProto()
+    session_config.gpu_options.allow_growth = True
     with amanda.tool.apply(tool):
         y = model(x)
-        with tf.Session() as session:
+        with tf.Session(config=session_config) as session:
             session.run(tf.initialize_all_variables())
             session.run(y)
 

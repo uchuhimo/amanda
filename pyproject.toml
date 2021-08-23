@@ -119,6 +119,8 @@ torch-scatter = { url = "https://pytorch-geometric.com/whl/torch-1.8.0+cu102/tor
 torch-sparse = { url = "https://pytorch-geometric.com/whl/torch-1.8.0+cu102/torch_sparse-0.6.11-cp37-cp37m-linux_x86_64.whl" }
 torch-geometric = "*"
 numba = "*"
+jaxlib = { url = "https://storage.googleapis.com/jax-releases/cuda111/jaxlib-0.1.70+cuda111-cp37-none-manylinux2010_x86_64.whl" }
+jax = { version = "0.2.19", extras = [ "cuda111" ] }
 
 [tool.poetry.scripts]
 amanda = "amanda.cli.main:cli"

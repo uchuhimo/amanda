@@ -1,3 +1,4 @@
+import gc
 from typing import List
 
 import amanda
@@ -14,7 +15,7 @@ from examples.effective_path.tensorflow.path_extraction import (
     get_path,
     merge_path,
 )
-from examples.effective_path.utils import arg_approx
+from examples.effective_path.utils import arg_approx_batch
 
 
 class EffectivePathTool(amanda.Tool):
@@ -93,17 +94,19 @@ class EffectivePathTool(amanda.Tool):
     def collect_parameters(self):
         for op in self.graph.ops.values():
             op_type = op.raw_op.type
+            op.attrs[TraceKey.OP_TYPE] = op_type
             node_def = op.raw_op.node_def
+            op.raw_op = None
             if op_type in ["Conv2D", "DepthwiseConv2dNative"]:
                 op.attrs["kernel"] = op.inputs[1]
-                op.attrs["kernel_size"] = np.array(op.inputs[1].value.shape)[:2]
+                op.attrs["kernel_size"] = op.inputs[1].value.shape[:2]
                 op.attrs["kernel"].value = np.transpose(
                     op.attrs["kernel"].value, (3, 2, 0, 1)
                 )
                 op.attrs["data_format"] = node_def.attr["data_format"].s.decode()
-                op.attrs["strides"] = list(node_def.attr["strides"].list.i)
+                op.attrs["strides"] = tuple(node_def.attr["strides"].list.i)
                 op.attrs["padding"] = node_def.attr["padding"].s.decode()
-                op.attrs["dilations"] = list(node_def.attr["dilations"].list.i)
+                op.attrs["dilations"] = tuple(node_def.attr["dilations"].list.i)
             elif op_type == "MatMul":
                 op.attrs["weight"] = op.inputs[1]
             elif op_type == "Transpose":
@@ -113,12 +116,12 @@ class EffectivePathTool(amanda.Tool):
             elif op_type == "Pad":
                 op.attrs["paddings"] = op.inputs[1]
             elif op_type in ["MaxPool", "AvgPool"]:
-                op.attrs["kernel_size"] = list(node_def.attr["ksize"].list.i)
+                op.attrs["kernel_size"] = tuple(node_def.attr["ksize"].list.i)
                 op.attrs["data_format"] = node_def.attr["data_format"].s.decode()
-                op.attrs["strides"] = list(node_def.attr["strides"].list.i)
+                op.attrs["strides"] = tuple(node_def.attr["strides"].list.i)
                 op.attrs["padding"] = node_def.attr["padding"].s.decode()
             elif op_type == "Squeeze":
-                op.attrs["squeeze_dims"] = list(node_def.attr["squeeze_dims"].list.i)
+                op.attrs["squeeze_dims"] = tuple(node_def.attr["squeeze_dims"].list.i)
             elif op_type == "Mean":
                 op.attrs["reduction_indices"] = op.inputs[1]
                 op.attrs["keep_dims"] = node_def.attr["keep_dims"].b
@@ -144,25 +147,33 @@ class EffectivePathTool(amanda.Tool):
         batch: int = 1,
     ) -> None:
         self.collect_parameters()
+        gc.collect()
         ops_in_path = get_ops_in_path(
             self.graph,
             entry_points=entry_points,
-            is_critical_op=lambda op: op.raw_op.type
+            is_critical_op=lambda op: op.attrs[TraceKey.OP_TYPE]
             in ["Conv2D", "MatMul", "DepthwiseConv2dNative"],
         )
-        paths = []
+        merged_path = None
         for batch_index in range(batch):
             path = get_path(
-                self.graph,
+                self.graph.clone(),
                 batch_index=batch_index,
                 ops_in_path=ops_in_path,
                 entry_points=entry_points,
-                select_fn=lambda input: arg_approx(input, 0.5),
+                select_fn=lambda input: arg_approx_batch(input, 0.5),
             )
             path = compact_path(path)
-            paths.append(path)
-        self.path = merge_path(*paths)
+            if merged_path is None:
+                merged_path = path
+            else:
+                merged_path = merge_path(merged_path, path, format="bitmap")
+            del path
+            gc.collect()
+        self.path = merged_path
 
     def calc_density_per_layer(self) -> pd.DataFrame:
-        layers = [op.id for op in self.graph.ops.values() if TraceKey.EDGE in op.attrs]
-        return calc_density_per_layer(self.graph, layers)
+        layers = [
+            op.id for op in self.path.ops.values() if TraceKey.EDGE_MASK in op.attrs
+        ]
+        return calc_density_per_layer(self.path, layers)

@@ -1,8 +1,16 @@
+from functools import partial
 from typing import Iterable, Tuple, TypeVar, Union
 
+import jax
+
+# import jax.numpy as np
+import jax.numpy as jnp
 import numpy as np
+import numpy as nnp
 
 __all__ = ["argtopk", "arg_approx", "arg_approx_signed", "repeat", "concatenate"]
+
+jax.config.update("jax_platform_name", "cpu")
 
 
 def get_int_k(array: np.ndarray, k: Union[int, float]) -> int:
@@ -25,13 +33,12 @@ def argtopk(array: np.ndarray, k: Union[int, float]) -> np.ndarray:
     if k == 1:
         return np.array([np.argmax(array)])
     else:
-        return np.argpartition(array, -k, axis=None)[-k:]
+        if isinstance(array, jax.numpy.DeviceArray):
+            array = nnp.array(array)
+        return nnp.argpartition(array, -k, axis=None)[-k:]
 
 
 def arg_sorted_topk(array: np.ndarray, k: Union[int, float]) -> np.ndarray:
-    # topk_index = argtopk(array, k)
-    # sorted_index = np.array(list(reversed(np.argsort(array[topk_index]))))
-    # return topk_index[sorted_index]
     k = get_int_k(array, k)
     return np.argsort(array)[::-1][:k]
 
@@ -44,9 +51,7 @@ def arg_approx(array: np.ndarray, precision: float) -> np.ndarray:
         return np.array([np.argmax(array)])
     input = array.flatten()
     threshold = input_sum * precision
-    sorted_input = input.copy()
-    sorted_input[::-1].sort()
-    # topk = np.argmax(sorted_input.cumsum() >= threshold)
+    sorted_input = np.sort(input[::-1])
     topk = sorted_input.cumsum().searchsorted(threshold)
     if topk == len(input):
         return np.where(input > 0)[0]
@@ -54,8 +59,38 @@ def arg_approx(array: np.ndarray, precision: float) -> np.ndarray:
         return argtopk(input, topk + 1)
 
 
+@partial(jax.jit, backend="gpu")
 def argmax_batch(array: np.ndarray):
-    return (np.arange(array.shape[0]), np.argmax(array, axis=-1))
+    return (jnp.arange(array.shape[0]), jnp.argmax(array, axis=-1))
+
+
+vsearchsorted = jax.vmap(jnp.searchsorted, (0, 0), 0)
+
+
+@partial(jax.jit, static_argnums=1, backend="gpu")
+# @jax.jit
+def arg_approx_batch_mask(
+    input,
+    precision: float,
+) -> Tuple[np.ndarray, np.ndarray]:
+    input_sum = input.sum(axis=-1)
+    threshold = input_sum * precision
+    sorted_input = jnp.sort(input[:, ::-1], axis=-1)
+    input_sum = sorted_input.cumsum(axis=-1)
+    topk = jnp.minimum(vsearchsorted(input_sum, threshold), input.shape[-1] - 1)
+    input_threshold = sorted_input[jnp.arange(input.shape[0]), topk]
+    return input > input_threshold[:, np.newaxis]
+
+
+def to_np_array(array):
+    if np == jnp:
+        return array
+    if isinstance(array, jax.numpy.DeviceArray):
+        return np.array(array)
+    elif isinstance(array, tuple):
+        return tuple([to_np_array(element) for element in array])
+    else:
+        return array
 
 
 def arg_approx_batch(
@@ -63,32 +98,19 @@ def arg_approx_batch(
     precision: float,
 ) -> Tuple[np.ndarray, np.ndarray]:
     if (1 / array.shape[-1]) >= precision:
-        return argmax_batch(array)
-    input_sum = array.sum(axis=-1)
-    input = array
-    threshold = input_sum * precision
-    sorted_input = np.copy(input)
-    sorted_input[:, ::-1].sort(axis=-1)
-    topk = np.zeros_like(threshold, dtype=np.int32)
-    input_sum = sorted_input.cumsum(axis=-1)
-    for i in range(topk.size):
-        topk[i] = np.searchsorted(input_sum[i], threshold[i])
-    topk = np.minimum(topk, input.shape[-1] - 1)
-    input_threshold = sorted_input[np.arange(input.shape[0]), topk]
-    return np.nonzero(input > input_threshold[:, np.newaxis])
+        return to_np_array(argmax_batch(array))
+    else:
+        return np.nonzero(to_np_array(arg_approx_batch_mask(array, precision)))
 
 
-# def arg_approx(array: np.ndarray, precision: float) -> np.ndarray:
-#     input_sum = array.sum()
-#     if input_sum == 0:
-#         return np.array([], dtype=np.int64)
-#     input = array.flatten()
-#     threshold = input_sum * precision
-#     sorted_input = input.copy()
-#     sorted_input[::-1].sort()
-#     # topk = np.argmax(sorted_input.cumsum() >= threshold)
-#     topk = sorted_input.cumsum().searchsorted(threshold)
-#     return argtopk(input, topk + 1)
+def index_update(x, idx, y, inplace=False):
+    if isinstance(x, jax.numpy.DeviceArray):
+        return jax.ops.index_update(x, idx, y)
+    else:
+        if not inplace:
+            x = np.copy(x)
+        x[idx] = y
+        return x
 
 
 def arg_approx_signed(array: np.ndarray, precision: float) -> np.ndarray:
@@ -100,20 +122,19 @@ def arg_approx_signed(array: np.ndarray, precision: float) -> np.ndarray:
 
 
 def repeat(a: int, repeats: int) -> np.ndarray:
-    # if repeats > 1:
-    #     return np.repeat(a, repeats)
-    # elif repeats == 1:
-    #     return np.array([a])
-    # else:
-    #     return np.array([])
-    return np.repeat(a, repeats)
+    if repeats > 1:
+        return np.repeat(a, repeats)
+    elif repeats == 1:
+        return np.array([a])
+    else:
+        return np.array([])
 
 
-def concatenate(a_tuple, axis=0, out=None, dtype=np.int64) -> np.ndarray:
+def concatenate(a_tuple, axis=0, dtype=np.int64) -> np.ndarray:
     if len(a_tuple) == 0:
         return np.array([], dtype=dtype)
     else:
-        return np.concatenate(a_tuple, axis, out)
+        return np.concatenate(a_tuple, axis)
 
 
 T = TypeVar("T")

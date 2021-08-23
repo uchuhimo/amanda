@@ -788,7 +788,7 @@ test = ["flake8 (>=3.8.4,<3.9.0)", "pycodestyle (>=2.6.0,<2.7.0)", "mypy (>=0.91
 
 [[package]]
 name = "importlib-metadata"
-version = "4.6.3"
+version = "4.6.4"
 description = "Read metadata from Python packages"
 category = "main"
 optional = false
@@ -876,6 +876,46 @@ requirements_deprecated_finder = ["pipreqs", "pip-api"]
 colors = ["colorama (>=0.4.3,<0.5.0)"]
 plugins = ["setuptools"]
 
+[[package]]
+name = "jax"
+version = "0.2.19"
+description = "Differentiate, compile, and transform Numpy code."
+category = "dev"
+optional = false
+python-versions = ">=3.7"
+
+[package.dependencies]
+absl-py = "*"
+jaxlib = {version = "0.1.70+cuda111", optional = true, markers = "extra == \"cuda111\""}
+numpy = ">=1.18"
+opt_einsum = "*"
+
+[package.extras]
+cpu = ["jaxlib (==0.1.70)"]
+cuda101 = ["jaxlib (==0.1.70+cuda101)"]
+cuda102 = ["jaxlib (==0.1.70+cuda102)"]
+cuda110 = ["jaxlib (==0.1.70+cuda110)"]
+cuda111 = ["jaxlib (==0.1.70+cuda111)"]
+minimum-jaxlib = ["jaxlib (==0.1.69)"]
+tpu = ["jaxlib (==0.1.70)", "libtpu-nightly (==0.1.dev20210809)", "requests"]
+
+[[package]]
+name = "jaxlib"
+version = "0.1.70+cuda111"
+description = "XLA library for JAX"
+category = "dev"
+optional = false
+python-versions = ">=3.7"
+
+[package.dependencies]
+absl-py = "*"
+flatbuffers = ">=1.12,<3.0"
+numpy = ">=1.18"
+scipy = "*"
+
+[package.source]
+type = "url"
+url = "https://storage.googleapis.com/jax-releases/cuda111/jaxlib-0.1.70+cuda111-cp37-none-manylinux2010_x86_64.whl"
 [[package]]
 name = "jedi"
 version = "0.18.0"
@@ -967,7 +1007,7 @@ tests = ["pandas", "pillow", "tensorflow", "keras", "pytest", "pytest-xdist", "p
 
 [[package]]
 name = "keyring"
-version = "23.0.1"
+version = "23.1.0"
 description = "Store and access your passwords safely."
 category = "dev"
 optional = false
@@ -1438,7 +1478,7 @@ python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
 
 [[package]]
 name = "pygments"
-version = "2.9.0"
+version = "2.10.0"
 description = "Pygments is a syntax highlighting package written in Python."
 category = "dev"
 optional = false
@@ -2086,7 +2126,7 @@ testing = ["flaky (>=3.4.0)", "freezegun (>=0.3.11)", "psutil (>=5.6.1)", "pytes
 
 [[package]]
 name = "tqdm"
-version = "4.62.0"
+version = "4.62.1"
 description = "Fast, Extensible Progress Meter"
 category = "dev"
 optional = false
@@ -2270,11 +2310,15 @@ python-versions = "*"
 
 [[package]]
 name = "websocket-client"
-version = "1.2.0"
+version = "1.2.1"
 description = "WebSocket client for Python with low level API options"
 category = "dev"
 optional = false
 python-versions = ">=3.6"
+
+[package.extras]
+optional = ["python-socks", "wsaccel"]
+test = ["websockets"]
 
 [[package]]
 name = "werkzeug"
@@ -2337,7 +2381,7 @@ typing-extensions = {version = ">=3.7.4", markers = "python_version < \"3.8\""}
 
 [[package]]
 name = "yaspin"
-version = "2.0.0"
+version = "2.1.0"
 description = "Yet Another Terminal Spinner"
 category = "dev"
 optional = false
@@ -2361,7 +2405,7 @@ testing = ["pytest (>=4.6)", "pytest-checkdocs (>=2.4)", "pytest-flake8", "pytes
 [metadata]
 lock-version = "1.1"
 python-versions = ">= 3.7, < 4"
-content-hash = "52149fd256a26a8719db1cfaa25c064d5432607ffa68d1350467d61ae611c926"
+content-hash = "16fed6a62326e349adb4bc027f6f52aee014d2d56b6b98e374adb1d159256e19"
 
 [metadata.files]
 absl-py = [
@@ -2943,8 +2987,8 @@ immutables = [
     {file = "immutables-0.16.tar.gz", hash = "sha256:d67e86859598eed0d926562da33325dac7767b7b1eff84e232c22abea19f4360"},
 ]
 importlib-metadata = [
-    {file = "importlib_metadata-4.6.3-py3-none-any.whl", hash = "sha256:51c6635429c77cf1ae634c997ff9e53ca3438b495f10a55ba28594dd69764a8b"},
-    {file = "importlib_metadata-4.6.3.tar.gz", hash = "sha256:0645585859e9a6689c523927a5032f2ba5919f1f7d0e84bd4533312320de1ff9"},
+    {file = "importlib_metadata-4.6.4-py3-none-any.whl", hash = "sha256:ed5157fef23a4bc4594615a0dd8eba94b2bb36bf2a343fa3d8bb2fa0a62a99d5"},
+    {file = "importlib_metadata-4.6.4.tar.gz", hash = "sha256:7b30a78db2922d78a6f47fb30683156a14f3c6aa5cc23f77cc8967e9ab2d002f"},
 ]
 iniconfig = [
     {file = "iniconfig-1.1.1-py2.py3-none-any.whl", hash = "sha256:011e24c64b7f47f6ebd835bb12a743f2fbe9a26d4cecaa7f53bc4f35ee9da8b3"},
@@ -2966,6 +3010,10 @@ isort = [
     {file = "isort-5.9.3-py3-none-any.whl", hash = "sha256:e17d6e2b81095c9db0a03a8025a957f334d6ea30b26f9ec70805411e5c7c81f2"},
     {file = "isort-5.9.3.tar.gz", hash = "sha256:9c2ea1e62d871267b78307fe511c0838ba0da28698c5732d54e2790bf3ba9899"},
 ]
+jax = [
+    {file = "jax-0.2.19.tar.gz", hash = "sha256:e55534680a05b6ced92dadde307bd3b2207efd1aaaec304e96197b00ad7560d3"},
+]
+jaxlib = []
 jedi = [
     {file = "jedi-0.18.0-py2.py3-none-any.whl", hash = "sha256:18456d83f65f400ab0c2d3319e48520420ef43b23a086fdc05dff34132f0fb93"},
     {file = "jedi-0.18.0.tar.gz", hash = "sha256:92550a404bad8afed881a137ec9a461fed49eca661414be45059329614ed0707"},
@@ -2994,8 +3042,8 @@ keras-preprocessing = [
     {file = "Keras_Preprocessing-1.1.2.tar.gz", hash = "sha256:add82567c50c8bc648c14195bf544a5ce7c1f76761536956c3d2978970179ef3"},
 ]
 keyring = [
-    {file = "keyring-23.0.1-py3-none-any.whl", hash = "sha256:8f607d7d1cc502c43a932a275a56fe47db50271904513a379d39df1af277ac48"},
-    {file = "keyring-23.0.1.tar.gz", hash = "sha256:045703609dd3fccfcdb27da201684278823b72af515aedec1a8515719a038cb8"},
+    {file = "keyring-23.1.0-py3-none-any.whl", hash = "sha256:b32397fd7e7063f8dd74a26db910c9862fc2109285fa16e3b5208bcb42a3e579"},
+    {file = "keyring-23.1.0.tar.gz", hash = "sha256:b7e0156667f5dcc73c1f63a518005cd18a4eb23fe77321194fefcc03748b21a4"},
 ]
 llvmlite = [
     {file = "llvmlite-0.34.0-cp36-cp36m-macosx_10_9_x86_64.whl", hash = "sha256:11342e5ac320c953590bdd9d0dec8c52f4b5252c4c6335ba25f1e7b9f91f9325"},
@@ -3412,8 +3460,8 @@ pyflakes = [
     {file = "pyflakes-2.3.1.tar.gz", hash = "sha256:f5bc8ecabc05bb9d291eb5203d6810b49040f6ff446a756326104746cc00c1db"},
 ]
 pygments = [
-    {file = "Pygments-2.9.0-py3-none-any.whl", hash = "sha256:d66e804411278594d764fc69ec36ec13d9ae9147193a1740cd34d272ca383b8e"},
-    {file = "Pygments-2.9.0.tar.gz", hash = "sha256:a18f47b506a429f6f4b9df81bb02beab9ca21d0a5fee38ed15aef65f0545519f"},
+    {file = "Pygments-2.10.0-py3-none-any.whl", hash = "sha256:b8e67fe6af78f492b3c4b3e2970c0624cbf08beb1e493b2c99b9fa1b67a20380"},
+    {file = "Pygments-2.10.0.tar.gz", hash = "sha256:f398865f7eb6874156579fdf36bc840a03cab64d1cde9e93d68f46a425ec52c6"},
 ]
 pympler = [
     {file = "Pympler-0.9.tar.gz", hash = "sha256:f2cbe7df622117af890249f2dea884eb702108a12d729d264b7c5983a6e06e47"},
@@ -3771,8 +3819,8 @@ tox = [
     {file = "tox-3.24.1.tar.gz", hash = "sha256:9850daeb96d21b4abf049bc5f197426123039e383ebfed201764e9355fc5a880"},
 ]
 tqdm = [
-    {file = "tqdm-4.62.0-py2.py3-none-any.whl", hash = "sha256:706dea48ee05ba16e936ee91cb3791cd2ea6da348a0e50b46863ff4363ff4340"},
-    {file = "tqdm-4.62.0.tar.gz", hash = "sha256:3642d483b558eec80d3c831e23953582c34d7e4540db86d9e5ed9dad238dabc6"},
+    {file = "tqdm-4.62.1-py2.py3-none-any.whl", hash = "sha256:07856e19a1fe4d2d9621b539d3f072fa88c9c1ef1f3b7dd4d4953383134c3164"},
+    {file = "tqdm-4.62.1.tar.gz", hash = "sha256:35540feeaca9ac40c304e916729e6b78045cbbeccd3e941b2868f09306798ac9"},
 ]
 traitlets = [
     {file = "traitlets-5.0.5-py3-none-any.whl", hash = "sha256:69ff3f9d5351f31a7ad80443c2674b7099df13cc41fc5fa6e2f6d3b0330b0426"},
@@ -3886,8 +3934,8 @@ webencodings = [
     {file = "webencodings-0.5.1.tar.gz", hash = "sha256:b36a1c245f2d304965eb4e0a82848379241dc04b865afcc4aab16748587e1923"},
 ]
 websocket-client = [
-    {file = "websocket-client-1.2.0.tar.gz", hash = "sha256:7665ba6c645989b28b61670874ab753e6929179e9fc90565ace6ac090f59c559"},
-    {file = "websocket_client-1.2.0-py2.py3-none-any.whl", hash = "sha256:d82a975bdd02216f7884cd18106a0d9896a9a9e8cc90f23fe8c81dc48da2f142"},
+    {file = "websocket-client-1.2.1.tar.gz", hash = "sha256:8dfb715d8a992f5712fff8c843adae94e22b22a99b2c5e6b0ec4a1a981cc4e0d"},
+    {file = "websocket_client-1.2.1-py2.py3-none-any.whl", hash = "sha256:0133d2f784858e59959ce82ddac316634229da55b498aac311f1620567a710ec"},
 ]
 werkzeug = [
     {file = "Werkzeug-2.0.1-py3-none-any.whl", hash = "sha256:6c1ec500dcdba0baa27600f6a22f6333d8b662d22027ff9f6202e3367413caa8"},
@@ -3947,8 +3995,8 @@ yarl = [
     {file = "yarl-1.6.3.tar.gz", hash = "sha256:8a9066529240171b68893d60dca86a763eae2139dd42f42106b03cf4b426bf10"},
 ]
 yaspin = [
-    {file = "yaspin-2.0.0-py3-none-any.whl", hash = "sha256:9da195db6630b76f0d37612f195dd7c325e280ad398dae4fcf30890a124ceb74"},
-    {file = "yaspin-2.0.0.tar.gz", hash = "sha256:0498039b3e110f53824417a9f59418a20843e8752b8b15c26bb81a659d4aec5c"},
+    {file = "yaspin-2.1.0-py3-none-any.whl", hash = "sha256:d574cbfaf0a349df466c91f7f81b22460ae5ebb15ecb8bf9411d6049923aee8d"},
+    {file = "yaspin-2.1.0.tar.gz", hash = "sha256:c8d34eca9fda3f4dfbe59f57f3cf0f3641af3eefbf1544fbeb9b3bacf82c580a"},
 ]
 zipp = [
     {file = "zipp-3.5.0-py3-none-any.whl", hash = "sha256:957cfda87797e389580cb8b9e3870841ca991e2125350677b2ca83a0e99390a3"},

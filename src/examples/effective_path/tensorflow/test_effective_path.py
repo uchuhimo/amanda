@@ -5,13 +5,14 @@ import numpy as np
 import pytest
 import tensorflow as tf
 from amanda.io.file import root_dir
+from numba import cuda
 
 from examples.effective_path.tensorflow import EffectivePathTool
 
 
 @pytest.fixture(
     params=[
-        "vgg16",
+        # "vgg16",
         # "vgg19",
         # "inception_v1",
         pytest.param("inception_v1", marks=pytest.mark.slow),
@@ -23,7 +24,7 @@ from examples.effective_path.tensorflow import EffectivePathTool
         # "resnet_v2_101",
         # "resnet_v2_152",
         # "mobilenet_v1_1.0",
-        # "mobilenet_v2_1.0_224",
+        "mobilenet_v2_1.0_224",
         pytest.param("mobilenet_v2_1.0_224", marks=pytest.mark.slow),
         # "inception_resnet_v2",
         # "nasnet-a_large",
@@ -56,7 +57,9 @@ input_shapes = {
 
 
 def test_effective_path(arch_name):
+    # batch = 16
     batch = 4
+    # batch = 1
     input = np.random.rand(batch, *input_shapes[arch_name])
     model_dir = "downloads/model"
     checkpoint_dir = root_dir() / model_dir / arch_name
@@ -71,10 +74,19 @@ def test_effective_path(arch_name):
     tool = EffectivePathTool()
     with amanda.tool.apply(tool):
         with tf.Graph().as_default():
-            with tf.Session() as sess:
+            session_config = tf.ConfigProto()
+            session_config.gpu_options.allow_growth = True
+            with tf.Session(config=session_config) as sess:
                 saver = tf.train.import_meta_graph(checkpoint_file + ".meta")
                 saver.restore(sess, checkpoint_file)
                 sess.run("Output:0", {"input:0": input})
+    cuda.close()
     tool.extract_path(entry_points=["Output"], batch=batch)
     density = tool.calc_density_per_layer()
     print(density)
+
+
+if __name__ == "__main__":
+    # test_effective_path("vgg16")
+    test_effective_path("resnet_v2_50")
+    # test_effective_path("mobilenet_v2_1.0_224")
