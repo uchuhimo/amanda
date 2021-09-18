@@ -1,6 +1,6 @@
 import torch
 
-from amanda.conversion.listener.build.listener import HookRegisterer
+from amanda.conversion.listener.build.amanda_pybind import HookRegisterer
 
 
 def parse_opname_to_pyname(name: str) -> str:
