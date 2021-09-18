@@ -121,6 +121,8 @@ torch-geometric = "*"
 numba = "*"
 jaxlib = { url = "https://storage.googleapis.com/jax-releases/cuda111/jaxlib-0.1.70+cuda111-cp37-none-manylinux2010_x86_64.whl" }
 jax = { version = "0.2.19", extras = [ "cuda111" ] }
+Keras = "2.3.1"
+h5py = "<3.0.0"
 
 [tool.poetry.scripts]
 amanda = "amanda.cli.main:cli"

@@ -1,9 +1,9 @@
 import time
+from collections import defaultdict
 from functools import wraps
 from typing import List, NamedTuple, OrderedDict, Set
 
-from loguru import logger
-
+import numpy as np
 from amanda.import_hook import (
     FunctionUpdater,
     InstScopeHook,
@@ -15,6 +15,7 @@ from amanda.import_hook import (
     register_updater,
 )
 from amanda.tool import get_tools
+from loguru import logger
 
 
 def gradients_wrapper(func):
@@ -25,6 +26,25 @@ def gradients_wrapper(func):
         tf_graph = tf.get_default_graph()
         if not hasattr(tf_graph, "_backward_ops"):
             tf_graph._backward_ops = set()
+        last_hooked_id = tf_graph.get_collection_ref("amanda.last_hooked_id")
+        if len(last_hooked_id) == 1 and last_hooked_id[0] > 0:
+            last_hooked_id[0] = 0
+            tf_graph_finalized = tf_graph._finalized
+            tf_graph._finalized = False
+            tf_graph._updated_inputs = {}
+            tf_graph._updated_outputs = {}
+            tf_graph._updated_ops = {}
+            tf_graph._op_contexts = {}
+            tf_graph._backward_ops_by_forward = defaultdict(list)
+            for (tf_op, index), input in tf_graph._original_inputs.items():
+                tf_op._update_input(index, input)
+            tf_graph._original_inputs = {}
+            if tf_graph_finalized:
+                tf_graph._finalized = True
+            session = tf.get_default_session()
+            if session is not None:
+                update_session(session, tf_graph)
+                replay_session_runs(session)
         last_id = tf_graph._last_id
         result = func(*args, **kwargs)
         new_last_id = tf_graph._last_id
@@ -33,6 +53,19 @@ def gradients_wrapper(func):
         return result
 
     return check_enabled(func, wrapper)
+
+
+def replay_session_runs(session):
+    if hasattr(session, "_session_runs"):
+        raw_session_run = session.run.__wrapped__.__wrapped__
+        for args in session._session_runs:
+            start_time = time.time()
+            raw_session_run(session, *args)
+            run_time = time.time() - start_time
+            with np.printoptions(precision=2, edgeitems=0, threshold=0):
+                logger.debug(
+                    "replay session run ({:.3f}s): {} {}", run_time, session, args
+                )
 
 
 def update_session(session, tf_graph):
@@ -108,7 +141,9 @@ def session_run_wrapper(func):
             if is_list_updated:
                 is_updated = True
                 fetches = type(fetches)._make(fetches_list)
-        elif isinstance(fetches, (tf.Operation, tf.Tensor, tf.sparse.SparseTensor)):
+        elif isinstance(
+            fetches, (tf.Operation, tf.Tensor, tf.sparse.SparseTensor, tf.Variable)
+        ):
             new_fetches, is_node_updated = update_node(tf_graph, fetches)
             if is_node_updated:
                 fetches = new_fetches
@@ -136,22 +171,17 @@ def session_run_wrapper(func):
             is_graph_updated = insert_hooks(tf_graph, get_tools())
             fetches, _ = update_fetches(tf_graph, fetches)
         if is_graph_updated:
-            logger.debug("update session: {}", self)
+            with np.printoptions(precision=2, edgeitems=0, threshold=0):
+                logger.debug("update session: {}", self)
             update_session(self, tf_graph)
-            if hasattr(self, "_session_runs"):
-                for args in self._session_runs:
-                    start_time = time.time()
-                    func(self, *args)
-                    run_time = time.time() - start_time
-                    logger.debug(
-                        "replay session run ({:.3f}s): {} {}", run_time, self, args
-                    )
+            replay_session_runs(self)
         args = [fetches, feed_dict, options, run_metadata]
         record_session_run(self, args)
         start_time = time.time()
         result = func(self, fetches, feed_dict, options, run_metadata)
         run_time = time.time() - start_time
-        logger.debug("hook session run ({:.3f}s): {} {}", run_time, self, args)
+        with np.printoptions(precision=2, edgeitems=0, threshold=0):
+            logger.debug("hook session run ({:.3f}s): {} {}", run_time, self, args)
         return result
 
     @wraps(func)
@@ -161,7 +191,8 @@ def session_run_wrapper(func):
         start_time = time.time()
         result = func(self, fetches, feed_dict, options, run_metadata)
         run_time = time.time() - start_time
-        logger.debug("original session run ({:.3f}s): {} {}", run_time, self, args)
+        with np.printoptions(precision=2, edgeitems=0, threshold=0):
+            logger.debug("original session run ({:.3f}s): {} {}", run_time, self, args)
         return result
 
     return check_enabled(recorded_func, wrapper)

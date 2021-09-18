@@ -2,8 +2,6 @@ import inspect
 from functools import wraps
 from typing import Any, List, Set
 
-from loguru import logger
-
 from amanda.event import (
     OpContext,
     after_backward_op_call,
@@ -24,6 +22,7 @@ from amanda.import_hook import (
 )
 from amanda.lang import get_superclasses
 from amanda.tool import get_tools
+from loguru import logger
 
 
 def registry_bw_events(context, output):
@@ -92,7 +91,7 @@ def registry_bw_events(context, output):
 def apply_insert_before_op(action, inputs):
     import torch
 
-    logger.debug("apply_insert_before_op")
+    # logger.debug("apply_insert_before_op")
     with torch.no_grad():
         filtered_inputs = inputs
         if action.inputs is not None:
@@ -110,7 +109,7 @@ def apply_insert_before_op(action, inputs):
 def apply_insert_after_op(action, outputs):
     import torch
 
-    logger.debug("apply_insert_after_op")
+    # logger.debug("apply_insert_after_op")
     with torch.no_grad():
         filtered_outputs = outputs
         if action.outputs is not None:
@@ -267,8 +266,6 @@ def unpack_input_grad_fns(inputs):
 def function_wrapper(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
-        import torch
-
         with disabled():
             tools = get_tools()
             input_grad_fns = unpack_input_grad_fns(args) + unpack_input_grad_fns(
@@ -294,7 +291,7 @@ def function_wrapper(func):
                     break
             if not is_replaced:
                 output = func(*args, **kwargs)
-            if isinstance(output, torch.Tensor):
+            if type(output) != tuple:
                 outputs = [output]
                 is_output_nested = True
             else:
