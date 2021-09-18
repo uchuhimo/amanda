@@ -5,12 +5,12 @@ from amanda.io.file import ensure_dir
 class TraceTool(amanda.Tool):
     def __init__(self, output_dir="tmp"):
         super(TraceTool, self).__init__(namespace="amanda/pytorch")
-        self.add_inst_for_op(self.forward_instrumentation)
-        self.add_inst_for_op(
-            self.backward_instrumentation,
-            backward=True,
-            require_outputs=True,
-        )
+        # self.add_inst_for_op(self.forward_instrumentation)
+        # self.add_inst_for_op(
+        #     self.backward_instrumentation,
+        #     backward=True,
+        #     require_outputs=True,
+        # )
 
         self.output_file = open(ensure_dir(output_dir), "w")
 
