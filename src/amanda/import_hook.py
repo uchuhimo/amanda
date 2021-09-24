@@ -251,6 +251,16 @@ def init() -> None:
 
         pytorch_register_import_hook()
         pytorch_register_listener()
+
+        # from torch._C import _autograd_init
+        # _autograd_init()
+        # from torch._tensor import Tensor
+
+        # from amanda.conversion.listener.build.amanda_pybind import (
+        # init_THPVariableClass
+        # )
+
+        # init_THPVariableClass()
     if importlib.util.find_spec("tensorflow"):
         from .conversion.tensorflow_updater import (
             register_import_hook as tensorflow_register_import_hook,
@@ -258,9 +268,6 @@ def init() -> None:
 
         tensorflow_register_import_hook()
     init_import_hook()
-    from amanda.conversion.listener.build.amanda_pybind import init_THPVariableClass
-
-    init_THPVariableClass()
     _inited = True
 
 

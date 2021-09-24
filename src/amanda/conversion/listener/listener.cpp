@@ -1,4 +1,4 @@
-#include <torch/torch.h>
+#include <torch/extension.h>
 
 #include <iostream>
 #include <vector>
@@ -14,7 +14,6 @@ struct HookOpRegistrationListener : public c10::OpRegistrationListener {
 
   void onOperatorRegistered(const c10::OperatorHandle& op) override {
      std::string op_name = hook_function(op.schema().operator_name().name);
-    //  std::cout << op.schema().operator_name() << '\t' << op_name << std::endl;
   }
   void onOperatorDeregistered(const c10::OperatorHandle& op) override {
 
@@ -28,14 +27,14 @@ if (pos == std::string::npos) {
     return name;
 } else {
     return name.substr(pos);
-}    
+}
 }
 
 
 struct HookRegisterer final {
   HookRegisterer(const std::function<std::string(std::string)>  &py_function) {
     std::unique_ptr<HookOpRegistrationListener> listener = std::make_unique<HookOpRegistrationListener>(py_function);
-    c10::Dispatcher::singleton().addRegistrationListener(std::move(listener));         
+    c10::Dispatcher::singleton().addRegistrationListener(std::move(listener));
   }
 };
 

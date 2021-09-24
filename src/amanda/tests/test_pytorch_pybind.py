@@ -1,10 +1,6 @@
 import torch
 
-from amanda.conversion.listener.build.amanda_pybind import (  # noqa: F401
-    amanda_add_pre_hook,
-    amanda_remove_pre_hook,
-    init_THPVariableClass,
-)
+from amanda.conversion.listener.build.amanda_pybind import amanda_add_pre_hook
 
 
 def dummy_hook(inputs):
@@ -77,7 +73,7 @@ def test_resnet():
 
     import torchvision
 
-    init_THPVariableClass()
+    # init_THPVariableClass()
 
     model = torchvision.models.resnet50()
 
@@ -89,8 +85,8 @@ def test_resnet():
     grad_fns = [y.grad_fn]
     while grad_fns:
         fn = grad_fns.pop(0)
-        amanda_add_pre_hook(fn, lambda inputs: inputs)
-        # amanda_add_pre_hook(fn, dummy_hook)
+        # amanda_add_pre_hook(fn, lambda inputs: inputs)
+        amanda_add_pre_hook(fn, dummy_hook)
         for next_fn, output_nr in fn.next_functions:
             if next_fn and next_fn not in grad_fns:
                 grad_fns.append(next_fn)

@@ -167,8 +167,9 @@ def register_bw_events_recursively(context, output, input_grad_fns):
         assert len(context.actions) == 0
         for grad_output, new_grad_output in zip(grad_outputs, new_grad_outputs):
             grad_output.data = new_grad_output
+        # amanda_remove_pre_hook(bw_op, handle)
         # handle.remove()
-        amanda_remove_pre_hook(bw_op, handle)
+        return tuple(grad_outputs)
 
     def _register_bw_events(context, grad_fn):
         def after_bw_op_hook(grad_input, grad_output, context, bw_op, handle):
@@ -251,16 +252,16 @@ def register_bw_events_recursively(context, output, input_grad_fns):
     if hasattr(output, "grad_fn") and output.grad_fn:
         logger.debug(f"registering bw pre event for: {output.grad_fn}")
         bw_context = context.inherite()
-        amanda_add_pre_hook(output.grad_fn, dummy_hook)
-        # handle = amanda_add_pre_hook(
-        #     output.grad_fn,
-        #     lambda grad_output: before_bw_op_hook(
-        #         grad_output,
-        #         context=bw_context,
-        #         bw_op=output.grad_fn,
-        #         handle=handle,
-        #     )
-        # )
+        # amanda_add_pre_hook(output.grad_fn, dummy_hook)
+        handle = amanda_add_pre_hook(
+            output.grad_fn,
+            lambda grad_output: before_bw_op_hook(
+                grad_output,
+                context=bw_context,
+                bw_op=output.grad_fn,
+                handle=handle,
+            ),
+        )
 
     if hasattr(output, "grad_fn"):
         _register_bw_events(bw_context or context, output.grad_fn)
