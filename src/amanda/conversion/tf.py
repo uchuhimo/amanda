@@ -27,7 +27,7 @@ from amanda.event import (
 )
 from amanda.exception import MismatchNamespaceError
 from amanda.graph import Graph, Op, OutputPort, create_graph, create_op
-from amanda.import_hook import InstScopeHook, disabled
+from amanda.import_hook import InstScopeHook
 from amanda.io.serde import (
     ProtoToDictSerde,
     Serde,
@@ -1160,271 +1160,223 @@ def insert_hooks_old(graph: Graph, tools: List[Tool], forward_ops: Set[str] = No
                     graph.create_control_edge(backward_op, hook_op)
 
 
-def insert_hooks(
+def collect_actions(
     tf_graph: tf.Graph,
     tools: List[Tool],
-) -> bool:
-    def collect_actions():
-        actions = []
-        if len(last_hooked_id) == 1:
-            start_id = last_hooked_id[0] + 1
-        else:
-            start_id = 1
-        new_op_names = [
-            tf_graph._nodes_by_id[id].name
-            for id in range(start_id, tf_graph._last_id + 1)
-        ]
-        unpaired_backward_op_names = []
-        for op_name in new_op_names:
-            if op_name.startswith("gradients/"):
-                name = op_name[len("gradients/") :]
-                forward_op_name = name[: name.find("_grad/")]
-                if forward_op_name in forward_ops:
-                    tf_graph._backward_ops_by_forward[forward_op_name].append(op_name)
-                else:
-                    unpaired_backward_op_names.append(op_name)
-        for op_id in range(1, tf_graph._last_id + 1):
-            op = tf_graph._nodes_by_id[op_id]
-            if op.name not in forward_ops:
-                continue
-            if op_id >= start_id:
-                context = OpContext(tools=tools)
-                tf_graph._op_contexts[op.name] = context
-                inputs = list(op.inputs)
-                context.trigger(
-                    on_op_call,
-                    op=op,
-                    inputs=inputs,
-                )
-                outputs = list(op.outputs)
-                context.trigger(
-                    after_op_call,
-                    outputs=outputs,
-                )
-                for action in context.actions:
-                    actions.append((action, op))
-
-            if op.name in tf_graph._backward_ops_by_forward:
-                backward_op_names = tf_graph._backward_ops_by_forward[op.name]
-            else:
-                continue
-            if len(backward_op_names) == 0:
-                continue
-            for backward_op_name in backward_op_names:
-                if backward_op_name in new_op_names:
-                    backward_op = tf_graph.get_operation_by_name(backward_op_name)
-                    forward_context = tf_graph._op_contexts[op.name]
-                    backward_context = forward_context.inherite()
-                    grad_outputs = list(backward_op.inputs)
-                    backward_context.trigger(
-                        on_backward_op_call,
-                        op=op,
-                        backward_op=backward_op,
-                        grad_outputs=grad_outputs,
-                    )
-                    grad_inputs = list(backward_op.outputs)
-                    backward_context.trigger(
-                        after_backward_op_call,
-                        grad_inputs=grad_inputs,
-                    )
-                    for action in backward_context.actions:
-                        actions.append((action, backward_op))
-        for backward_op_name in unpaired_backward_op_names:
-            backward_op = tf_graph.get_operation_by_name(backward_op_name)
-            backward_context = OpContext(tools=tools)
-            grad_outputs = list(backward_op.inputs)
-            backward_context.trigger(
-                on_backward_op_call,
-                op=None,
-                backward_op=backward_op,
-                grad_outputs=grad_outputs,
-            )
-            grad_inputs = list(backward_op.outputs)
-            backward_context.trigger(
-                after_backward_op_call,
-                grad_inputs=grad_inputs,
-            )
-            for action in backward_context.actions:
-                actions.append((action, backward_op))
-        return actions
-
-    def apply_actions(actions):
-        before_op_update: List[Any] = []
-        after_op_update: List[Any] = []
-        remove_op_update: List[Any] = []
-        for row in actions:
-            action = row[0]
-            op = row[1]
-            action_type = action.type
-            func = action.func
-            kwargs = action.kwargs
-            if action_type in ["insert_before_op", "insert_before_backward_op"]:
-                inputs = list(op.inputs)
-                if action.inputs is not None:
-                    inputs = [inputs[index] for index in action.inputs]
-                for index in range(len(inputs)):
-                    if (op, index) in updated_inputs:
-                        inputs[index] = updated_inputs[(op, index)]
-                new_inputs = func(*inputs, **kwargs)
-                if new_inputs is not None:
-                    if isinstance(new_inputs, tf.Operation):
-                        new_upstream_op = new_inputs
-                        new_inputs = inputs
-                        op._add_control_input(new_upstream_op)
-                    if isinstance(new_inputs, tf.Tensor):
-                        new_inputs = [new_inputs]
-                    if len(inputs) != len(new_inputs):
-                        raise RuntimeError(
-                            f"the number of inputs({len(inputs)}) is not equal to "
-                            f"the number of updated inputs({len(new_inputs)})"
-                        ).with_traceback(action.traceback)
-                    for index, input, new_input in zip(
-                        action.inputs or range(len(inputs)), inputs, new_inputs
-                    ):
-                        before_op_update.append((op, index, new_input))
-                        updated_inputs[(op, index)] = new_input
-            elif action_type in ["insert_after_op", "insert_after_backward_op"]:
-                outputs = list(op.outputs)
-                if action.outputs is not None:
-                    outputs = [outputs[index] for index in action.outputs]
-                for index in range(len(outputs)):
-                    output = outputs[index]
-                    if output in updated_outputs:
-                        outputs[index] = updated_outputs[output]
-                last_id = tf_graph._last_id
-                new_outputs = func(*outputs, **kwargs)
-                new_last_id = tf_graph._last_id
-                new_op_names = [
-                    tf_graph._nodes_by_id[id].name
-                    for id in range(last_id + 1, new_last_id + 1)
-                ]
-                if new_outputs is not None:
-                    if isinstance(new_outputs, tf.Operation):
-                        new_downstream_op = new_outputs
-                        new_outputs = outputs
-                        new_downstream_op._add_control_input(op)
-                        updated_ops[op] = new_downstream_op
-                    if isinstance(new_outputs, tf.Tensor):
-                        new_outputs = [new_outputs]
-                    for index, output, new_output in zip(
-                        action.outputs or range(len(outputs)), outputs, new_outputs
-                    ):
-                        after_op_update.append(
-                            (op, index, output, new_output, new_op_names)
-                        )
-                        updated_outputs[output] = new_output
-            elif action_type in ["replace_op", "replace_backward_op"]:
-                inputs = list(op.inputs)
-                outputs = list(op.outputs)
-                if action.inputs is not None:
-                    inputs = [inputs[index] for index in action.inputs]
-                for index in range(len(inputs)):
-                    if (op, index) in updated_inputs:
-                        inputs[index] = updated_inputs[(op, index)]
-                last_id = tf_graph._last_id
-                new_outputs = func(*inputs, **kwargs)
-                new_last_id = tf_graph._last_id
-                new_op_names = [
-                    tf_graph._nodes_by_id[id].name
-                    for id in range(last_id + 1, new_last_id + 1)
-                ]
-                is_op_updated = False
-                if new_outputs is not None:
-                    if isinstance(new_outputs, tf.Operation) and len(outputs) == 0:
-                        new_op = new_outputs
-                        new_outputs = outputs
-                        updated_ops[op] = new_op
-                        is_op_updated = True
-                    if isinstance(new_outputs, tf.Tensor):
-                        new_outputs = [new_outputs]
-                    for index, output, new_output in zip(
-                        range(len(outputs)), outputs, new_outputs
-                    ):
-                        after_op_update.append(
-                            (op, index, output, new_output, new_op_names)
-                        )
-                        updated_outputs[output] = new_output
-                remove_op_update.append(op)
-                if not is_op_updated and len(new_op_names) != 0:
-                    updated_ops[op] = tf_graph._nodes_by_id[new_last_id]
-            else:
-                raise ValueError(f"action type {action_type} is unsupported")
-        return before_op_update, after_op_update, remove_op_update
-
-    def update_graph(before_op_update, after_op_update, remove_op_update):
-        for tf_op, index, new_input in before_op_update:
-            if (tf_op, index) not in original_inputs:
-                original_inputs[(tf_op, index)] = tf_op.inputs[index]
-            tf_op._update_input(index, new_input)
-
-        for tf_op, index, output, new_output, new_op_names in after_op_update:
-            for consumer in output.consumers():
-                if consumer.name in new_op_names:
-                    continue
-                for input_index, input in enumerate(consumer.inputs):
-                    if input == output:
-                        if (consumer, input_index) not in original_inputs:
-                            original_inputs[(consumer, input_index)] = consumer.inputs[
-                                input_index
-                            ]
-                        consumer._update_input(input_index, new_output)
-                        break
-
-    def init_tf_graph_attrs(tf_graph):
-        if not hasattr(tf_graph, "_updated_inputs"):
-            tf_graph._updated_inputs = {}
-        if not hasattr(tf_graph, "_updated_outputs"):
-            tf_graph._updated_outputs = {}
-        if not hasattr(tf_graph, "_updated_ops"):
-            tf_graph._updated_ops = {}
-        if not hasattr(tf_graph, "_original_inputs"):
-            tf_graph._original_inputs = {}
-        if not hasattr(tf_graph, "_op_contexts"):
-            tf_graph._op_contexts = {}
-        if not hasattr(tf_graph, "_backward_ops_by_forward"):
-            tf_graph._backward_ops_by_forward = defaultdict(list)
-
+):
     if len(tools) == 0:
-        return False
+        return []
     tf_graph_finalized = tf_graph._finalized
     tf_graph._finalized = False
-    old_last_id = tf_graph._last_id
-    last_hooked_id = tf_graph.get_collection_ref("amanda.last_hooked_id")
-    if len(last_hooked_id) == 1 and last_hooked_id[0] == old_last_id:
-        if tf_graph_finalized:
-            tf_graph._finalized = True
-        return False
-    if hasattr(tf_graph, "_forward_ops"):
-        forward_ops = tf_graph._forward_ops
-    else:
-        forward_ops = {op.name for op in tf_graph.get_operations()}
-    if hasattr(tf_graph, "_backward_ops"):
-        forward_ops = forward_ops - tf_graph._backward_ops
-    init_tf_graph_attrs(tf_graph)
-    updated_inputs = tf_graph._updated_inputs
-    updated_outputs = tf_graph._updated_outputs
-    updated_ops = tf_graph._updated_ops
-    original_inputs = tf_graph._original_inputs
-    with disabled():
-        actions = collect_actions()
-        before_op_update, after_op_update, remove_op_update = apply_actions(actions)
-    update_graph(before_op_update, after_op_update, remove_op_update)
-    new_last_id = tf_graph._last_id
-    if len(last_hooked_id) == 0:
-        last_hooked_id.append(new_last_id)
-    else:
-        last_hooked_id[0] = new_last_id
-        if old_last_id == new_last_id:
-            update_count = (
-                len(before_op_update) + len(after_op_update) + len(remove_op_update)
-            )
-            if update_count == 0:
-                if tf_graph_finalized:
-                    tf_graph._finalized = True
-                return False
+    forward_ops = {
+        op.name
+        for op in tf_graph.get_operations()
+        if not op.name.startswith("gradients")
+    }
+    actions = []
+    op_contexts = {}
+    backward_ops_by_forward = defaultdict(list)
+    new_op_names = [
+        tf_graph._nodes_by_id[id].name for id in range(1, tf_graph._last_id + 1)
+    ]
+    unpaired_backward_op_names = []
+    for op_name in new_op_names:
+        if op_name.startswith("gradients"):
+            name = op_name[op_name.find("/") + 1 :]
+            forward_op_name = name[: name.find("_grad/")]
+            if forward_op_name in forward_ops:
+                backward_ops_by_forward[forward_op_name].append(op_name)
+            else:
+                unpaired_backward_op_names.append(op_name)
+    for op_id in range(1, tf_graph._last_id + 1):
+        op = tf_graph._nodes_by_id[op_id]
+        if op.name not in forward_ops:
+            continue
+        context = OpContext(tools=tools)
+        op_contexts[op.name] = context
+        inputs = list(op.inputs)
+        context.trigger(
+            on_op_call,
+            op=op,
+            inputs=inputs,
+        )
+        outputs = list(op.outputs)
+        context.trigger(
+            after_op_call,
+            outputs=outputs,
+        )
+        for action in context.actions:
+            actions.append((action, op))
+        if op.name in backward_ops_by_forward:
+            backward_op_names = backward_ops_by_forward[op.name]
+        else:
+            continue
+        if len(backward_op_names) == 0:
+            continue
+        for backward_op_name in backward_op_names:
+            if backward_op_name in new_op_names:
+                backward_op = tf_graph.get_operation_by_name(backward_op_name)
+                forward_context = op_contexts[op.name]
+                backward_context = forward_context.inherite()
+                grad_outputs = list(backward_op.inputs)
+                backward_context.trigger(
+                    on_backward_op_call,
+                    op=op,
+                    backward_op=backward_op,
+                    grad_outputs=grad_outputs,
+                )
+                grad_inputs = list(backward_op.outputs)
+                backward_context.trigger(
+                    after_backward_op_call,
+                    grad_inputs=grad_inputs,
+                )
+                for action in backward_context.actions:
+                    actions.append((action, backward_op))
+    for backward_op_name in unpaired_backward_op_names:
+        backward_op = tf_graph.get_operation_by_name(backward_op_name)
+        backward_context = OpContext(tools=tools)
+        grad_outputs = list(backward_op.inputs)
+        backward_context.trigger(
+            on_backward_op_call,
+            op=None,
+            backward_op=backward_op,
+            grad_outputs=grad_outputs,
+        )
+        grad_inputs = list(backward_op.outputs)
+        backward_context.trigger(
+            after_backward_op_call,
+            grad_inputs=grad_inputs,
+        )
+        for action in backward_context.actions:
+            actions.append((action, backward_op))
     if tf_graph_finalized:
         tf_graph._finalized = True
-    return True
+    return actions
+
+
+def apply_actions(tf_graph, actions):
+    tf_graph_finalized = tf_graph._finalized
+    tf_graph._finalized = False
+    updated_inputs = {}
+    updated_outputs = {}
+    updated_ops = {}
+    before_op_update: List[Any] = []
+    after_op_update: List[Any] = []
+    remove_op_update: List[Any] = []
+    for row in actions:
+        action = row[0]
+        op = row[1]
+        action_type = action.type
+        func = action.func
+        kwargs = action.kwargs
+        if action_type in ["insert_before_op", "insert_before_backward_op"]:
+            inputs = list(op.inputs)
+            if action.inputs is not None:
+                inputs = [inputs[index] for index in action.inputs]
+            for index in range(len(inputs)):
+                if (op.name, index) in updated_inputs:
+                    inputs[index] = tf_graph.get_tensor_by_name(
+                        updated_inputs[(op.name, index)]
+                    )
+            new_inputs = func(*inputs, **kwargs)
+            if new_inputs is not None:
+                if isinstance(new_inputs, tf.Operation):
+                    new_upstream_op = new_inputs
+                    new_inputs = inputs
+                    op._add_control_input(new_upstream_op)
+                if isinstance(new_inputs, tf.Tensor):
+                    new_inputs = [new_inputs]
+                if len(inputs) != len(new_inputs):
+                    raise RuntimeError(
+                        f"the number of inputs({len(inputs)}) is not equal to "
+                        f"the number of updated inputs({len(new_inputs)})"
+                    ).with_traceback(action.traceback)
+                for index, input, new_input in zip(
+                    action.inputs or range(len(inputs)), inputs, new_inputs
+                ):
+                    before_op_update.append((op.name, index, new_input.name))
+                    updated_inputs[(op.name, index)] = new_input.name
+        elif action_type in ["insert_after_op", "insert_after_backward_op"]:
+            outputs = list(op.outputs)
+            if action.outputs is not None:
+                outputs = [outputs[index] for index in action.outputs]
+            for index in range(len(outputs)):
+                output = outputs[index]
+                if output.name in updated_outputs:
+                    outputs[index] = tf_graph.get_tensor_by_name(
+                        updated_outputs[output.name]
+                    )
+            last_id = tf_graph._last_id
+            new_outputs = func(*outputs, **kwargs)
+            new_last_id = tf_graph._last_id
+            new_op_names = [
+                tf_graph._nodes_by_id[id].name
+                for id in range(last_id + 1, new_last_id + 1)
+            ]
+            if new_outputs is not None:
+                if isinstance(new_outputs, tf.Operation):
+                    new_downstream_op = new_outputs
+                    new_outputs = outputs
+                    new_downstream_op._add_control_input(op)
+                    updated_ops[op.name] = new_downstream_op.name
+                if isinstance(new_outputs, tf.Tensor):
+                    new_outputs = [new_outputs]
+                for index, output, new_output in zip(
+                    action.outputs or range(len(outputs)), outputs, new_outputs
+                ):
+                    after_op_update.append(
+                        (op.name, index, output.name, new_output.name, new_op_names)
+                    )
+                    updated_outputs[output.name] = new_output.name
+        elif action_type in ["replace_op", "replace_backward_op"]:
+            inputs = list(op.inputs)
+            outputs = list(op.outputs)
+            if action.inputs is not None:
+                inputs = [inputs[index] for index in action.inputs]
+            for index in range(len(inputs)):
+                if (op.name, index) in updated_inputs:
+                    inputs[index] = tf_graph.get_tensor_by_name(
+                        updated_inputs[(op.name, index)]
+                    )
+            last_id = tf_graph._last_id
+            new_outputs = func(*inputs, **kwargs)
+            new_last_id = tf_graph._last_id
+            new_op_names = [
+                tf_graph._nodes_by_id[id].name
+                for id in range(last_id + 1, new_last_id + 1)
+            ]
+            is_op_updated = False
+            if new_outputs is not None:
+                if isinstance(new_outputs, tf.Operation) and len(outputs) == 0:
+                    new_op = new_outputs
+                    new_outputs = outputs
+                    updated_ops[op.name] = new_op.name
+                    is_op_updated = True
+                if isinstance(new_outputs, tf.Tensor):
+                    new_outputs = [new_outputs]
+                for index, output, new_output in zip(
+                    range(len(outputs)), outputs, new_outputs
+                ):
+                    after_op_update.append(
+                        (op.name, index, output.name, new_output.name, new_op_names)
+                    )
+                    updated_outputs[output.name] = new_output.name
+            remove_op_update.append(op.name)
+            if not is_op_updated and len(new_op_names) != 0:
+                updated_ops[op.name] = tf_graph._nodes_by_id[new_last_id].name
+        else:
+            raise ValueError(f"action type {action_type} is unsupported")
+    updates = {
+        "updated_inputs": updated_inputs,
+        "updated_outputs": updated_outputs,
+        "updated_ops": updated_ops,
+        "before_op_update": before_op_update,
+        "after_op_update": after_op_update,
+        "remove_op_update": remove_op_update,
+    }
+    if tf_graph_finalized:
+        tf_graph._finalized = True
+    return updates
 
 
 class EstimatorAdapter(Adapter):

@@ -2,10 +2,10 @@ import json
 import os
 import time
 
-import amanda
 import tensorflow as tf
-from amanda.io.file import ensure_dir
 
+import amanda
+from amanda.io.file import ensure_dir
 from examples.profile.tensorflow.utils import from_attr_proto
 
 
@@ -30,7 +30,7 @@ class Profiler(amanda.Tool):
 
     def forward_instrumentation(self, context: amanda.OpContext):
         op = context.get_op()
-        if op.type == "Identity":
+        if op.type in ["Identity", "Const"]:
             return
         event = {
             "name": op.type,
@@ -62,6 +62,8 @@ class Profiler(amanda.Tool):
 
     def backward_instrumentation(self, context: amanda.OpContext):
         bw_op = context.get_backward_op()
+        if bw_op.type in ["Identity", "Const"]:
+            return
         event = {
             "name": bw_op.type,
             "args": {

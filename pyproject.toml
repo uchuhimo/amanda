@@ -62,6 +62,8 @@ classifiers=[
     "Programming Language :: Python :: 3.8",
 ]
 
+build = "build.py"
+
 [tool.poetry.dependencies]
 python = ">= 3.7, < 4"
 more-itertools = "*"

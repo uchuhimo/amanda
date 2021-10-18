@@ -23,6 +23,12 @@ There are two options:
     poetry install
     ```
 
+- Build in debug mode for C++:
+
+    ```bash
+    DEBUG=1 poetry install
+    ```
+
 ### Run an example
 
 ```bash

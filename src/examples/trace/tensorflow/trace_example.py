@@ -1,6 +1,6 @@
-import amanda
 import tensorflow as tf
 
+import amanda
 from examples.common.tensorflow.model.resnet_50 import ResNet50
 from examples.trace.tensorflow.trace_tool import TraceTool
 
@@ -16,7 +16,6 @@ def main():
         z = y + 1
         with tf.Session() as session:
             session.run(tf.initialize_all_variables())
-            print(session.run(y).shape)
             session.run(tf.gradients(y, x))
             session.run(tf.gradients(z, x))
 

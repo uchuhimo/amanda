@@ -3,7 +3,8 @@
 #include "listener.cpp"
 #include "function_pre_hook.cpp"
 
-PYBIND11_MODULE(amanda_pybind, m) {
+PYBIND11_MODULE(amanda_torch_pybind, m)
+{
     m.doc() = "extra binding for amanda";
 
     pybind11::class_<HookRegisterer>(m, "HookRegisterer")

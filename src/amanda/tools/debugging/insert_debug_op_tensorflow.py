@@ -1,3 +1,5 @@
+import os
+
 import click
 import numpy as np
 import tensorflow as tf
@@ -10,7 +12,7 @@ from amanda.tests.test_tf_import_export import run_model as run_model_from
 from amanda.tool import Tool
 
 store_tensor_to_file_ops = load_library.load_op_library(
-    str(root_dir() / "cc/build/store_tensor_to_file_op.so")
+    os.path.dirname(os.path.abspath(__file__)) + "/store_tensor_to_file_op.so"
 )
 store_tensor_to_file = store_tensor_to_file_ops.store_tensor_to_file
 

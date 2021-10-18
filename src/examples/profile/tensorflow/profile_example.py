@@ -16,7 +16,6 @@ def main():
         with tf.Session() as session:
             session.run(tf.initialize_all_variables())
             session.run(y)
-            # profiler.trace = []
             session.run(tf.gradients(y, x))
 
     profiler.export_chrome_trace("tmp/profile/tf_resnet50.json")

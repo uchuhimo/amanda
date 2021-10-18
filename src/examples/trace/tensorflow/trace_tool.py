@@ -24,7 +24,7 @@ class TraceTool(amanda.Tool):
         bw_op = context.get_backward_op()
         context.insert_before_backward_op(
             self.dump_backward_op,
-            fw_op_name=fw_op.name,
+            fw_op_name=fw_op.name if fw_op is not None else None,
             bw_op_name=bw_op.name,
         )
 

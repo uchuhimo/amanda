@@ -30,10 +30,15 @@ class PruningTool(amanda.Tool):
     def backward_instrumentation(self, context: amanda.OpContext):
         op = context.get_op()
         backward_op = context.get_backward_op()
-        if op.type not in ["Conv2D", "MatMul"] or backward_op.type not in [
-            "Conv2DBackpropFilter",
-            "MatMul",
-        ]:
+        if (
+            op is None
+            or op.type not in ["Conv2D", "MatMul"]
+            or backward_op.type
+            not in [
+                "Conv2DBackpropFilter",
+                "MatMul",
+            ]
+        ):
             return
         weight_grad = context.get_grad_inputs()[0]
         if (

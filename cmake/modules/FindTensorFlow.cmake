@@ -299,7 +299,7 @@ macro(add_tensorflow_operation op_name)
   # Compiles a CPU-only operation without invoking NVCC
   message(STATUS "will build custom TensorFlow operation \"${op_name}\"")
 
-  add_library(${op_name}_op SHARED tensorflow/kernels/${op_name}.cc tensorflow/ops/${op_name}.cc )
+  add_library(${op_name}_op SHARED kernels/${op_name}.cc ops/${op_name}.cc )
 
   set_target_properties(${op_name}_op PROPERTIES PREFIX "")
   target_link_libraries(${op_name}_op LINK_PUBLIC ${TensorFlow_LIBRARY})

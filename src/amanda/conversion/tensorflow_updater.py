@@ -1,11 +1,9 @@
-import time
-from collections import defaultdict
+import weakref
+from dataclasses import dataclass
 from functools import wraps
-from typing import List, NamedTuple, OrderedDict, Set
+from typing import Any, List, MutableMapping, NamedTuple, OrderedDict, Set
 
-import numpy as np
 from amanda.import_hook import (
-    FunctionUpdater,
     InstScopeHook,
     MethodUpdater,
     check_enabled,
@@ -15,187 +13,318 @@ from amanda.import_hook import (
     register_updater,
 )
 from amanda.tool import get_tools
-from loguru import logger
 
 
-def gradients_wrapper(func):
+def update_node(tf_graph, node, updates):
+    name = node.name
+    if ":" in name:
+        if name in updates["updated_outputs"]:
+            updated_node_name = updates["updated_outputs"][name]
+            while updated_node_name in updates["updated_outputs"]:
+                updated_node_name = updates["updated_outputs"][updated_node_name]
+            return tf_graph.get_tensor_by_name(updated_node_name)
+        else:
+            return tf_graph.get_tensor_by_name(name)
+    else:
+        if name in updates["updated_ops"]:
+            updated_node_name = updates["updated_ops"][name]
+            while updated_node_name in updates["updated_ops"]:
+                updated_node_name = updates["updated_ops"][updated_node_name]
+            return tf_graph.get_operation_by_name(updated_node_name)
+        else:
+            return tf_graph.get_operation_by_name(name)
+
+
+def update_fetches(tf_graph, fetches, updates):
     import tensorflow as tf
 
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        tf_graph = tf.get_default_graph()
-        if not hasattr(tf_graph, "_backward_ops"):
-            tf_graph._backward_ops = set()
-        last_hooked_id = tf_graph.get_collection_ref("amanda.last_hooked_id")
-        if len(last_hooked_id) == 1 and last_hooked_id[0] > 0:
-            last_hooked_id[0] = 0
-            tf_graph_finalized = tf_graph._finalized
-            tf_graph._finalized = False
-            tf_graph._updated_inputs = {}
-            tf_graph._updated_outputs = {}
-            tf_graph._updated_ops = {}
-            tf_graph._op_contexts = {}
-            tf_graph._backward_ops_by_forward = defaultdict(list)
-            for (tf_op, index), input in tf_graph._original_inputs.items():
-                tf_op._update_input(index, input)
-            tf_graph._original_inputs = {}
-            if tf_graph_finalized:
-                tf_graph._finalized = True
-            session = tf.get_default_session()
-            if session is not None:
-                update_session(session, tf_graph)
-                replay_session_runs(session)
-        last_id = tf_graph._last_id
-        result = func(*args, **kwargs)
-        new_last_id = tf_graph._last_id
-        for id in range(last_id + 1, new_last_id + 1):
-            tf_graph._backward_ops.add(tf_graph._nodes_by_id[id].name)
-        return result
-
-    return check_enabled(func, wrapper)
-
-
-def replay_session_runs(session):
-    if hasattr(session, "_session_runs"):
-        raw_session_run = session.run.__wrapped__.__wrapped__
-        for args in session._session_runs:
-            start_time = time.time()
-            raw_session_run(session, *args)
-            run_time = time.time() - start_time
-            with np.printoptions(precision=2, edgeitems=0, threshold=0):
-                logger.debug(
-                    "replay session run ({:.3f}s): {} {}", run_time, session, args
-                )
+    if isinstance(fetches, list):
+        for index, element in enumerate(fetches):
+            new_element = update_fetches(tf_graph, element, updates)
+            fetches[index] = new_element
+    elif isinstance(fetches, tuple):
+        fetches_list = update_fetches(tf_graph, list(fetches), updates)
+        fetches = tuple(fetches_list)
+    elif isinstance(fetches, dict):
+        for key, value in fetches.items():
+            new_value = update_fetches(tf_graph, value, updates)
+            fetches[key] = new_value
+    elif isinstance(fetches, OrderedDict):
+        for key, value in fetches.items():
+            new_value = update_fetches(tf_graph, value, updates)
+            fetches[key] = new_value
+    elif isinstance(fetches, NamedTuple):
+        fetches_list = update_fetches(tf_graph, list(fetches), updates)
+        fetches = type(fetches)._make(fetches_list)
+    elif isinstance(
+        fetches, (tf.Operation, tf.Tensor, tf.sparse.SparseTensor, tf.Variable)
+    ):
+        new_fetches = update_node(tf_graph, fetches, updates)
+        fetches = new_fetches
+    elif isinstance(fetches, str):
+        name = fetches
+        if ":" in name:
+            node = tf_graph.get_tensor_by_name(name)
+        else:
+            node = tf_graph.get_operation_by_name(name)
+        new_node = update_node(tf_graph, node, updates)
+        fetches = new_node.name
+    else:
+        raise RuntimeError(f"{fetches} is unsupported as a part of fetches")
+    return fetches
 
 
-def update_session(session, tf_graph):
-    from tensorflow.python import pywrap_tensorflow as tf_session
+def update_graph(tf_graph, updates):
+    before_op_update = updates["before_op_update"]
+    after_op_update = updates["after_op_update"]
+    for tf_op_name, index, new_input_name in before_op_update:
+        tf_op = tf_graph.get_operation_by_name(tf_op_name)
+        new_input = tf_graph.get_tensor_by_name(new_input_name)
+        tf_op._update_input(index, new_input)
 
-    opts = tf_session.TF_NewSessionOptions(
-        target=session._target, config=session._config
-    )
-    try:
-        new_raw_session = tf_session.TF_NewSessionRef(tf_graph._c_graph, opts)
-        tf_session.TF_CloseSession(session._session)
-        session._session = new_raw_session
-    finally:
-        tf_session.TF_DeleteSessionOptions(opts)
+    for (
+        tf_op_name,
+        index,
+        output_name,
+        new_output_name,
+        new_op_names,
+    ) in after_op_update:
+        tf_op = tf_graph.get_operation_by_name(tf_op_name)
+        output = tf_graph.get_tensor_by_name(output_name)
+        new_output = tf_graph.get_tensor_by_name(new_output_name)
+        for consumer in output.consumers():
+            if consumer.name in new_op_names:
+                continue
+            for input_index, input in enumerate(consumer.inputs):
+                if input == output:
+                    consumer._update_input(input_index, new_output)
+                    break
+
+
+def remove_op_from_graph(graph, op):
+    from amanda.conversion.amanda_tf_pybind import remove_op
+
+    del graph._nodes_by_id[op._id]
+    del graph._nodes_by_name[op.name]
+    del graph._names_in_use[op.name.lower()]
+    remove_op(graph._c_graph, op._c_op)
+
+
+def save_op(filename_tensor, saveables):
+    from tensorflow.python.training.saver import BaseSaverBuilder
+
+    saver = BaseSaverBuilder()
+    return saver.save_op(filename_tensor, saveables)
+
+
+def restore_op(filename_tensor, saveables):
+    from tensorflow.python.training.saver import BaseSaverBuilder
+
+    saver = BaseSaverBuilder()
+    return saver.bulk_restore(filename_tensor, saveables, 0, False)
+
+
+def get_saveable(iterator):
+    from tensorflow.python.data.ops.iterator_ops import _IteratorSaveable
+
+    return _IteratorSaveable(iterator.outputs[0], iterator.name)
+
+
+def get_iterators(graph):
+    return [
+        op for op in graph.get_operations() if op.type in ["Iterator", "IteratorV2"]
+    ]
+
+
+def get_iterator_inits(graph):
+    return [op for op in graph.get_operations() if op.type == "MakeIterator"]
+
+
+def get_all_variables():
+    import tensorflow as tf
+
+    return tf.global_variables() + tf.local_variables()
+
+
+@dataclass
+class TensorFlowAdapter:
+    last_id: int = None
+    instrumented_graph: Any = None
+    updates: Any = None
+
+    def get_graph(self, session):
+        return session._graph
+
+    def set_graph(self, session, graph):
+        session._graph = graph
+
+    def clone(self, graph):
+        import tensorflow as tf
+        from tensorflow.python.framework.meta_graph import import_scoped_meta_graph
+
+        original_last_id = graph._last_id
+        meta_graph_def = tf.train.export_meta_graph(graph=graph)
+        new_graph = tf.Graph()
+        with new_graph.as_default():
+            import_scoped_meta_graph(meta_graph_def)
+        if original_last_id != new_graph._last_id:
+            raise RuntimeError(
+                "clone introduces new ops: "
+                + str(new_graph.get_operations()[original_last_id:])
+            )
+        return new_graph
+
+    def extract(self, session):
+        import tensorflow as tf
+
+        snapshot = {}
+        tf_graph_finalized = session.graph._finalized
+        session.graph._finalized = False
+        original_last_id = session.graph._last_id
+        with session.graph.as_default(), session.as_default():
+            all_variables = get_all_variables()
+            uninitialized_variables = session.run(
+                tf.report_uninitialized_variables(get_all_variables())
+            )
+            initialized_variables = set(
+                map(lambda variable: variable.op.name, all_variables)
+            ) - set(map(lambda x: x.decode(), uninitialized_variables))
+            variable_values = session.run(
+                {variable: variable + ":0" for variable in initialized_variables}
+            )
+        snapshot["variables"] = variable_values
+
+        # _, file_name = tempfile.mkstemp()
+        # filename_tensor = tf.convert_to_tensor(file_name)
+        # saveables = [
+        #     get_saveable(iterator) for iterator in get_iterators(session.graph)
+        # ]
+        # op = save_op(filename_tensor, saveables)
+        # session.run(op)
+        # snapshot["iterators"] = file_name
+
+        inserted_ops = [
+            session.graph._nodes_by_id[op_id]
+            for op_id in range(original_last_id + 1, session.graph._last_id + 1)
+        ]
+        for op in inserted_ops:
+            remove_op_from_graph(session.graph, op)
+        session.graph._next_id_counter = original_last_id
+        if original_last_id != session.graph._last_id:
+            raise RuntimeError(
+                "extract introduces new ops: "
+                + str(session.graph.get_operations()[original_last_id:])
+            )
+
+        if tf_graph_finalized:
+            session.graph._finalized = True
+        return session.graph, snapshot
+
+    def load(self, session, graph, snapshot):
+        from tensorflow.python import pywrap_tensorflow as tf_session
+
+        opts = tf_session.TF_NewSessionOptions(
+            target=session._target, config=session._config
+        )
+        try:
+            new_raw_session = tf_session.TF_NewSessionRef(graph._c_graph, opts)
+            tf_session.TF_CloseSession(session._session)
+            tf_session.TF_DeleteSession(session._session)
+            session._session = new_raw_session
+        finally:
+            tf_session.TF_DeleteSessionOptions(opts)
+        session._graph = graph
+        with graph.as_default(), session.as_default():
+            src_variable_values = snapshot["variables"]
+            dst_variable_names = set(
+                map(lambda variable: variable.op.name, get_all_variables())
+            ).intersection(set(src_variable_values.keys()))
+            dst_variables = [
+                variable
+                for variable in get_all_variables()
+                if variable.op.name in dst_variable_names
+            ]
+            session.run(
+                [variable.initializer for variable in dst_variables],
+                feed_dict={
+                    variable.initializer.inputs[1]: src_variable_values[
+                        variable.op.name
+                    ]
+                    for variable in dst_variables
+                },
+            )
+            session.run(get_iterator_inits(graph))
+
+    def is_graph_updated(self, graph):
+        if self.last_id is not None:
+            return graph._last_id > self.last_id
+        else:
+            return True
+
+    def save_prev_graph(self, graph):
+        self.last_id = graph._last_id
+
+    def update_fetches(self, fetches, updates):
+        return update_fetches(self.instrumented_graph, fetches, updates)
+
+    def execute_routines(self, session):
+        from amanda.conversion.tf import collect_actions
+
+        graph = session.graph
+        with graph.as_default(), session.as_default():
+            actions = collect_actions(graph, get_tools())
+        return actions
+
+    def execute_actions(self, graph, actions):
+        from amanda.conversion.tf import apply_actions
+
+        with graph.as_default():
+            updates = apply_actions(graph, actions)
+        update_graph(graph, updates)
+        return graph, updates
+
+    def instrument(self, session, graph):
+        if self.instrumented_graph is not None:
+            self.set_graph(session, self.instrumented_graph)
+        instrumented_graph, snapshot = self.extract(session)
+        self.load(session, self.clone(graph), snapshot)
+        actions = self.execute_routines(session)
+        instrumented_graph, snapshot = self.extract(session)
+        instrumented_graph, updates = self.execute_actions(instrumented_graph, actions)
+        self.load(session, instrumented_graph, snapshot)
+        return instrumented_graph, updates
+
+
+_adapters: MutableMapping[Any, TensorFlowAdapter] = weakref.WeakKeyDictionary()
+
+
+def get_adapter(session) -> TensorFlowAdapter:
+    if session not in _adapters:
+        _adapters[session] = TensorFlowAdapter()
+    return _adapters[session]
 
 
 def session_run_wrapper(func):
-    def record_session_run(session, args):
-        # logger.debug("record session run: {} {}", session, args)
-        if hasattr(session, "_session_runs"):
-            session._session_runs.append(args)
-        else:
-            session._session_runs = [args]
-
-    def update_node(tf_graph, node):
-        name = node.name
-        if ":" in name:
-            if node in tf_graph._updated_outputs:
-                updated_node = tf_graph._updated_outputs[node]
-                while updated_node in tf_graph._updated_outputs:
-                    updated_node = tf_graph._updated_outputs[updated_node]
-                return updated_node, True
-            else:
-                return node, False
-        else:
-            if node in tf_graph._updated_ops:
-                updated_node = tf_graph._updated_ops[node]
-                while updated_node in tf_graph._updated_ops:
-                    updated_node = tf_graph._updated_ops[updated_node]
-                return updated_node, True
-            else:
-                return node, False
-
-    def update_fetches(tf_graph, fetches):
-        import tensorflow as tf
-
-        is_updated = False
-        if isinstance(fetches, list):
-            for index, element in enumerate(fetches):
-                new_element, is_element_updated = update_fetches(tf_graph, element)
-                if is_element_updated:
-                    fetches[index] = new_element
-                    is_updated = True
-        elif isinstance(fetches, tuple):
-            fetches_list, is_list_updated = update_fetches(tf_graph, list(fetches))
-            if is_list_updated:
-                is_updated = True
-                fetches = tuple(fetches_list)
-        elif isinstance(fetches, dict):
-            for key, value in fetches.items():
-                new_value, is_value_updated = update_fetches(tf_graph, value)
-                if is_value_updated:
-                    fetches[key] = new_value
-                    is_updated = True
-        elif isinstance(fetches, OrderedDict):
-            for key, value in fetches.items():
-                new_value, is_value_updated = update_fetches(tf_graph, value)
-                if is_value_updated:
-                    fetches[key] = new_value
-                    is_updated = True
-        elif isinstance(fetches, NamedTuple):
-            fetches_list, is_list_updated = update_fetches(tf_graph, list(fetches))
-            if is_list_updated:
-                is_updated = True
-                fetches = type(fetches)._make(fetches_list)
-        elif isinstance(
-            fetches, (tf.Operation, tf.Tensor, tf.sparse.SparseTensor, tf.Variable)
-        ):
-            new_fetches, is_node_updated = update_node(tf_graph, fetches)
-            if is_node_updated:
-                fetches = new_fetches
-                is_updated = True
-        elif isinstance(fetches, str):
-            name = fetches
-            if ":" in name:
-                node = tf_graph.get_tensor_by_name(name)
-            else:
-                node = tf_graph.get_operation_by_name(name)
-            new_node, is_node_updated = update_node(tf_graph, node)
-            if is_node_updated:
-                fetches = new_node.name
-                is_updated = True
-        else:
-            raise RuntimeError(f"{fetches} is unsupported as a part of fetches")
-        return fetches, is_updated
-
     @wraps(func)
     def wrapper(self, fetches, feed_dict=None, options=None, run_metadata=None):
-        from amanda.conversion.tf import insert_hooks
+        session = self
+        with disabled():
+            adapter = get_adapter(session)
+            graph = adapter.get_graph(session)
+            if adapter.is_graph_updated(graph):
+                instrumented_graph, updates = adapter.instrument(session, graph)
+                adapter.instrumented_graph = instrumented_graph
+                adapter.updates = updates
+            instrumented_graph = adapter.instrumented_graph
+            updates = adapter.updates
+            adapter.set_graph(session, instrumented_graph)
+            fetches = adapter.update_fetches(fetches, updates)
+            result = session.run(fetches, feed_dict, options, run_metadata)
+            adapter.set_graph(session, graph)
+            adapter.save_prev_graph(graph)
+            return result
 
-        tf_graph = self.graph
-        with self.as_default():
-            is_graph_updated = insert_hooks(tf_graph, get_tools())
-            fetches, _ = update_fetches(tf_graph, fetches)
-        if is_graph_updated:
-            with np.printoptions(precision=2, edgeitems=0, threshold=0):
-                logger.debug("update session: {}", self)
-            update_session(self, tf_graph)
-            replay_session_runs(self)
-        args = [fetches, feed_dict, options, run_metadata]
-        record_session_run(self, args)
-        start_time = time.time()
-        result = func(self, fetches, feed_dict, options, run_metadata)
-        run_time = time.time() - start_time
-        with np.printoptions(precision=2, edgeitems=0, threshold=0):
-            logger.debug("hook session run ({:.3f}s): {} {}", run_time, self, args)
-        return result
-
-    @wraps(func)
-    def recorded_func(self, fetches, feed_dict=None, options=None, run_metadata=None):
-        args = [fetches, feed_dict, options, run_metadata]
-        record_session_run(self, args)
-        start_time = time.time()
-        result = func(self, fetches, feed_dict, options, run_metadata)
-        run_time = time.time() - start_time
-        with np.printoptions(precision=2, edgeitems=0, threshold=0):
-            logger.debug("original session run ({:.3f}s): {} {}", run_time, self, args)
-        return result
-
-    return check_enabled(recorded_func, wrapper)
+    return check_enabled(func, wrapper)
 
 
 def create_amanda_hook():
@@ -365,20 +494,6 @@ def evaluate_wrapper(func):
 
 
 def register_import_hook() -> None:
-    register_updater(
-        FunctionUpdater(
-            module="tensorflow.python.ops.gradients_impl",
-            func="gradients",
-            decorator=gradients_wrapper,
-        )
-    )
-    register_updater(
-        FunctionUpdater(
-            module="tensorflow.python.ops.gradients_impl",
-            func="gradients_v2",
-            decorator=gradients_wrapper,
-        )
-    )
     register_updater(
         MethodUpdater(
             module="tensorflow.python.client.session",

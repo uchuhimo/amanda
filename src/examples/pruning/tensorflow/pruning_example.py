@@ -52,7 +52,8 @@ def train(
         )
 
     estimator_config = tf.estimator.RunConfig(
-        save_checkpoints_secs=60 * 60,
+        save_checkpoints_steps=1,
+        # save_checkpoints_secs=60 * 60,
         keep_checkpoint_max=None,
         session_config=new_session_config(parallel=0),
     )
