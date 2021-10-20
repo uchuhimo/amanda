@@ -13,7 +13,6 @@ class Profiler(amanda.Tool):
         self.add_inst_for_op(
             self.backward_instrumentation,
             backward=True,
-            require_outputs=True,
         )
         self.start_time = None
         self.trace = []
@@ -54,5 +53,6 @@ class Profiler(amanda.Tool):
         event["ts"] = time.perf_counter() * 1000 - self.start_time
 
     def record_after_op(self, *outputs, event):
+        print(event)
         event["dur"] = time.perf_counter() * 1000 - event["ts"] - self.start_time
         self.trace.append(event)
