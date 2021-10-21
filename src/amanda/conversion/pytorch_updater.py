@@ -2,6 +2,8 @@ import inspect
 from functools import wraps
 from typing import Any, List, Set
 
+from loguru import logger
+
 from amanda.conversion.amanda_torch_pybind import (  # noqa: F401
     HookRegisterer,
     amanda_add_pre_hook,
@@ -27,7 +29,6 @@ from amanda.import_hook import (
 )
 from amanda.lang import get_superclasses
 from amanda.tool import get_tools
-from loguru import logger
 
 
 def registry_bw_events(context, output):
@@ -140,7 +141,7 @@ def apply_replace_op(action, inputs):
 _grad_fns: Set[Any] = set()
 
 
-def register_bw_events_recursively(context, output, input_grad_fns):
+def register_bw_events_recursively(context, outputs, input_grad_fns):
     """
     same functionality as register_bw_events() with subgraph matching,
     in this manner, a EventContext in bw phase have "op", "bw_op" two context,
@@ -148,29 +149,31 @@ def register_bw_events_recursively(context, output, input_grad_fns):
     """
     import torch
 
-    def before_bw_op_hook(grad_output, context, bw_op, handle):
-        if isinstance(grad_output, torch.Tensor):
-            grad_outputs = [grad_output]
-        else:
-            grad_outputs = grad_output
-        context.trigger(
-            on_backward_op_call,
-            backward_op=bw_op.__class__,
-            grad_outputs=grad_outputs,
-        )
-        new_grad_outputs = list(grad_outputs)
-        for action in list(context.actions):
-            if action.type == "insert_before_backward_op":
-                apply_insert_before_op(action, new_grad_outputs)
-                context.actions.remove(action)
-        # assert len(context.actions) == 0
-        for grad_output, new_grad_output in zip(grad_outputs, new_grad_outputs):
-            grad_output.data = new_grad_output
-        # amanda_remove_pre_hook(bw_op, handle)
-        # handle.remove()
-        return tuple(grad_outputs)
-
     def _register_bw_events(context, grad_fn):
+        def before_bw_op_hook(grad_output, context, bw_op, handle):
+            if isinstance(grad_output, torch.Tensor):
+                grad_outputs = [grad_output]
+            else:
+                grad_outputs = grad_output
+            context.trigger(
+                on_backward_op_call,
+                backward_op=bw_op.__class__,
+                grad_outputs=grad_outputs,
+            )
+            new_grad_outputs = list(grad_outputs)
+            for action in list(context.actions):
+                if action.type == "insert_before_backward_op":
+                    apply_insert_before_op(action, new_grad_outputs)
+                    context.actions.remove(action)
+            # assert len(context.actions) == 0
+            # for grad_output, new_grad_output in zip(grad_outputs, new_grad_outputs):
+            # grad_output.data = new_grad_output
+            # pass
+            # amanda_remove_pre_hook(bw_op, handle)
+            # handle.remove()
+            assert len(grad_outputs) == len(new_grad_outputs)
+            return tuple(new_grad_outputs)
+
         def after_bw_op_hook(grad_input, grad_output, context, bw_op, handle):
             _grad_fns.remove(bw_op)
             # context = context.inherite()
@@ -210,8 +213,13 @@ def register_bw_events_recursively(context, output, input_grad_fns):
                     grad_input.data = new_grad_input
             handle.remove()
 
-        if grad_fn and grad_fn not in input_grad_fns:
+        if (
+            grad_fn
+            and grad_fn not in input_grad_fns
+            and grad_fn not in registered_grad_fn
+        ):
             _grad_fns.add(grad_fn)
+            registered_grad_fn.append(grad_fn)
             _ = amanda_add_pre_hook(
                 grad_fn,
                 lambda grad_output: before_bw_op_hook(
@@ -236,9 +244,12 @@ def register_bw_events_recursively(context, output, input_grad_fns):
             if next_grad_fn and next_grad_fn not in input_grad_fns:
                 _register_bw_events(context, next_grad_fn)
 
+    registered_grad_fn = list()
+
     bw_context = None
-    if hasattr(output, "grad_fn"):
-        _register_bw_events(bw_context or context, output.grad_fn)
+    for output in outputs:
+        if hasattr(output, "grad_fn"):
+            _register_bw_events(bw_context or context, output.grad_fn)
 
 
 """ unpack_input_grad_fns()
@@ -304,12 +315,13 @@ def function_wrapper(func):
                 if action.type == "insert_after_op":
                     apply_insert_after_op(action, outputs)
                     context.actions.remove(action)
+            assert len(context.actions) == 0
+            register_bw_events_recursively(context, outputs, input_grad_fns)
             if is_output_nested:
                 output = outputs[0]
             else:
                 output = outputs
-            assert len(context.actions) == 0
-            register_bw_events_recursively(context, output, input_grad_fns)
+            # register_bw_events_recursively(context, output, input_grad_fns)
             return output
 
     return check_enabled(func, wrapper)
