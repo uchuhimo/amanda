@@ -169,8 +169,7 @@ def register_bw_events_recursively(context, outputs, input_grad_fns):
             # for grad_output, new_grad_output in zip(grad_outputs, new_grad_outputs):
             # grad_output.data = new_grad_output
             # pass
-            # amanda_remove_pre_hook(bw_op, handle)
-            # handle.remove()
+            assert amanda_remove_pre_hook(bw_op, handle)
             assert len(grad_outputs) == len(new_grad_outputs)
             return tuple(new_grad_outputs)
 
@@ -220,13 +219,13 @@ def register_bw_events_recursively(context, outputs, input_grad_fns):
         ):
             _grad_fns.add(grad_fn)
             registered_grad_fn.append(grad_fn)
-            _ = amanda_add_pre_hook(
+            pre_handle = amanda_add_pre_hook(
                 grad_fn,
                 lambda grad_output: before_bw_op_hook(
                     grad_output,
                     context=context,
                     bw_op=grad_fn,
-                    handle=handle,
+                    handle=pre_handle,
                 ),
             )
             handle = grad_fn.register_hook(
