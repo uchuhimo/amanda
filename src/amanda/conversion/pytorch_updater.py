@@ -5,7 +5,7 @@ from typing import Any, List, Set
 from loguru import logger
 
 from amanda import intercepts
-from amanda.conversion.amanda_torch_pybind import (  # noqa: F401
+from amanda.conversion.amanda_torch_pybind import (
     HookRegisterer,
     amanda_add_pre_hook,
     amanda_remove_pre_hook,
