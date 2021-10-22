@@ -13,7 +13,6 @@ class Profiler(amanda.Tool):
         self.add_inst_for_op(
             self.backward_instrumentation,
             backward=True,
-            require_outputs=True,
         )
         self.start_time = None
         self.trace = []

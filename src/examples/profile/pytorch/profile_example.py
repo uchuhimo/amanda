@@ -15,7 +15,10 @@ def main():
     profiler = Profiler()
 
     with amanda.tool.apply(profiler):
-        model(x)
+        y = model(x)
+        y = torch.split(y, 2, dim=0)
+        y = y[0] + y[1]
+        y.backward(torch.rand_like(y))
 
     profiler.export_chrome_trace("tmp/profile/pytorch_resnet50.json")
 
