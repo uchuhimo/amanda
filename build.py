@@ -156,6 +156,10 @@ class CMakeBuild(build_ext):
 def build(setup_kwargs: Dict[str, Any]) -> None:
     cmake_modules = [
         CMakeExtension(
+            "amanda.amanda_intercepts_pybind",
+            sourcedir="cc/intercepts",
+        ),
+        CMakeExtension(
             "amanda.conversion.amanda_tf_pybind",
             sourcedir="cc/tensorflow",
         ),

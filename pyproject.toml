@@ -75,6 +75,7 @@ h5py = "*"
 immutables = "*"
 loguru = "*"
 guppy3 = "*"
+intercepts = "*"
 
 [tool.poetry.dev-dependencies]
 pybind11 = "*"

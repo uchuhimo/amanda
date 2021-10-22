@@ -5,12 +5,10 @@ from typing import Any, List, MutableMapping, NamedTuple, OrderedDict, Set
 
 from amanda.import_hook import (
     InstScopeHook,
-    MethodUpdater,
     check_enabled,
     disabled,
     is_enabled,
     register_inst_scope_hook,
-    register_updater,
 )
 from amanda.tool import get_tools
 
@@ -493,36 +491,51 @@ def evaluate_wrapper(func):
     return check_enabled(func, wrapper)
 
 
+def get_handler(wrapper):
+    def handler(func, *args, **kwargs):
+        return wrapper(func)(*args, **kwargs)
+
+    return handler
+
+
 def register_import_hook() -> None:
-    register_updater(
-        MethodUpdater(
-            module="tensorflow.python.client.session",
-            cls="Session",
-            method="run",
-            decorator=session_run_wrapper,
-        )
-    )
-    register_updater(
-        MethodUpdater(
-            module="tensorflow_estimator.python.estimator.estimator",
-            cls="Estimator",
-            method="train",
-            decorator=train_wrapper,
-        )
-    )
-    register_updater(
-        MethodUpdater(
-            module="tensorflow_estimator.python.estimator.estimator",
-            cls="Estimator",
-            method="predict",
-            decorator=predict_wrapper,
-        )
-    )
-    register_updater(
-        MethodUpdater(
-            module="tensorflow_estimator.python.estimator.estimator",
-            cls="Estimator",
-            method="evaluate",
-            decorator=evaluate_wrapper,
-        )
-    )
+    import intercepts
+    import tensorflow as tf
+
+    intercepts.register(tf.Session.run, get_handler(session_run_wrapper))
+    intercepts.register(tf.estimator.Estimator.train, get_handler(train_wrapper))
+    intercepts.register(tf.estimator.Estimator.predict, get_handler(predict_wrapper))
+    intercepts.register(tf.estimator.Estimator.evaluate, get_handler(evaluate_wrapper))
+
+    # register_updater(
+    #     MethodUpdater(
+    #         module="tensorflow.python.client.session",
+    #         cls="Session",
+    #         method="run",
+    #         decorator=session_run_wrapper,
+    #     )
+    # )
+    # register_updater(
+    #     MethodUpdater(
+    #         module="tensorflow_estimator.python.estimator.estimator",
+    #         cls="Estimator",
+    #         method="train",
+    #         decorator=train_wrapper,
+    #     )
+    # )
+    # register_updater(
+    #     MethodUpdater(
+    #         module="tensorflow_estimator.python.estimator.estimator",
+    #         cls="Estimator",
+    #         method="predict",
+    #         decorator=predict_wrapper,
+    #     )
+    # )
+    # register_updater(
+    #     MethodUpdater(
+    #         module="tensorflow_estimator.python.estimator.estimator",
+    #         cls="Estimator",
+    #         method="evaluate",
+    #         decorator=evaluate_wrapper,
+    #     )
+    # )

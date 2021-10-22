@@ -4,6 +4,7 @@ from typing import Any, List, Set
 
 from loguru import logger
 
+from amanda import intercepts
 from amanda.conversion.amanda_torch_pybind import (  # noqa: F401
     HookRegisterer,
     amanda_add_pre_hook,
@@ -25,7 +26,6 @@ from amanda.import_hook import (
     Updater,
     check_enabled,
     disabled,
-    register_updater,
 )
 from amanda.lang import get_superclasses
 from amanda.tool import get_tools
@@ -421,6 +421,19 @@ TORCH_OP_OVERLOAD_LIST = (
 TORCH_OP_LIST.update(TORCH_OP_OVERLOAD_LIST)
 
 
+def wrap_op(module, name, wrapper):
+    import torch
+
+    if isinstance(module, torch._C._VariableFunctionsClass):
+        if hasattr(module, name):
+            intercepts.register(getattr(module, name), intercepts.to_handler(wrapper))
+            return True
+    elif name in module.__dict__:
+        intercepts.register(module.__dict__[name], intercepts.to_handler(wrapper))
+        return True
+    return False
+
+
 def listener_callback(op_name: str) -> str:
     def remove_namespace(name: str) -> str:
         pos = name.find("::")
@@ -429,8 +442,20 @@ def listener_callback(op_name: str) -> str:
         else:
             return name
 
+    import torch
+
     global TORCH_OP_LIST
-    TORCH_OP_LIST.add(remove_namespace(op_name))
+    name = remove_namespace(op_name)
+    TORCH_OP_LIST.add(name)
+    for module in [
+        torch._C._nn,
+        torch._C._fft,
+        torch._C._linalg,
+        torch._C._TensorBase,
+        torch._C._VariableFunctions,
+    ]:
+        if wrap_op(module, name, function_wrapper):
+            break
     return op_name
 
 
@@ -547,25 +572,6 @@ class ListenerFunctionalUpdater(Updater):
                         self.update_module(module, submodule_key, func_key)
 
 
-class FakeUpdater(MatchedFunctionUpdater):
-    def __init__(self):
-        super().__init__(module="", decorator=function_wrapper)
-
-    def is_match(self, name: str) -> bool:
-        return True
-
-    def is_match_func(self, module: str, name: str, func) -> bool:
-        return name == "conv2d"
-
-    def update(self, module) -> None:
-        funcs = dict(module.__dict__)
-        for name in funcs:
-            func = funcs[name]
-            if self.is_match_func(module.__name__, name, func):
-                print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
-                print(module.__name__, name)
-
-
 def grad_fn_wrapper(grad_fn):
     def getter_wrapper(getter):
         @wraps(getter)
@@ -606,29 +612,29 @@ class GradFnUpdater(MethodUpdater):
 
 
 def register_import_hook() -> None:
-    # register_updater(FakeUpdater())
+    # import torch
+    # for name in TORCH_OP_OVERLOAD_LIST:
+    #     for module in [
+    #         torch._C._nn,
+    #         torch._C._fft,
+    #         torch._C._linalg,
+    #         torch._C._TensorBase,
+    #         torch._C._VariableFunctions,
+    #     ]:
+    #         wrap_op(module, name, function_wrapper)
+    ...
     # register_updater(
-    #     FunctionalUpdater(
-    #         modules=[
-    #             "torch.nn.functional",
-    #             "torch.nn.quantized.functional",
-    #             # "torch.nn.init",
-    #             "torch._C._nn",
-    #         ]
+    #     ListenerFunctionalUpdater(
+    #         module="torch._C",
+    #         submodules=[
+    #             "_nn",
+    #             "_fft",
+    #             "_linalg",
+    #             "_TensorBase",
+    #             "_VariableFunctions",
+    #         ],
     #     )
     # )
-    register_updater(
-        ListenerFunctionalUpdater(
-            module="torch._C",
-            submodules=[
-                "_nn",
-                "_fft",
-                "_linalg",
-                "_TensorBase",
-                "_VariableFunctions",
-            ],
-        )
-    )
     # register_updater(ModuleUpdater())
     # register_updater(GradFnUpdater())
 
