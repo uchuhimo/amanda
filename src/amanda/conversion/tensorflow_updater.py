@@ -491,51 +491,18 @@ def evaluate_wrapper(func):
     return check_enabled(func, wrapper)
 
 
-def get_handler(wrapper):
-    def handler(func, *args, **kwargs):
-        return wrapper(func)(*args, **kwargs)
-
-    return handler
-
-
 def register_import_hook() -> None:
-    import intercepts
     import tensorflow as tf
 
-    intercepts.register(tf.Session.run, get_handler(session_run_wrapper))
-    intercepts.register(tf.estimator.Estimator.train, get_handler(train_wrapper))
-    intercepts.register(tf.estimator.Estimator.predict, get_handler(predict_wrapper))
-    intercepts.register(tf.estimator.Estimator.evaluate, get_handler(evaluate_wrapper))
+    from amanda import intercepts
 
-    # register_updater(
-    #     MethodUpdater(
-    #         module="tensorflow.python.client.session",
-    #         cls="Session",
-    #         method="run",
-    #         decorator=session_run_wrapper,
-    #     )
-    # )
-    # register_updater(
-    #     MethodUpdater(
-    #         module="tensorflow_estimator.python.estimator.estimator",
-    #         cls="Estimator",
-    #         method="train",
-    #         decorator=train_wrapper,
-    #     )
-    # )
-    # register_updater(
-    #     MethodUpdater(
-    #         module="tensorflow_estimator.python.estimator.estimator",
-    #         cls="Estimator",
-    #         method="predict",
-    #         decorator=predict_wrapper,
-    #     )
-    # )
-    # register_updater(
-    #     MethodUpdater(
-    #         module="tensorflow_estimator.python.estimator.estimator",
-    #         cls="Estimator",
-    #         method="evaluate",
-    #         decorator=evaluate_wrapper,
-    #     )
-    # )
+    intercepts.register(tf.Session.run, intercepts.to_handler(session_run_wrapper))
+    intercepts.register(
+        tf.estimator.Estimator.train, intercepts.to_handler(train_wrapper)
+    )
+    intercepts.register(
+        tf.estimator.Estimator.predict, intercepts.to_handler(predict_wrapper)
+    )
+    intercepts.register(
+        tf.estimator.Estimator.evaluate, intercepts.to_handler(evaluate_wrapper)
+    )

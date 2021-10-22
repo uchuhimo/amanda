@@ -1,6 +1,6 @@
-import amanda
 import tensorflow as tf
 
+import amanda
 from examples.common.tensorflow.model.resnet_50 import ResNet50
 from examples.profile.tensorflow.profiler import Profiler
 

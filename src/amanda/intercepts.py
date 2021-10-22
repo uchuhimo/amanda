@@ -166,7 +166,7 @@ def register(obj, handler):
 
     Usage::
 
-        >>> import intercepts
+        >>> from amanda import intercepts
         >>> increment = lambda x: x + 1
         >>> handler = lambda func, arg: arg - (func(arg) - arg)
         >>> intercepts.register(increment, handler)

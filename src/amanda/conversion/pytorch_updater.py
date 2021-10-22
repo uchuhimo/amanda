@@ -165,17 +165,12 @@ def register_bw_events_recursively(context, outputs, input_grad_fns):
                 if action.type == "insert_before_backward_op":
                     apply_insert_before_op(action, new_grad_outputs)
                     context.actions.remove(action)
-            # assert len(context.actions) == 0
-            # for grad_output, new_grad_output in zip(grad_outputs, new_grad_outputs):
-            # grad_output.data = new_grad_output
-            # pass
             assert amanda_remove_pre_hook(bw_op, handle)
             assert len(grad_outputs) == len(new_grad_outputs)
             return tuple(new_grad_outputs)
 
         def after_bw_op_hook(grad_input, grad_output, context, bw_op, handle):
             _grad_fns.remove(bw_op)
-            # context = context.inherite()
             if isinstance(grad_input, torch.Tensor):
                 grad_inputs = [grad_input]
             else:
@@ -219,22 +214,23 @@ def register_bw_events_recursively(context, outputs, input_grad_fns):
         ):
             _grad_fns.add(grad_fn)
             registered_grad_fn.append(grad_fn)
+            bw_context = context.inherite()
             pre_handle = amanda_add_pre_hook(
                 grad_fn,
                 lambda grad_output: before_bw_op_hook(
                     grad_output,
-                    context=context,
+                    context=bw_context,
                     bw_op=grad_fn,
                     handle=pre_handle,
                 ),
             )
-            handle = grad_fn.register_hook(
+            post_handle = grad_fn.register_hook(
                 lambda grad_input, grad_output: after_bw_op_hook(
                     grad_input,
                     grad_output,
-                    context=context,
+                    context=bw_context,
                     bw_op=grad_fn,
-                    handle=handle,
+                    handle=post_handle,
                 )
             )
         else:
@@ -245,10 +241,9 @@ def register_bw_events_recursively(context, outputs, input_grad_fns):
 
     registered_grad_fn = list()
 
-    bw_context = None
     for output in outputs:
         if hasattr(output, "grad_fn"):
-            _register_bw_events(bw_context or context, output.grad_fn)
+            _register_bw_events(context, output.grad_fn)
 
 
 """ unpack_input_grad_fns()
@@ -436,7 +431,7 @@ def listener_callback(op_name: str) -> str:
         torch._C._nn,
         torch._C._fft,
         torch._C._linalg,
-        torch._C._TensorBase,
+        # torch._C._TensorBase,
         torch._C._VariableFunctions,
     ]:
         if wrap_op(module, name, function_wrapper):
@@ -597,31 +592,7 @@ class GradFnUpdater(MethodUpdater):
 
 
 def register_import_hook() -> None:
-    # import torch
-    # for name in TORCH_OP_OVERLOAD_LIST:
-    #     for module in [
-    #         torch._C._nn,
-    #         torch._C._fft,
-    #         torch._C._linalg,
-    #         torch._C._TensorBase,
-    #         torch._C._VariableFunctions,
-    #     ]:
-    #         wrap_op(module, name, function_wrapper)
-    ...
-    # register_updater(
-    #     ListenerFunctionalUpdater(
-    #         module="torch._C",
-    #         submodules=[
-    #             "_nn",
-    #             "_fft",
-    #             "_linalg",
-    #             "_TensorBase",
-    #             "_VariableFunctions",
-    #         ],
-    #     )
-    # )
-    # register_updater(ModuleUpdater())
-    # register_updater(GradFnUpdater())
+    pass
 
 
 def register_listener():
