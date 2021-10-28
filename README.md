@@ -186,6 +186,20 @@ graph.remove_edge(edge)
 
 ## Development
 
+### CMake
+
+```bash
+cmake -DCMAKE_PREFIX_PATH=`python -c "import torch;print(torch.utils.cmake_prefix_path)"`\;`python -m pybind11 --cmakedir` -S cc -B build
+cd build
+make
+```
+
+For VSCode:
+
+```bash
+cmake -DCMAKE_PREFIX_PATH=`python -c "import torch;print(torch.utils.cmake_prefix_path)"`\;`python -m pybind11 --cmakedir` -DCMAKE_EXPORT_COMPILE_COMMANDS=TRUE -DCMAKE_BUILD_TYPE=Release -S cc -B .vscode/build -G Ninja
+```
+
 ### Install git pre-commit hooks
 
 ```bash
