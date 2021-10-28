@@ -12,7 +12,7 @@ charset = utf-8
 [*.{bat, cmd, ps1}]
 end_of_line = crlf
 
-[*.{yml,yaml,proto}]
+[*.{yml,yaml,proto,cpp,cc}]
 indent_size = 2
 
 [LICENSE]

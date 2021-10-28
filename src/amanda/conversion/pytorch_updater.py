@@ -4,7 +4,6 @@ from typing import Any, List, Set
 
 from loguru import logger
 
-from amanda import intercepts
 from amanda.conversion.amanda_torch_pybind import (
     HookRegisterer,
     amanda_add_pre_hook,
@@ -404,6 +403,8 @@ TORCH_OP_LIST.update(TORCH_OP_OVERLOAD_LIST)
 def wrap_op(module, name, wrapper):
     import torch
 
+    from amanda import intercepts
+
     if isinstance(module, torch._C._VariableFunctionsClass):
         if hasattr(module, name):
             intercepts.register(getattr(module, name), intercepts.to_handler(wrapper))
@@ -424,18 +425,15 @@ def listener_callback(op_name: str) -> str:
 
     import torch
 
-    global TORCH_OP_LIST
     name = remove_namespace(op_name)
-    TORCH_OP_LIST.add(name)
     for module in [
         torch._C._nn,
         torch._C._fft,
         torch._C._linalg,
-        # torch._C._TensorBase,
+        torch._C._TensorBase,
         torch._C._VariableFunctions,
     ]:
-        if wrap_op(module, name, function_wrapper):
-            break
+        wrap_op(module, name, function_wrapper)
     return op_name
 
 
@@ -595,5 +593,5 @@ def register_import_hook() -> None:
     pass
 
 
-def register_listener():
+def register_intercepts() -> None:
     HookRegisterer(listener_callback)

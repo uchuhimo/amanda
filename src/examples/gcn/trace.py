@@ -6,11 +6,6 @@ from amanda.io.file import abspath
 from torch_geometric.datasets import Planetoid
 from torch_geometric.nn import GATConv
 
-dataset = "Cora"
-path = abspath("downloads/" + dataset)
-dataset = Planetoid(path, dataset, transform=T.NormalizeFeatures())
-data = dataset[0]
-
 
 class TraceTool(amanda.Tool):
     def __init__(self):
@@ -48,7 +43,7 @@ class TraceTool(amanda.Tool):
 
 
 class Net(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, dataset):
         super(Net, self).__init__()
 
         self.conv1 = GATConv(dataset.num_features, 8, heads=8, dropout=0.6)
@@ -65,8 +60,13 @@ class Net(torch.nn.Module):
         return F.log_softmax(x, dim=-1)
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model, data = Net().to(device), data.to(device)  # type: ignore
+if __name__ == "__main__":
+    dataset = "Cora"
+    path = abspath("downloads/" + dataset)
+    dataset = Planetoid(path, dataset, transform=T.NormalizeFeatures())
+    data = dataset[0]
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model, data = Net(dataset).to(device), data.to(device)  # type: ignore
 
-with amanda.tool.apply(TraceTool()):
-    model(data.x, data.edge_index)  # type: ignore
+    with amanda.tool.apply(TraceTool()):
+        model(data.x, data.edge_index)  # type: ignore

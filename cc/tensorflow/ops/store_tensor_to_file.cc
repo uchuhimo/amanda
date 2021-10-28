@@ -13,17 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/framework/common_shape_fns.h"
 
 using namespace tensorflow;
 
-// see https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/op_def_builder.cc 's FinalizeAttr for attribute type
+// see
+// https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/op_def_builder.cc
+// 's FinalizeAttr for attribute type
 REGISTER_OP("StoreTensorToFile")
-  .Attr("T: type")
-  .Attr("store_dir: string = '/tmp'")
-  .Attr("file_name: string = 'tensor_data'")
-  .Input("in0: T")
-  .Output("out0: T")
-  .SetShapeFn(::tensorflow::shape_inference::UnchangedShape);
+    .Attr("T: type")
+    .Attr("store_dir: string = '/tmp'")
+    .Attr("file_name: string = 'tensor_data'")
+    .Input("in0: T")
+    .Output("out0: T")
+    .SetShapeFn(::tensorflow::shape_inference::UnchangedShape);

@@ -10,10 +10,9 @@ from importlib._bootstrap_external import FileLoader
 from typing import Callable, List, Type
 
 import _imp
-from loguru import logger
-
 from amanda.lang import Handler, register_handler
 from amanda.threading import ThreadLocalStack
+from loguru import logger
 
 
 class Updater(ABC):
@@ -217,9 +216,6 @@ def is_enabled() -> bool:
     return _enabled.top() or _enabled.top() is None
 
 
-_inited: bool = False
-
-
 def check_enabled(func, hooked_func):
     @wraps(func)
     def wrapper(*args, **kwargs):
@@ -237,6 +233,9 @@ def check_enabled(func, hooked_func):
     return wrapper
 
 
+_inited: bool = False
+
+
 def init() -> None:
     global _inited
     if _inited:
@@ -245,12 +244,8 @@ def init() -> None:
         from .conversion.pytorch_updater import (
             register_import_hook as pytorch_register_import_hook,
         )
-        from .conversion.pytorch_updater import (
-            register_listener as pytorch_register_listener,
-        )
 
         pytorch_register_import_hook()
-        pytorch_register_listener()
     if importlib.util.find_spec("tensorflow"):
         from .conversion.tensorflow_updater import (
             register_import_hook as tensorflow_register_import_hook,

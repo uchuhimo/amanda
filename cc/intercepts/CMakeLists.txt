@@ -3,7 +3,7 @@ project(amanda_intercepts_pybind)
 
 include(CMakePrintHelpers)
 
-set(CMAKE_CXX_STANDARD 14 CACHE STRING "The C++ standard to use")
+set(CMAKE_CXX_STANDARD 17 CACHE STRING "The C++ standard to use")
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -26,8 +26,10 @@ endif()
 
 find_package(Python REQUIRED COMPONENTS Interpreter Development)
 find_package(pybind11 CONFIG)
+find_library(FFI_LIBRARY_PATH ffi)
 
 include_directories(SYSTEM ${Python_INCLUDE_DIRS})
 
 pybind11_add_module(amanda_intercepts_pybind amanda_intercepts_pybind.cpp)
 target_link_libraries(amanda_intercepts_pybind PRIVATE ${PYTHON_LIBRARIES})
+target_link_libraries(amanda_intercepts_pybind PRIVATE ${FFI_LIBRARY_PATH} )

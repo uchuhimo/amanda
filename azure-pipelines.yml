@@ -4,56 +4,56 @@
 # https://docs.microsoft.com/azure/devops/pipelines/languages/python
 
 trigger:
-- master
+  - master
 
 pool:
-  vmImage: 'ubuntu-latest'
+  vmImage: "ubuntu-latest"
 strategy:
   matrix:
     Python37:
-      python.version: '3.7'
+      python.version: "3.7"
     Python38:
-      python.version: '3.8'
+      python.version: "3.8"
 
 steps:
-- task: Cache@2
-  inputs:
-    key: 'poetry | "$(Agent.OS)" | "$(python.version)" | v2 | poetry.lock'
-    path: /home/vsts/.cache/pypoetry/virtualenvs
-    restoreKeys: |
-      poetry | "$(Agent.OS)" | "$(python.version)" | v2
-  displayName: Cache pip packages
+  - task: Cache@2
+    inputs:
+      key: 'poetry | "$(Agent.OS)" | "$(python.version)" | v2 | poetry.lock'
+      path: /home/vsts/.cache/pypoetry/virtualenvs
+      restoreKeys: |
+        poetry | "$(Agent.OS)" | "$(python.version)" | v2
+    displayName: Cache pip packages
 
-- task: Cache@2
-  inputs:
-    key: 'downloads | v2'
-    path: $(System.DefaultWorkingDirectory)/downloads
-    restoreKeys: |
-      downloads | v2
-  displayName: Cache downloaded models
+  - task: Cache@2
+    inputs:
+      key: "downloads | v2"
+      path: $(System.DefaultWorkingDirectory)/downloads
+      restoreKeys: |
+        downloads | v2
+    displayName: Cache downloaded models
 
-- task: UsePythonVersion@0
-  inputs:
-    versionSpec: '$(python.version)'
-  displayName: 'Use Python $(python.version)'
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: "$(python.version)"
+    displayName: "Use Python $(python.version)"
 
-- script: pip install poetry
-  displayName: 'Install poetry'
+  - script: pip install poetry
+    displayName: "Install poetry"
 
-- script: poetry run pip install --upgrade pip
-  displayName: 'Upgrade pip'
+  - script: poetry run pip install --upgrade pip
+    displayName: "Upgrade pip"
 
-- script: poetry install
-  displayName: 'Install dependencies'
+  - script: poetry install
+    displayName: "Install dependencies"
 
-- script: sudo apt install -y ninja-build
-  displayName: 'Install C++ dependencies'
+  - script: sudo apt install -y ninja-build
+    displayName: "Install C++ dependencies"
 
-- script: poetry run python src/amanda/cli/download_model.py
-  displayName: 'Download models'
+  - script: poetry run python src/amanda/cli/download_model.py
+    displayName: "Download models"
 
-- script: poetry run make build_cc
-  displayName: 'Build C++ code'
+  - script: poetry run make build_cc
+    displayName: "Build C++ code"
 
-- script: poetry run pytest -m "not slow"
-  displayName: 'Run pytest'
+  - script: poetry run pytest -m "not slow"
+    displayName: "Run pytest"

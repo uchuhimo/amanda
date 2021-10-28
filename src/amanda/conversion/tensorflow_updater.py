@@ -492,6 +492,10 @@ def evaluate_wrapper(func):
 
 
 def register_import_hook() -> None:
+    pass
+
+
+def register_intercepts() -> None:
     import tensorflow as tf
 
     from amanda import intercepts

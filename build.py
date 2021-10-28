@@ -160,12 +160,12 @@ def build(setup_kwargs: Dict[str, Any]) -> None:
             sourcedir="cc/intercepts",
         ),
         CMakeExtension(
-            "amanda.conversion.amanda_tf_pybind",
-            sourcedir="cc/tensorflow",
-        ),
-        CMakeExtension(
             "amanda.conversion.amanda_torch_pybind",
             sourcedir="cc/pytorch",
+        ),
+        CMakeExtension(
+            "amanda.conversion.amanda_tf_pybind",
+            sourcedir="cc/tensorflow",
         ),
         CMakeExtension(
             "amanda.tools.debugging.store_tensor_to_file_op",
