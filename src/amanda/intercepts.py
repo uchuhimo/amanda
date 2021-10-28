@@ -5,12 +5,6 @@ import types
 from functools import partial
 from typing import Callable, Dict, List
 
-from amanda.amanda_intercepts_pybind import (
-    addr,
-    get_builtin_handler,
-    get_getset_descriptor_handler,
-    get_method_descriptor_handler,
-)
 from intercepts.functypes import PyCFunctionObject, PyMethodDef, PyObject, PyTypeObject
 from intercepts.utils import (
     copy_builtin,
@@ -19,6 +13,13 @@ from intercepts.utils import (
     replace_builtin,
     replace_function,
     update_wrapper,
+)
+
+from amanda.amanda_intercepts_pybind import (
+    addr,
+    get_builtin_handler,
+    get_getset_descriptor_handler,
+    get_method_descriptor_handler,
 )
 
 
@@ -94,58 +95,42 @@ def replace_getset_descriptor(dst, src):
 _HANDLERS: Dict[int, List[Callable]] = {}
 
 
-def _func_handler(*args, **kwargs):
-    consts = sys._getframe(0).f_code.co_consts
-    func_id = consts[-1]
-    _func = _HANDLERS[func_id][0]
-    handler = _func
-    # assert len(_HANDLERS[func_id]) == 3
+def func_handler(func_id, *args, **kwargs):
+    func = _HANDLERS[func_id][0]
+    updated_func = func
     for _handler in _HANDLERS[func_id][2:]:
-        handler = update_wrapper(partial(_handler, handler), _func)
-    result = handler(*args, **kwargs)
+        updated_func = update_wrapper(partial(_handler, updated_func), func)
+    result = updated_func(*args, **kwargs)
     return result
 
 
-def _getter_handler(*args, **kwargs):
+def func_handler_prototype(*args, **kwargs):
     consts = sys._getframe(0).f_code.co_consts
     func_id = consts[-1]
-    _func = _HANDLERS[func_id][0]
-    handler = _func.__get__
-    # assert len(_HANDLERS[func_id]) == 3
+    func = _HANDLERS[func_id][0]
+    updated_func = func
     for _handler in _HANDLERS[func_id][2:]:
-        handler = update_wrapper(partial(_handler, handler), _func)
-    result = handler(*args, **kwargs)
+        updated_func = update_wrapper(partial(_handler, updated_func), func)
+    result = updated_func(*args, **kwargs)
     return result
 
 
-def _setter_handler(*args, **kwargs):
-    consts = sys._getframe(0).f_code.co_consts
-    func_id = consts[-1]
-    _func = _HANDLERS[func_id][0]
-    handler = _func.__set__
-    # assert len(_HANDLERS[func_id]) == 3
+def getter_handler(func_id, *args, **kwargs):
+    func = _HANDLERS[func_id][0].__get__
+    updated_func = func
     for _handler in _HANDLERS[func_id][2:]:
-        handler = update_wrapper(partial(_handler, handler), _func)
-    result = handler(*args, **kwargs)
+        updated_func = update_wrapper(partial(_handler, updated_func), func)
+    result = updated_func(*args, **kwargs)
     return result
 
 
-def create_handler_with_addr(handler, func_addr):
-    handler_code = create_code_like(
-        handler.__code__,
-        consts=(handler.__code__.co_consts + (func_addr,)),
-        name=handler.__name__,
-    )
-    global_dict = handler.__globals__  # type: ignore
-    new_handler = types.FunctionType(
-        handler_code,
-        global_dict,
-        handler.__name__,
-        handler.__defaults__,
-        handler.__closure__,
-    )
-    new_handler.__code__ = handler_code
-    return new_handler
+def setter_handler(func_id, *args, **kwargs):
+    func = _HANDLERS[func_id][0].__set__
+    updated_func = func
+    for _handler in _HANDLERS[func_id][2:]:
+        updated_func = update_wrapper(partial(_handler, updated_func), func)
+    result = updated_func(*args, **kwargs)
+    return result
 
 
 def register_builtin(func, handler):
@@ -153,10 +138,10 @@ def register_builtin(func, handler):
     if func_addr not in _HANDLERS:
         func_copy = PyCFunctionObject()
         copy_builtin(addr(func_copy), func_addr)
-        handler_with_addr = create_handler_with_addr(_func_handler, func_addr)
-        _handler = get_builtin_handler(func_addr, handler_with_addr)
-        _HANDLERS[func_addr] = [func_copy, _handler]
-        replace_builtin(func_addr, addr(_handler))
+        handler_with_addr = partial(func_handler, func_addr)
+        new_func = get_builtin_handler(func, handler_with_addr)
+        _HANDLERS[func_addr] = [func_copy, new_func]
+        replace_builtin(func_addr, addr(new_func))
     _HANDLERS[func_addr].append(handler)
     return func
 
@@ -164,37 +149,29 @@ def register_builtin(func, handler):
 def register_function(
     func: types.FunctionType, handler: types.FunctionType
 ) -> types.FunctionType:
-    r"""Registers an intercept handler for a function.
-
-    :param func: The function to intercept.
-    :param handler: A function to handle the intercept.
-    """
     func_addr = addr(func)
     if func_addr not in _HANDLERS:
+
+        def func_copy(*args, **kwargs):
+            pass
+
+        copy_function(addr(func_copy), func_addr)
         handler_code = create_code_like(
-            _func_handler.__code__,
-            consts=(_func_handler.__code__.co_consts + (func_addr,)),
+            func_handler_prototype.__code__,
+            consts=(func_handler_prototype.__code__.co_consts + (func_addr,)),
             name=func.__name__,
         )
-        global_dict = _func_handler.__globals__  # type: ignore
-        _handler = types.FunctionType(
+        global_dict = func_handler_prototype.__globals__  # type: ignore
+        new_func = types.FunctionType(
             handler_code,
             global_dict,
             func.__name__,
             func.__defaults__,
             func.__closure__,
         )
-        _handler.__code__ = handler_code
-
-        handler_addr = addr(_handler)
-
-        def func_copy(*args, **kwargs):
-            pass
-
-        copy_function(addr(func_copy), func_addr)
-
-        _HANDLERS[func_addr] = [func_copy, _handler]
-        replace_function(func_addr, handler_addr)
+        new_func.__code__ = handler_code
+        _HANDLERS[func_addr] = [func_copy, new_func]
+        replace_function(func_addr, addr(new_func))
     _HANDLERS[func_addr].append(handler)
     return func
 
@@ -202,11 +179,6 @@ def register_function(
 def register_method(
     method: types.MethodType, handler: types.FunctionType
 ) -> types.MethodType:
-    r"""Registers an intercept handler for a method.
-
-    :param method: The method to intercept.
-    :param handler: A function to handle the intercept.
-    """
     register_function(method.__func__, handler)
     return method
 
@@ -216,10 +188,10 @@ def register_method_descriptor(func, handler):
     if func_addr not in _HANDLERS:
         func_copy = PyMethodDescrObject()
         copy_method_descriptor(addr(func_copy), func_addr)
-        handler_with_addr = create_handler_with_addr(_func_handler, func_addr)
-        _handler = get_method_descriptor_handler(func_addr, handler_with_addr)
-        _HANDLERS[func_addr] = [func_copy, _handler]
-        replace_method_descriptor(func_addr, addr(_handler))
+        handler_with_addr = partial(func_handler, func_addr)
+        new_func = get_method_descriptor_handler(func, handler_with_addr)
+        _HANDLERS[func_addr] = [func_copy, new_func]
+        replace_method_descriptor(func_addr, addr(new_func))
     _HANDLERS[func_addr].append(handler)
     return func
 
@@ -229,15 +201,15 @@ def register_getset_descriptor(attribute, handler):
     if func_addr not in _HANDLERS:
         func_copy = PyGetSetDescrObject()
         copy_getset_descriptor(addr(func_copy), func_addr)
-        getter_handler_with_addr = create_handler_with_addr(_getter_handler, func_addr)
-        setter_handler_with_addr = create_handler_with_addr(_setter_handler, func_addr)
-        _handler = get_getset_descriptor_handler(
-            func_addr,
+        getter_handler_with_addr = partial(getter_handler, func_addr)
+        setter_handler_with_addr = partial(setter_handler, func_addr)
+        new_func = get_getset_descriptor_handler(
+            attribute,
             getter_handler_with_addr,
             setter_handler_with_addr,
         )
-        _HANDLERS[func_addr] = [func_copy, _handler]
-        replace_method_descriptor(func_addr, addr(_handler))
+        _HANDLERS[func_addr] = [func_copy, new_func]
+        replace_method_descriptor(func_addr, addr(new_func))
     _HANDLERS[func_addr].append(handler)
     return attribute
 

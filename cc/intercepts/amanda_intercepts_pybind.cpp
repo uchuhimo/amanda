@@ -138,11 +138,11 @@ setter get_setter_handler(void (*handler_ffi)(ffi_cif *, void *, void **,
   return nullptr;
 }
 
-py::object get_builtin_handler(uintptr_t func_id, py::object py_handler) {
+py::object get_builtin_handler(py::object py_func, py::object py_handler) {
   auto handler =
       get_func_handler(builtin_handler_ffi, py_handler.inc_ref().ptr());
   if (handler) {
-    PyCFunctionObject *func = (PyCFunctionObject *)func_id;
+    PyCFunctionObject *func = (PyCFunctionObject *)py_func.ptr();
 
     PyMethodDef *handler_def = new PyMethodDef();
     handler_def->ml_name = func->m_ml->ml_name;
@@ -157,12 +157,12 @@ py::object get_builtin_handler(uintptr_t func_id, py::object py_handler) {
   return py::none();
 }
 
-py::object get_method_descriptor_handler(uintptr_t func_id,
+py::object get_method_descriptor_handler(py::object py_func,
                                          py::object py_handler) {
   auto handler = get_func_handler(method_descriptor_handler_ffi,
                                   py_handler.inc_ref().ptr());
   if (handler) {
-    PyMethodDescrObject *func = (PyMethodDescrObject *)func_id;
+    PyMethodDescrObject *func = (PyMethodDescrObject *)py_func.ptr();
 
     PyMethodDef *handler_def = new PyMethodDef();
     handler_def->ml_name = func->d_method->ml_name;
@@ -177,7 +177,7 @@ py::object get_method_descriptor_handler(uintptr_t func_id,
   return py::none();
 }
 
-py::object get_getset_descriptor_handler(uintptr_t func_id,
+py::object get_getset_descriptor_handler(py::object py_func,
                                          py::object py_getter_handler,
                                          py::object py_setter_handler) {
   getter getter_handler =
@@ -185,7 +185,7 @@ py::object get_getset_descriptor_handler(uintptr_t func_id,
   setter setter_handler =
       get_setter_handler(setter_handler_ffi, py_setter_handler.inc_ref().ptr());
   if (getter_handler && setter_handler) {
-    PyGetSetDescrObject *func = (PyGetSetDescrObject *)func_id;
+    PyGetSetDescrObject *func = (PyGetSetDescrObject *)py_func.ptr();
 
     PyGetSetDef *handler_def = new PyGetSetDef();
     handler_def->name = func->d_getset->name;
