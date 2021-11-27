@@ -53,6 +53,9 @@ class Tool:
     def register_mapping(self, mapping: Mapping):
         self._mappings.append(mapping)
 
+    def load_mapping(self, file):
+        ...
+
     def add_inst_for_op(
         self,
         callback: OpCallback,
@@ -110,6 +113,10 @@ def apply(*tools: Tool):
         _apply_scopes.pop()
         for task in apply_scope.cleanup_tasks:
             task()
+
+
+def get_apply_scope():
+    return _apply_scopes.top()
 
 
 def register_cleanup_task(task: Callable[[], None]) -> Handler:

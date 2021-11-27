@@ -1,6 +1,7 @@
 import inspect
+import weakref
 from functools import wraps
-from typing import Any, List, Set
+from typing import Any, List, MutableMapping, Set
 
 from loguru import logger
 
@@ -266,6 +267,20 @@ def unpack_input_grad_fns(inputs):
     return input_grad_fns
 
 
+_tensor_ids: MutableMapping[Any, int] = weakref.WeakKeyDictionary()
+
+
+def calc_op_id(inputs):
+    op_id = 0
+    for input in inputs[:-1]:
+        if input in _tensor_ids:
+            op_id = op_id ^ _tensor_ids[input]
+    for input in inputs[-1].values():
+        if input in _tensor_ids:
+            op_id = op_id ^ _tensor_ids[input]
+    return ((op_id // 2) + (op_id % 2) * (2 ** 31)) + 1 if op_id != 0 else None
+
+
 def function_wrapper(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
@@ -274,11 +289,13 @@ def function_wrapper(func):
             input_grad_fns = unpack_input_grad_fns(args) + unpack_input_grad_fns(
                 kwargs.values()
             )
-            context = OpContext(tools=tools)
+            context = OpContext(tools=tools, namespace="pytorch")
             inputs = [*args, kwargs]
+            op_id = calc_op_id(inputs)
             context.trigger(
                 on_op_call,
                 op=func,
+                op_id=op_id,
                 inputs=inputs,
             )
             for action in list(context.actions):

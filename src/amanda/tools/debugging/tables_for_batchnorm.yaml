@@ -67,7 +67,6 @@
           - $mul.z -> $mul_1.y
           - $mul_1.z -> $add_1.y
       dst_mapper:
-      dst_mapper:
         ops:
           FusedBatchNorm:
             type: FusedBatchNorm

@@ -10,7 +10,7 @@ from amanda.import_hook import (
     is_enabled,
     register_inst_scope_hook,
 )
-from amanda.tool import get_tools
+from amanda.tool import get_apply_scope, get_tools, register_cleanup_task
 
 
 def update_node(tf_graph, node, updates):
@@ -33,30 +33,38 @@ def update_node(tf_graph, node, updates):
             return tf_graph.get_operation_by_name(name)
 
 
-def update_fetches(tf_graph, fetches, updates):
+def update_fetches(tf_graph, variables_by_name, fetches, updates):
     import tensorflow as tf
 
     if isinstance(fetches, list):
         for index, element in enumerate(fetches):
-            new_element = update_fetches(tf_graph, element, updates)
+            new_element = update_fetches(tf_graph, variables_by_name, element, updates)
             fetches[index] = new_element
     elif isinstance(fetches, tuple):
-        fetches_list = update_fetches(tf_graph, list(fetches), updates)
+        fetches_list = update_fetches(
+            tf_graph, variables_by_name, list(fetches), updates
+        )
         fetches = tuple(fetches_list)
     elif isinstance(fetches, dict):
         for key, value in fetches.items():
-            new_value = update_fetches(tf_graph, value, updates)
+            new_value = update_fetches(tf_graph, variables_by_name, value, updates)
             fetches[key] = new_value
     elif isinstance(fetches, OrderedDict):
         for key, value in fetches.items():
-            new_value = update_fetches(tf_graph, value, updates)
+            new_value = update_fetches(tf_graph, variables_by_name, value, updates)
             fetches[key] = new_value
     elif isinstance(fetches, NamedTuple):
-        fetches_list = update_fetches(tf_graph, list(fetches), updates)
+        fetches_list = update_fetches(
+            tf_graph, variables_by_name, list(fetches), updates
+        )
         fetches = type(fetches)._make(fetches_list)
-    elif isinstance(
-        fetches, (tf.Operation, tf.Tensor, tf.sparse.SparseTensor, tf.Variable)
-    ):
+    elif isinstance(fetches, tf.Variable):
+        if fetches.op.name in variables_by_name:
+            fetches = variables_by_name[fetches.op.name]
+        else:
+            new_fetches = update_node(tf_graph, fetches._graph_element, updates)
+            fetches = new_fetches
+    elif isinstance(fetches, (tf.Operation, tf.Tensor, tf.sparse.SparseTensor)):
         new_fetches = update_node(tf_graph, fetches, updates)
         fetches = new_fetches
     elif isinstance(fetches, str):
@@ -70,6 +78,19 @@ def update_fetches(tf_graph, fetches, updates):
     else:
         raise RuntimeError(f"{fetches} is unsupported as a part of fetches")
     return fetches
+
+
+def update_feed_dict(tf_graph, variables_by_name, feed_dict, updates):
+    if feed_dict is None:
+        return None
+    new_feed_dict = {}
+    for key, value in feed_dict.items():
+        try:
+            new_key = update_fetches(tf_graph, variables_by_name, key, updates)
+            new_feed_dict[new_key] = value
+        except RuntimeError:
+            raise RuntimeError(f"{key} is unsupported as a key of feed_dict")
+    return new_feed_dict
 
 
 def update_graph(tf_graph, updates):
@@ -138,10 +159,16 @@ def get_iterator_inits(graph):
     return [op for op in graph.get_operations() if op.type == "MakeIterator"]
 
 
-def get_all_variables():
+def get_all_variables(graph):
     import tensorflow as tf
 
-    return tf.global_variables() + tf.local_variables()
+    return graph.get_collection(tf.GraphKeys.GLOBAL_VARIABLES) + graph.get_collection(
+        tf.GraphKeys.LOCAL_VARIABLES
+    )
+
+
+def get_variables_by_name(graph):
+    return {variable.op.name: variable for variable in get_all_variables(graph)}
 
 
 @dataclass
@@ -149,6 +176,7 @@ class TensorFlowAdapter:
     last_id: int = None
     instrumented_graph: Any = None
     updates: Any = None
+    apply_scope: Any = None
 
     def get_graph(self, session):
         return session._graph
@@ -180,26 +208,21 @@ class TensorFlowAdapter:
         session.graph._finalized = False
         original_last_id = session.graph._last_id
         with session.graph.as_default(), session.as_default():
-            all_variables = get_all_variables()
+            all_variables = get_all_variables(session.graph)
             uninitialized_variables = session.run(
-                tf.report_uninitialized_variables(get_all_variables())
+                tf.report_uninitialized_variables(all_variables)
             )
             initialized_variables = set(
                 map(lambda variable: variable.op.name, all_variables)
             ) - set(map(lambda x: x.decode(), uninitialized_variables))
             variable_values = session.run(
-                {variable: variable + ":0" for variable in initialized_variables}
+                {
+                    variable.op.name: variable.value()
+                    for variable in all_variables
+                    if variable.op.name in initialized_variables
+                }
             )
         snapshot["variables"] = variable_values
-
-        # _, file_name = tempfile.mkstemp()
-        # filename_tensor = tf.convert_to_tensor(file_name)
-        # saveables = [
-        #     get_saveable(iterator) for iterator in get_iterators(session.graph)
-        # ]
-        # op = save_op(filename_tensor, saveables)
-        # session.run(op)
-        # snapshot["iterators"] = file_name
 
         inserted_ops = [
             session.graph._nodes_by_id[op_id]
@@ -219,6 +242,7 @@ class TensorFlowAdapter:
         return session.graph, snapshot
 
     def load(self, session, graph, snapshot):
+        import tensorflow as tf
         from tensorflow.python import pywrap_tensorflow as tf_session
 
         opts = tf_session.TF_NewSessionOptions(
@@ -234,20 +258,19 @@ class TensorFlowAdapter:
         session._graph = graph
         with graph.as_default(), session.as_default():
             src_variable_values = snapshot["variables"]
-            dst_variable_names = set(
-                map(lambda variable: variable.op.name, get_all_variables())
-            ).intersection(set(src_variable_values.keys()))
-            dst_variables = [
-                variable
-                for variable in get_all_variables()
-                if variable.op.name in dst_variable_names
-            ]
+            variables_by_name = get_variables_by_name(graph)
+            dst_variable_names = set(variables_by_name.keys()).intersection(
+                set(src_variable_values.keys())
+            )
+            dst_variables = [variables_by_name[name] for name in dst_variable_names]
             session.run(
                 [variable.initializer for variable in dst_variables],
                 feed_dict={
-                    variable.initializer.inputs[1]: src_variable_values[
-                        variable.op.name
-                    ]
+                    (
+                        variable.initializer.inputs[1]
+                        if isinstance(variable.initializer, tf.Operation)
+                        else variable.initializer.op.inputs[1]
+                    ): src_variable_values[variable.op.name]
                     for variable in dst_variables
                 },
             )
@@ -262,8 +285,15 @@ class TensorFlowAdapter:
     def save_prev_graph(self, graph):
         self.last_id = graph._last_id
 
-    def update_fetches(self, fetches, updates):
-        return update_fetches(self.instrumented_graph, fetches, updates)
+    def update_args(self, fetches, feed_dict, updates):
+        variables_by_name = get_variables_by_name(self.instrumented_graph)
+        new_fetches = update_fetches(
+            self.instrumented_graph, variables_by_name, fetches, updates
+        )
+        new_feed_dict = update_feed_dict(
+            self.instrumented_graph, variables_by_name, feed_dict, updates
+        )
+        return new_fetches, new_feed_dict
 
     def execute_routines(self, session):
         from amanda.conversion.tf import collect_actions
@@ -292,13 +322,28 @@ class TensorFlowAdapter:
         self.load(session, instrumented_graph, snapshot)
         return instrumented_graph, updates
 
+    def recover(self, session, graph):
+        if self.instrumented_graph is not None and not session._closed:
+            self.set_graph(session, self.instrumented_graph)
+            instrumented_graph, snapshot = self.extract(session)
+            self.load(session, graph, snapshot)
+
 
 _adapters: MutableMapping[Any, TensorFlowAdapter] = weakref.WeakKeyDictionary()
 
 
 def get_adapter(session) -> TensorFlowAdapter:
+    def cleanup():
+        if session in _adapters:
+            _adapters[session].recover(session, session.graph)
+            del _adapters[session]
+
+    if session in _adapters and _adapters[session].apply_scope != get_apply_scope():
+        cleanup()
     if session not in _adapters:
         _adapters[session] = TensorFlowAdapter()
+        _adapters[session].apply_scope = get_apply_scope()
+        register_cleanup_task(cleanup)
     return _adapters[session]
 
 
@@ -316,8 +361,19 @@ def session_run_wrapper(func):
             instrumented_graph = adapter.instrumented_graph
             updates = adapter.updates
             adapter.set_graph(session, instrumented_graph)
-            fetches = adapter.update_fetches(fetches, updates)
-            result = session.run(fetches, feed_dict, options, run_metadata)
+            new_fetches, new_feed_dict = adapter.update_args(
+                fetches, feed_dict, updates
+            )
+            result = session.run(new_fetches, new_feed_dict, options, run_metadata)
+            # print("variables:", list(adapter.extract(session)[1]["variables"].keys()))
+            # try:
+            #     print("start")
+            #    result = session.run(
+            #        new_fetches, new_feed_dict, options, run_metadata
+            #    )
+            # except Exception as exception:
+            #     print("new_fetches:", new_fetches)
+            #     raise exception
             adapter.set_graph(session, graph)
             adapter.save_prev_graph(graph)
             return result

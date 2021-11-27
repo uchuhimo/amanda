@@ -191,6 +191,43 @@ def test_pytorch_graph_callback(model_and_input):
     assert_close(output, new_output, model)
 
 
+def test_pytorch_cache():
+    class NewTestTool(amanda.Tool):
+        def __init__(self):
+            super(NewTestTool, self).__init__(namespace="amanda/pytorch")
+            self.cached_counter = 0
+            self.counter = 0
+            self.add_inst_for_op(self.insert_count)
+            self.add_inst_for_op(self.insert_count_bw, backward=True)
+
+        def insert_count(self, context):
+            self.cached_counter += 1
+            context.insert_before_op(self.count_op)
+
+        def insert_count_bw(self, context):
+            self.cached_counter += 1
+            context.insert_before_backward_op(self.count_op)
+
+        def count_op(self, *inputs):
+            self.counter += 1
+
+    linear = torch.nn.Linear(227, 128, bias=True)
+    x = torch.rand(3, 9, 227, 227)
+
+    tool = NewTestTool()
+    with amanda.tool.apply(tool):
+        y = linear(x)
+        y.backward(torch.ones_like(y))
+        counter = tool.counter
+        cached_counter = tool.cached_counter
+        assert counter != 0
+        assert cached_counter != 0
+        y = linear(x)
+        y.backward(torch.ones_like(y))
+        assert tool.counter == counter * 2
+        assert tool.cached_counter == cached_counter
+
+
 """
 forward backward op and subgraph matching
 tested case is forward op and backward subgraph caused by broadcasting

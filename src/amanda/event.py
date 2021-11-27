@@ -63,10 +63,11 @@ class Action:
 class OpContext(dict):
     from amanda.tool import Tool
 
-    def __init__(self, tools: Iterable[Tool]):
+    def __init__(self, tools: Iterable[Tool], namespace: str):
         super().__init__()
         from amanda.tool import Tool
 
+        self.namespace = namespace
         self.tools: Iterable[Tool] = tools
         self.actions: List[Action] = []
         self.is_op_replaced = False
@@ -85,7 +86,7 @@ class OpContext(dict):
         return False
 
     def inherite(self):
-        new_context = OpContext(self.tools)
+        new_context = OpContext(self.tools, self.namespace)
         for key, value in self.items():
             new_context[key] = value
         return new_context
@@ -95,19 +96,38 @@ class OpContext(dict):
         return self.get_op()
 
     @property
-    def inputs(self):
-        return self.get_inputs()
+    def op_id(self):
+        return self.get_op_id()
 
     @property
     def backward_op(self):
         return self.get_backward_op()
 
     @property
+    def backward_op_id(self):
+        return self.get_backward_op_id()
+
+    @property
+    def inputs(self):
+        return self.get_inputs()
+
+    @property
+    def outputs(self):
+        return self.get_outputs()
+
+    @property
     def grad_outputs(self):
         return self.get_grad_outputs()
 
+    @property
+    def grad_inputs(self):
+        return self.get_grad_inputs()
+
     def get_op(self):
         return self["op"]
+
+    def get_op_id(self):
+        return self["op_id"] if "op_id" in self else None
 
     def get_inputs(self):
         return self["inputs"]
@@ -118,6 +138,9 @@ class OpContext(dict):
     def get_backward_op(self):
         return self["backward_op"]
 
+    def get_backward_op_id(self):
+        return self["backward_op_id"]
+
     def get_grad_outputs(self):
         return self["grad_outputs"]
 
@@ -126,6 +149,9 @@ class OpContext(dict):
 
     def is_forward(self) -> bool:
         return "backward_op" not in self
+
+    def is_backward(self) -> bool:
+        return "backward_op" in self
 
     def insert_before_op(self, func, inputs: List[int] = None, **kwargs):
         self.actions.append(

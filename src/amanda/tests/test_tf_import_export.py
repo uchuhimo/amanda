@@ -251,17 +251,17 @@ class TestTool(amanda.Tool):
         self.add_inst_for_op(self.backward_instrumentation, backward=True)
         self.store_dir = store_dir
         self.ignored_ops = {
-            "VariableV2",
-            "Merge",
-            "Switch",
-            "AudioSummary",
-            "AudioSummaryV2",
-            "HistogramSummary",
-            "ImageSummary",
-            "MergeSummary",
-            "ScalarSummary",
-            "TensorSummary",
-            "TensorSummaryV2",
+            # "VariableV2",
+            # "Merge",
+            # "Switch",
+            # "AudioSummary",
+            # "AudioSummaryV2",
+            # "HistogramSummary",
+            # "ImageSummary",
+            # "MergeSummary",
+            # "ScalarSummary",
+            # "TensorSummary",
+            # "TensorSummaryV2",
         }
         self.before_tensors = set()
         self.after_tensors = set()
@@ -294,7 +294,7 @@ class TestTool(amanda.Tool):
                 [tensor],
                 tensor.dtype,
             )
-            if not tensor.dtype._is_ref_dtype
+            if not tensor.dtype._is_ref_dtype and tensor.dtype.is_numpy_compatible
             else tensor
             for index, tensor in enumerate(tensors)
         ]
@@ -323,7 +323,7 @@ class TestTool(amanda.Tool):
     def backward_instrumentation(self, context: OpContext):
         op = context.get_op()
         backward_op = context.get_backward_op()
-        if op.type in self.ignored_ops:
+        if op is None or op.type in self.ignored_ops:
             return
         file_name = backward_op.name.replace("/", "_")
         store_dir = self.store_dir / "before_backward_op" / file_name

@@ -1192,7 +1192,7 @@ def collect_actions(
         op = tf_graph._nodes_by_id[op_id]
         if op.name not in forward_ops:
             continue
-        context = OpContext(tools=tools)
+        context = OpContext(tools=tools, namespace="tensorflow")
         op_contexts[op.name] = context
         inputs = list(op.inputs)
         context.trigger(
@@ -1234,7 +1234,7 @@ def collect_actions(
                     actions.append((action, backward_op))
     for backward_op_name in unpaired_backward_op_names:
         backward_op = tf_graph.get_operation_by_name(backward_op_name)
-        backward_context = OpContext(tools=tools)
+        backward_context = OpContext(tools=tools, namespace="tensorflow")
         grad_outputs = list(backward_op.inputs)
         backward_context.trigger(
             on_backward_op_call,
