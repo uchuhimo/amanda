@@ -12,6 +12,8 @@ class Rule:
 
 class MappingTool(amanda.Tool):
     def __init__(self, rules):
+        super().__init__(namespace="mapping")
+
         self.rules = []
         for namespace, apply_fn in rules:
             self.add_rule(namespace, apply_fn)
