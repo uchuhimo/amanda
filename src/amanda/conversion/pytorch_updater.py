@@ -1,3 +1,4 @@
+import functools
 import inspect
 import weakref
 from functools import wraps
@@ -151,61 +152,69 @@ def register_bw_events_recursively(context, outputs, input_grad_fns):
 
     def _register_bw_events(context, grad_fn):
         def before_bw_op_hook(grad_output, context, bw_op, handle):
-            if isinstance(grad_output, torch.Tensor):
-                grad_outputs = [grad_output]
-            else:
-                grad_outputs = grad_output
-            context.trigger(
-                on_backward_op_call,
-                backward_op=bw_op.__class__,
-                grad_outputs=grad_outputs,
-            )
-            new_grad_outputs = list(grad_outputs)
-            for action in list(context.actions):
-                if action.type == "insert_before_backward_op":
-                    apply_insert_before_op(action, new_grad_outputs)
-                    context.actions.remove(action)
-            assert amanda_remove_pre_hook(bw_op, handle)
-            assert len(grad_outputs) == len(new_grad_outputs)
-            return tuple(new_grad_outputs)
+            with disabled():
+                if isinstance(grad_output, torch.Tensor):
+                    grad_outputs = [grad_output]
+                else:
+                    grad_outputs = grad_output
+                bw_raw_op = bw_op.__class__
+                bw_op_id = calc_op_id(bw_raw_op, grad_outputs)
+                context.trigger(
+                    on_backward_op_call,
+                    backward_op=bw_raw_op,
+                    backward_op_id=bw_op_id,
+                    grad_outputs=grad_outputs,
+                )
+                new_grad_outputs = list(grad_outputs)
+                for action in list(context.actions):
+                    if action.type == "insert_before_backward_op":
+                        apply_insert_before_op(action, new_grad_outputs)
+                        context.actions.remove(action)
+                assert amanda_remove_pre_hook(bw_op, handle)
+                assert len(grad_outputs) == len(new_grad_outputs)
+                return tuple(new_grad_outputs)
 
         def after_bw_op_hook(grad_input, grad_output, context, bw_op, handle):
-            _grad_fns.remove(bw_op)
-            if isinstance(grad_input, torch.Tensor):
-                grad_inputs = [grad_input]
-            else:
-                grad_inputs = grad_input
-            if isinstance(grad_output, torch.Tensor):
-                grad_outputs = [grad_output]
-            else:
-                grad_outputs = grad_output
-            context.trigger(
-                after_backward_op_call,
-                backward_op=bw_op.__class__,
-                grad_outputs=grad_outputs,
-                grad_inputs=grad_inputs,
-            )
-            for action in list(context.actions):
-                if action.type == "replace_op":
-                    new_input = apply_replace_op(action, grad_outputs)
-                    context.actions.remove(action)
-                    if isinstance(new_input, torch.Tensor):
-                        grad_inputs = [new_input]
-                    else:
-                        grad_inputs = new_input
-                    break
-            new_grad_inputs = list(grad_inputs)
-            for action in list(context.actions):
-                if action.type == "insert_after_backward_op":
-                    apply_insert_after_op(action, new_grad_inputs)
-                    context.actions.remove(action)
-            assert len(context.actions) == 0
-            for grad_input, new_grad_input in zip(grad_inputs, new_grad_inputs):
-                if isinstance(grad_input, torch.Tensor) and isinstance(
-                    new_grad_input, torch.Tensor
-                ):
-                    grad_input.data = new_grad_input
-            handle.remove()
+            with disabled():
+                _grad_fns.remove(bw_op)
+                if isinstance(grad_input, torch.Tensor):
+                    grad_inputs = [grad_input]
+                else:
+                    grad_inputs = grad_input
+                if isinstance(grad_output, torch.Tensor):
+                    grad_outputs = [grad_output]
+                else:
+                    grad_outputs = grad_output
+                bw_raw_op = bw_op.__class__
+                if "backward_op_id" not in context:
+                    context["backward_op_id"] = calc_op_id(bw_raw_op, grad_outputs)
+                context.trigger(
+                    after_backward_op_call,
+                    backward_op=bw_raw_op,
+                    grad_outputs=grad_outputs,
+                    grad_inputs=grad_inputs,
+                )
+                for action in list(context.actions):
+                    if action.type == "replace_op":
+                        new_input = apply_replace_op(action, grad_outputs)
+                        context.actions.remove(action)
+                        if isinstance(new_input, torch.Tensor):
+                            grad_inputs = [new_input]
+                        else:
+                            grad_inputs = new_input
+                        break
+                new_grad_inputs = list(grad_inputs)
+                for action in list(context.actions):
+                    if action.type == "insert_after_backward_op":
+                        apply_insert_after_op(action, new_grad_inputs)
+                        context.actions.remove(action)
+                assert len(context.actions) == 0
+                for grad_input, new_grad_input in zip(grad_inputs, new_grad_inputs):
+                    if isinstance(grad_input, torch.Tensor) and isinstance(
+                        new_grad_input, torch.Tensor
+                    ):
+                        grad_input.data = new_grad_input
+                handle.remove()
 
         if (
             grad_fn
@@ -270,15 +279,28 @@ def unpack_input_grad_fns(inputs):
 _tensor_ids: MutableMapping[Any, int] = weakref.WeakKeyDictionary()
 
 
-def calc_op_id(inputs):
+def calc_op_id(op, args, kwargs=None):
+    import torch
+
     op_id = 0
-    for input in inputs[:-1]:
+    arg_id = 1
+    for input in args:
         if input in _tensor_ids:
             op_id = op_id ^ _tensor_ids[input]
-    for input in inputs[-1].values():
-        if input in _tensor_ids:
-            op_id = op_id ^ _tensor_ids[input]
-    return ((op_id // 2) + (op_id % 2) * (2 ** 31)) + 1 if op_id != 0 else None
+        elif isinstance(input, torch.nn.Parameter):
+            op_id = op_id ^ id(input)
+        else:
+            op_id = op_id ^ arg_id
+        arg_id = arg_id << 1
+    if kwargs is not None:
+        for name, input in kwargs.items():
+            if input in _tensor_ids:
+                op_id = op_id ^ _tensor_ids[input]
+            elif isinstance(input, torch.nn.Parameter):
+                op_id = op_id ^ id(input)
+            else:
+                op_id = op_id ^ id(name)
+    return op_id ^ id(op)
 
 
 def function_wrapper(func):
@@ -291,10 +313,13 @@ def function_wrapper(func):
             )
             context = OpContext(tools=tools, namespace="pytorch")
             inputs = [*args, kwargs]
-            op_id = calc_op_id(inputs)
+            raw_func = func
+            if isinstance(func, functools.partial):
+                raw_func = func.__wrapped__
+            op_id = calc_op_id(raw_func, args, kwargs)
             context.trigger(
                 on_op_call,
-                op=func,
+                op=raw_func,
                 op_id=op_id,
                 inputs=inputs,
             )
@@ -331,7 +356,6 @@ def function_wrapper(func):
                 output = outputs[0]
             else:
                 output = outputs
-            # register_bw_events_recursively(context, output, input_grad_fns)
             return output
 
     return check_enabled(func, wrapper)
@@ -422,12 +446,13 @@ def wrap_op(module, name, wrapper):
 
     from amanda import intercepts
 
+    handler = intercepts.to_handler(wrapper)
     if isinstance(module, torch._C._VariableFunctionsClass):
         if hasattr(module, name):
-            intercepts.register(getattr(module, name), intercepts.to_handler(wrapper))
+            intercepts.register(getattr(module, name), handler, "amanda")
             return True
     elif name in module.__dict__:
-        intercepts.register(module.__dict__[name], intercepts.to_handler(wrapper))
+        intercepts.register(module.__dict__[name], handler, "amanda")
         return True
     return False
 

@@ -201,10 +201,17 @@ def test_pytorch_cache():
             self.add_inst_for_op(self.insert_count_bw, backward=True)
 
         def insert_count(self, context):
+            print(context.get_op().__name__, id(context.get_op()), context.get_op_id())
             self.cached_counter += 1
             context.insert_before_op(self.count_op)
 
         def insert_count_bw(self, context):
+            print(
+                "bw",
+                context.get_backward_op().__name__,
+                id(context.get_backward_op()),
+                context.get_backward_op_id(),
+            )
             self.cached_counter += 1
             context.insert_before_backward_op(self.count_op)
 
