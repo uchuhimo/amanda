@@ -1,4 +1,3 @@
-import sys
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, Callable, Dict, Iterable, List
@@ -160,7 +159,7 @@ class OpContext(dict):
                 func=func,
                 inputs=inputs,
                 kwargs=kwargs,
-                trackback=sys.exc_info()[2],
+                # trackback=sys.exc_info()[2],
             )
         )
 
@@ -171,7 +170,7 @@ class OpContext(dict):
                 func=func,
                 outputs=outputs,
                 kwargs=kwargs,
-                trackback=sys.exc_info()[2],
+                # trackback=sys.exc_info()[2],
             )
         )
 
@@ -182,7 +181,7 @@ class OpContext(dict):
                 func=func,
                 inputs=grad_outputs,
                 kwargs=kwargs,
-                trackback=sys.exc_info()[2],
+                # trackback=sys.exc_info()[2],
             )
         )
 
@@ -193,7 +192,7 @@ class OpContext(dict):
                 func=func,
                 outputs=grad_inputs,
                 kwargs=kwargs,
-                trackback=sys.exc_info()[2],
+                # trackback=sys.exc_info()[2],
             )
         )
 
@@ -208,7 +207,7 @@ class OpContext(dict):
                 func=func,
                 inputs=inputs,
                 kwargs=kwargs,
-                trackback=sys.exc_info()[2],
+                # trackback=sys.exc_info()[2],
             )
         )
 
@@ -223,7 +222,7 @@ class OpContext(dict):
                 func=func,
                 inputs=grad_outputs,
                 kwargs=kwargs,
-                trackback=sys.exc_info()[2],
+                # trackback=sys.exc_info()[2],
             )
         )
 

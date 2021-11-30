@@ -201,7 +201,7 @@ def test_pytorch_cache():
             self.add_inst_for_op(self.insert_count_bw, backward=True)
 
         def insert_count(self, context):
-            print(context.get_op().__name__, id(context.get_op()), context.get_op_id())
+            print(context.get_op().__name__, context.get_op_id())
             self.cached_counter += 1
             context.insert_before_op(self.count_op)
 
@@ -209,7 +209,6 @@ def test_pytorch_cache():
             print(
                 "bw",
                 context.get_backward_op().__name__,
-                id(context.get_backward_op()),
                 context.get_backward_op_id(),
             )
             self.cached_counter += 1
@@ -218,7 +217,7 @@ def test_pytorch_cache():
         def count_op(self, *inputs):
             self.counter += 1
 
-    linear = torch.nn.Linear(227, 128, bias=True)
+    linear = torch.nn.Linear(227, 128, bias=False)
     x = torch.rand(3, 9, 227, 227)
 
     tool = NewTestTool()
