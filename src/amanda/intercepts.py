@@ -2,8 +2,9 @@ import atexit
 import ctypes
 import sys
 import types
+from collections import OrderedDict
 from functools import partial
-from typing import Callable, Dict, List
+from typing import Any, Callable, Dict, Tuple
 
 from intercepts.functypes import PyCFunctionObject, PyMethodDef, PyObject, PyTypeObject
 from intercepts.utils import (
@@ -92,13 +93,13 @@ def replace_getset_descriptor(dst, src):
     ctypes.memmove(dst + 16, src + 16, 32)
 
 
-_HANDLERS: Dict[int, List[Callable]] = {}
+_HANDLERS: Dict[int, Tuple[Callable, Callable, Dict[Any, Callable]]] = {}
 
 
 def func_handler(func_id, *args, **kwargs):
     func = _HANDLERS[func_id][0]
     updated_func = func
-    for _handler in _HANDLERS[func_id][2:]:
+    for _handler in _HANDLERS[func_id][2].values():
         updated_func = update_wrapper(partial(_handler, updated_func), func)
     result = updated_func(*args, **kwargs)
     return result
@@ -109,7 +110,7 @@ def func_handler_prototype(*args, **kwargs):
     func_id = consts[-1]
     func = _HANDLERS[func_id][0]
     updated_func = func
-    for _handler in _HANDLERS[func_id][2:]:
+    for _handler in _HANDLERS[func_id][2].values():
         updated_func = update_wrapper(partial(_handler, updated_func), func)
     result = updated_func(*args, **kwargs)
     return result
@@ -118,7 +119,7 @@ def func_handler_prototype(*args, **kwargs):
 def getter_handler(func_id, *args, **kwargs):
     func = _HANDLERS[func_id][0].__get__
     updated_func = func
-    for _handler in _HANDLERS[func_id][2:]:
+    for _handler in _HANDLERS[func_id][2].values():
         updated_func = update_wrapper(partial(_handler, updated_func), func)
     result = updated_func(*args, **kwargs)
     return result
@@ -127,27 +128,29 @@ def getter_handler(func_id, *args, **kwargs):
 def setter_handler(func_id, *args, **kwargs):
     func = _HANDLERS[func_id][0].__set__
     updated_func = func
-    for _handler in _HANDLERS[func_id][2:]:
+    for _handler in _HANDLERS[func_id][2].values():
         updated_func = update_wrapper(partial(_handler, updated_func), func)
     result = updated_func(*args, **kwargs)
     return result
 
 
-def register_builtin(func, handler):
+def register_builtin(func, handler, key):
     func_addr = addr(func)
     if func_addr not in _HANDLERS:
         func_copy = PyCFunctionObject()
         copy_builtin(addr(func_copy), func_addr)
         handler_with_addr = partial(func_handler, func_addr)
         new_func = get_builtin_handler(func, handler_with_addr)
-        _HANDLERS[func_addr] = [func_copy, new_func]
+        _HANDLERS[func_addr] = (func_copy, new_func, OrderedDict())
         replace_builtin(func_addr, addr(new_func))
-    _HANDLERS[func_addr].append(handler)
+    _HANDLERS[func_addr][2][key] = handler
+    if len(_HANDLERS[func_addr][2]) > 1:
+        print(_HANDLERS[func_addr][2])
     return func
 
 
 def register_function(
-    func: types.FunctionType, handler: types.FunctionType
+    func: types.FunctionType, handler: types.FunctionType, key
 ) -> types.FunctionType:
     func_addr = addr(func)
     if func_addr not in _HANDLERS:
@@ -170,33 +173,37 @@ def register_function(
             func.__closure__,
         )
         new_func.__code__ = handler_code
-        _HANDLERS[func_addr] = [func_copy, new_func]
+        _HANDLERS[func_addr] = (func_copy, new_func, OrderedDict())
         replace_function(func_addr, addr(new_func))
-    _HANDLERS[func_addr].append(handler)
+    _HANDLERS[func_addr][2][key] = handler
+    if len(_HANDLERS[func_addr][2]) > 1:
+        print(_HANDLERS[func_addr][2])
     return func
 
 
 def register_method(
-    method: types.MethodType, handler: types.FunctionType
+    method: types.MethodType, handler: types.FunctionType, key
 ) -> types.MethodType:
-    register_function(method.__func__, handler)
+    register_function(method.__func__, handler, key)
     return method
 
 
-def register_method_descriptor(func, handler):
+def register_method_descriptor(func, handler, key):
     func_addr = addr(func)
     if func_addr not in _HANDLERS:
         func_copy = PyMethodDescrObject()
         copy_method_descriptor(addr(func_copy), func_addr)
         handler_with_addr = partial(func_handler, func_addr)
         new_func = get_method_descriptor_handler(func, handler_with_addr)
-        _HANDLERS[func_addr] = [func_copy, new_func]
+        _HANDLERS[func_addr] = (func_copy, new_func, OrderedDict())
         replace_method_descriptor(func_addr, addr(new_func))
-    _HANDLERS[func_addr].append(handler)
+    _HANDLERS[func_addr][2][key] = handler
+    if len(_HANDLERS[func_addr][2]) > 1:
+        print(_HANDLERS[func_addr][2])
     return func
 
 
-def register_getset_descriptor(attribute, handler):
+def register_getset_descriptor(attribute, handler, key):
     func_addr = addr(attribute)
     if func_addr not in _HANDLERS:
         func_copy = PyGetSetDescrObject()
@@ -208,9 +215,11 @@ def register_getset_descriptor(attribute, handler):
             getter_handler_with_addr,
             setter_handler_with_addr,
         )
-        _HANDLERS[func_addr] = [func_copy, new_func]
+        _HANDLERS[func_addr] = (func_copy, new_func, OrderedDict())
         replace_method_descriptor(func_addr, addr(new_func))
-    _HANDLERS[func_addr].append(handler)
+    _HANDLERS[func_addr][2][key] = handler
+    if len(_HANDLERS[func_addr][2]) > 1:
+        print(_HANDLERS[func_addr][2])
     return attribute
 
 
@@ -221,7 +230,7 @@ def to_handler(wrapper):
     return handler
 
 
-def register(obj, handler):
+def register(obj, handler, key=None):
     r"""Registers an intercept handler.
 
     :param obj: The callable to intercept.
@@ -241,21 +250,22 @@ def register(obj, handler):
     if obj == handler:
         raise ValueError("A function cannot handle itself")
 
+    key = key or id(handler)
     if isinstance(obj, types.BuiltinFunctionType):
-        return register_builtin(obj, handler)
+        return register_builtin(obj, handler, key)
     elif isinstance(obj, types.FunctionType):
-        return register_function(obj, handler)
+        return register_function(obj, handler, key)
     elif isinstance(obj, types.MethodType):
-        return register_method(obj, handler)
+        return register_method(obj, handler, key)
     elif isinstance(obj, types.MethodDescriptorType):
-        return register_method_descriptor(obj, handler)
+        return register_method_descriptor(obj, handler, key)
     elif isinstance(obj, types.GetSetDescriptorType):
-        return register_getset_descriptor(obj, handler)
+        return register_getset_descriptor(obj, handler, key)
     else:
         raise NotImplementedError(f"{obj} has unsupported type: {type(obj)}")
 
 
-def unregister(obj, depth: int = -1):
+def unregister(obj):
     r"""Unregisters the handlers for an object.
 
     :param obj: The callable for which to unregister handlers.
@@ -267,22 +277,19 @@ def unregister(obj, depth: int = -1):
     else:
         func_addr = addr(obj.__func__)
     handlers = _HANDLERS[func_addr]
-    if depth < 0 or len(handlers) - depth <= 2:
-        orig_func = handlers[0]
-        if isinstance(orig_func, types.BuiltinFunctionType):
-            replace_builtin(func_addr, addr(orig_func))
-        elif isinstance(orig_func, types.FunctionType):
-            replace_function(func_addr, addr(orig_func))
-        elif isinstance(orig_func, types.MethodDescriptorType):
-            replace_method_descriptor(func_addr, addr(orig_func))
-        elif isinstance(orig_func, types.GetSetDescriptorType):
-            replace_getset_descriptor(func_addr, addr(orig_func))
-        else:
-            raise ValueError("Unknown type of handled function: %s" % type(orig_func))
-        del _HANDLERS[func_addr]
-        assert func_addr not in _HANDLERS
+    orig_func = handlers[0]
+    if isinstance(orig_func, types.BuiltinFunctionType):
+        replace_builtin(func_addr, addr(orig_func))
+    elif isinstance(orig_func, types.FunctionType):
+        replace_function(func_addr, addr(orig_func))
+    elif isinstance(orig_func, types.MethodDescriptorType):
+        replace_method_descriptor(func_addr, addr(orig_func))
+    elif isinstance(orig_func, types.GetSetDescriptorType):
+        replace_getset_descriptor(func_addr, addr(orig_func))
     else:
-        _HANDLERS[func_addr] = handlers[:-depth]
+        raise ValueError("Unknown type of handled function: %s" % type(orig_func))
+    del _HANDLERS[func_addr]
+    assert func_addr not in _HANDLERS
     return obj
 
 

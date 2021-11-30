@@ -34,11 +34,6 @@ class Tool:
             return
         self._event_to_all_callbacks = defaultdict(list)
         callback_set: Set[int] = set()
-        for event, callbacks in self._event_to_callbacks.items():
-            for callback in callbacks:
-                if id(callback) not in callback_set:
-                    self._event_to_all_callbacks[event].append(callback)
-                    callback_set.add(id(callback))
         for dependency in self.dependencies:
             dependency.collect_callbacks()
             for event, callbacks in dependency._event_to_all_callbacks.items():
@@ -46,6 +41,11 @@ class Tool:
                     if id(callback) not in callback_set:
                         self._event_to_all_callbacks[event].append(callback)
                         callback_set.add(id(callback))
+        for event, callbacks in self._event_to_callbacks.items():
+            for callback in callbacks:
+                if id(callback) not in callback_set:
+                    self._event_to_all_callbacks[event].append(callback)
+                    callback_set.add(id(callback))
 
     def register_event(self, event: Event, callback: ToolCallback) -> None:
         self._event_to_callbacks[event].append(callback)

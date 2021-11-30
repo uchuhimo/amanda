@@ -124,28 +124,28 @@ class OpContext(dict):
         return self.get_grad_inputs()
 
     def get_op(self):
-        return self["op"]
+        return self.get("op")
 
     def get_op_id(self):
-        return self["op_id"] if "op_id" in self else None
+        return self.get("op_id")
 
     def get_inputs(self):
-        return self["inputs"]
+        return self.get("inputs")
 
     def get_outputs(self):
-        return self["outputs"]
+        return self.get("outputs")
 
     def get_backward_op(self):
-        return self["backward_op"]
+        return self.get("backward_op")
 
     def get_backward_op_id(self):
-        return self["backward_op_id"]
+        return self.get("backward_op_id")
 
     def get_grad_outputs(self):
-        return self["grad_outputs"]
+        return self.get("grad_outputs")
 
     def get_grad_inputs(self):
-        return self["grad_inputs"]
+        return self.get("grad_inputs")
 
     def is_forward(self) -> bool:
         return "backward_op" not in self
