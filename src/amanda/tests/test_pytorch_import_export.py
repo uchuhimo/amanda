@@ -1,17 +1,22 @@
+from functools import partial
+
 import numpy as np
 import pytest
 import torch
 import torch.jit
 import torchvision.models as models
 from torchvision.models.detection.generalized_rcnn import GeneralizedRCNN
+from torchvision.models.quantization.mobilenetv2 import QuantizableMobileNetV2
 
 import amanda
+from amanda.cache import cache_disabled, is_cache_enabled
 from amanda.conversion.pytorch import (
     export_to_graph,
     export_to_module,
     import_from_graph,
     import_from_module,
 )
+from amanda.conversion.pytorch_updater import get_cache_size
 from amanda.io.file import root_dir
 
 
@@ -20,18 +25,24 @@ from amanda.io.file import root_dir
     params=[
         models.resnet18,
         # models.inception_v3,
-        # models.resnet50,
+        pytest.param(models.resnet50, marks=pytest.mark.slow),
         pytest.param(models.inception_v3, marks=pytest.mark.slow),
         pytest.param(models.alexnet, marks=pytest.mark.slow),
-        # models.vgg11,
+        pytest.param(models.vgg11, marks=pytest.mark.slow),
         pytest.param(models.vgg11_bn, marks=pytest.mark.slow),
-        # models.squeezenet1_1,
-        # models.shufflenet_v2_x0_5,
+        pytest.param(models.squeezenet1_1, marks=pytest.mark.slow),
+        pytest.param(models.shufflenet_v2_x0_5, marks=pytest.mark.slow),
         pytest.param(models.mobilenet_v2, marks=pytest.mark.slow),
-        # models.mnasnet0_5,
-        # waiting for PyTorch to support
-        # partial(models.detection.maskrcnn_resnet50_fpn, pretrained_backbone=False),
-        # partial(models.quantization.mobilenet_v2, quantize=True),
+        pytest.param(models.mnasnet0_5, marks=pytest.mark.slow),
+        # waiting for PyTorch to support JIT
+        pytest.param(
+            partial(models.detection.maskrcnn_resnet50_fpn, pretrained_backbone=False),
+            id="maskrcnn_resnet50_fpn",
+        ),
+        # pytest.param(
+        #     partial(models.quantization.mobilenet_v2, quantize=True),
+        #     id="quant_mobilenet_v2"
+        # ),
     ],
 )
 def model_and_input(request):
@@ -191,56 +202,107 @@ def test_pytorch_graph_callback(model_and_input):
     assert_close(output, new_output, model)
 
 
-def test_pytorch_cache():
-    class NewTestTool(amanda.Tool):
-        def __init__(self):
-            super(NewTestTool, self).__init__(namespace="amanda/pytorch")
-            self.cached_counter = 0
-            self.counter = 0
-            self.add_inst_for_op(self.insert_count)
-            self.add_inst_for_op(self.insert_count_bw, backward=True)
+def get_output(output, model):
+    if isinstance(model, GeneralizedRCNN):
+        return output[0]["scores"]
+    # elif isinstance(model, models.Inception3):
+    #     return model, torch.randn(1, 3, 299, 299)
+    else:
+        return output
 
-        def insert_count(self, context):
-            print(context.get_op().__name__, context.get_op_id())
-            self.cached_counter += 1
-            context.insert_before_op(self.count_op)
 
-        def insert_count_bw(self, context):
-            print(
-                "bw",
-                context.get_backward_op().__name__,
-                context.get_backward_op_id(),
-            )
-            self.cached_counter += 1
-            context.insert_before_backward_op(self.count_op)
+class TestCacheTool(amanda.Tool):
+    def __init__(self):
+        super().__init__(namespace="amanda/pytorch")
+        self.cached_counter = 0
+        self.counter = 0
+        self.add_inst_for_op(self.insert_count)
+        self.add_inst_for_op(self.insert_count_bw, backward=True)
 
-        def count_op(self, *inputs):
-            self.counter += 1
+    def insert_count(self, context):
+        # print(context.get_op().__name__, context.get_op_id())
+        self.cached_counter += 1
+        context.insert_before_op(self.count_op, name=context.get_op().__name__)
 
-    linear = torch.nn.Linear(227, 128, bias=False)
-    x = torch.rand(3, 9, 227, 227)
+    def insert_count_bw(self, context):
+        # print(
+        #     "bw",
+        #     context.get_backward_op().__name__,
+        #     context.get_backward_op_id(),
+        # )
+        self.cached_counter += 1
+        context.insert_before_backward_op(
+            self.count_op, name=context.get_backward_op().__name__
+        )
 
-    tool = NewTestTool()
+    def count_op(self, *inputs, name):
+        # print(name)
+        self.counter += 1
+
+
+def test_pytorch_cache_enabled(model_and_input):
+    # linear = torch.nn.Linear(227, 128, bias=False)
+    # x = torch.rand(3, 9, 227, 227)
+    model, x = model_and_input
+
+    tool = TestCacheTool()
     with amanda.tool.apply(tool):
-        y = linear(x)
-        y.backward(torch.ones_like(y))
+        assert is_cache_enabled()
+        output = get_output(model(x), model)
+        if not isinstance(model, QuantizableMobileNetV2):
+            output.backward(torch.ones_like(output))
+        # y = linear(x)
+        # y.backward(torch.ones_like(y))
         counter = tool.counter
         cached_counter = tool.cached_counter
-        assert counter != 0
-        assert cached_counter != 0
-        y = linear(x)
-        y.backward(torch.ones_like(y))
-        assert tool.counter == counter * 2
+        cache_num = get_cache_size()
+        assert cached_counter == cache_num
+        if not isinstance(model, GeneralizedRCNN):
+            assert counter == cache_num
+        output = get_output(model(x), model)
+        if not isinstance(model, QuantizableMobileNetV2):
+            output.backward(torch.ones_like(output))
+        # y = linear(x)
+        # y.backward(torch.ones_like(y))
         assert tool.cached_counter == cached_counter
+        assert tool.cached_counter == get_cache_size()
+        assert tool.counter == counter * 2
 
 
-"""
-forward backward op and subgraph matching
-tested case is forward op and backward subgraph caused by broadcasting
-"""
+def test_pytorch_cache_disabled(model_and_input):
+    # linear = torch.nn.Linear(227, 128, bias=False)
+    # x = torch.rand(3, 9, 227, 227)
+    model, x = model_and_input
+
+    tool = TestCacheTool()
+    with amanda.tool.apply(tool), cache_disabled():
+        assert not is_cache_enabled()
+        output = get_output(model(x), model)
+        if not isinstance(model, QuantizableMobileNetV2):
+            output.backward(torch.ones_like(output))
+        # y = linear(x)
+        # y.backward(torch.ones_like(y))
+        counter = tool.counter
+        cached_counter = tool.cached_counter
+        cache_num = get_cache_size()
+        assert cache_num == 0
+        assert counter == cached_counter
+        output = get_output(model(x), model)
+        if not isinstance(model, QuantizableMobileNetV2):
+            output.backward(torch.ones_like(output))
+        # y = linear(x)
+        # y.backward(torch.ones_like(y))
+        assert get_cache_size() == 0
+        assert tool.cached_counter == cached_counter * 2
+        assert tool.counter == counter * 2
 
 
-def test_pytorch_with_forward_backward_matching(model_and_input):
+def test_pytorch_with_forward_backward_matching():
+    """
+    forward backward op and subgraph matching
+    tested case is forward op and backward subgraph caused by broadcasting
+    """
+
     class NewTestTool(amanda.Tool):
         def __init__(self):
             super(NewTestTool, self).__init__(namespace="amanda/pytorch")
