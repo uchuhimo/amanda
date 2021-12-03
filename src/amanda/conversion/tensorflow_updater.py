@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from functools import wraps
 from typing import Any, List, MutableMapping, NamedTuple, OrderedDict, Set
 
+from amanda.cache import is_cache_enabled
 from amanda.import_hook import (
     InstScopeHook,
     check_enabled,
@@ -354,7 +355,7 @@ def session_run_wrapper(func):
         with disabled():
             adapter = get_adapter(session)
             graph = adapter.get_graph(session)
-            if adapter.is_graph_updated(graph):
+            if (not is_cache_enabled()) or adapter.is_graph_updated(graph):
                 instrumented_graph, updates = adapter.instrument(session, graph)
                 adapter.instrumented_graph = instrumented_graph
                 adapter.updates = updates
