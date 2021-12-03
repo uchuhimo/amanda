@@ -137,11 +137,14 @@ def apply_insert_after_op(action, outputs):
 
 
 def apply_replace_op(action, inputs):
+    import torch
+
     logger.debug("apply_replace_op")
-    filtered_inputs = inputs
-    if action.inputs is not None:
-        filtered_inputs = [filtered_inputs[index] for index in action.inputs]
-    return action.func(*filtered_inputs, **action.kwargs)
+    with torch.no_grad():
+        filtered_inputs = inputs
+        if action.inputs is not None:
+            filtered_inputs = [filtered_inputs[index] for index in action.inputs]
+        return action.func(*filtered_inputs, **action.kwargs)
 
 
 _grad_fns: Set[Any] = set()
@@ -180,12 +183,13 @@ def register_bw_events_recursively(context, outputs, input_grad_fns):
                     for action in cached_actions["insert_before_backward_op"]:
                         apply_insert_before_op(action, grad_outputs)
                 else:
-                    context.trigger(
-                        on_backward_op_call,
-                        backward_op=bw_raw_op,
-                        backward_op_id=bw_op_id,
-                        grad_outputs=grad_outputs,
-                    )
+                    with torch.no_grad():
+                        context.trigger(
+                            on_backward_op_call,
+                            backward_op=bw_raw_op,
+                            backward_op_id=bw_op_id,
+                            grad_outputs=grad_outputs,
+                        )
                     for action in list(context.actions):
                         if action.type == "insert_before_backward_op":
                             apply_insert_before_op(action, grad_outputs)
@@ -233,10 +237,11 @@ def register_bw_events_recursively(context, outputs, input_grad_fns):
                             new_grad_inputs = new_input
                         break
                 else:
-                    context.trigger(
-                        after_backward_op_call,
-                        grad_inputs=new_grad_inputs,
-                    )
+                    with torch.no_grad():
+                        context.trigger(
+                            after_backward_op_call,
+                            grad_inputs=new_grad_inputs,
+                        )
                     for action in list(context.actions):
                         if action.type == "replace_op":
                             new_input = apply_replace_op(action, context.grad_outputs)
@@ -475,12 +480,13 @@ def function_wrapper(func):
                 for action in cached_actions["insert_before_op"]:
                     apply_insert_before_op(action, inputs)
             else:
-                context.trigger(
-                    on_op_call,
-                    op=raw_func,
-                    op_id=op_id,
-                    inputs=inputs,
-                )
+                with torch.no_grad():
+                    context.trigger(
+                        on_op_call,
+                        op=raw_func,
+                        op_id=op_id,
+                        inputs=inputs,
+                    )
                 for action in list(context.actions):
                     if action.type == "insert_before_op":
                         apply_insert_before_op(action, inputs)
@@ -516,10 +522,11 @@ def function_wrapper(func):
                 for action in cached_actions["insert_after_op"]:
                     apply_insert_after_op(action, outputs)
             else:
-                context.trigger(
-                    after_op_call,
-                    outputs=outputs,
-                )
+                with torch.no_grad():
+                    context.trigger(
+                        after_op_call,
+                        outputs=outputs,
+                    )
                 for action in list(context.actions):
                     if action.type == "insert_after_op":
                         apply_insert_after_op(action, outputs)
