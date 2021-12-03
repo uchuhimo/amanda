@@ -14,8 +14,4 @@ def torch_type(context: amanda.OpContext):
     )
 
 
-torch_type_mapping = {
-    "matmul": "matmul",
-    "linear": "linear",
-    "conv2d": "conv2d",
-}
+torch_type_mapping = dict()

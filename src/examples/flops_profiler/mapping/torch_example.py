@@ -12,7 +12,7 @@ def main():
     model = torchvision.models.resnet50().to(device)
     x = torch.rand((32, 3, 227, 227)).to(device)
 
-    profiler = FlopsProfileTool()
+    profiler = FlopsProfileTool("pytorch")
 
     with amanda.tool.apply(profiler):
         y = model(x)
