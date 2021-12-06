@@ -1,9 +1,7 @@
 import functools
 import inspect
 import weakref
-from functools import reduce, wraps
-from operator import xor
-from random import getrandbits, seed
+from functools import wraps
 from typing import Any, Dict, List, MutableMapping, Set
 
 from loguru import logger
@@ -147,10 +145,17 @@ def apply_replace_op(action, inputs):
         return action.func(*filtered_inputs, **action.kwargs)
 
 
+def next_id(id):
+    return (id * 1103515245 + 12345) & 0x7FFFFFFF
+
+
+_seed: int = None
+
+
 _grad_fns: Set[Any] = set()
 
 
-def register_bw_events_recursively(context, outputs, input_grad_fns):
+def register_bw_events_recursively(context, outputs):
     """
     same functionality as register_bw_events() with subgraph matching,
     in this manner, a EventContext in bw phase have "op", "bw_op" two context,
@@ -264,14 +269,22 @@ def register_bw_events_recursively(context, outputs, input_grad_fns):
                             cached_actions["insert_after_backward_op"].append(action)
                     assert len(context.actions) == 0
 
+                if not is_cached and (
+                    len(cached_actions["insert_before_backward_op"]) > 0
+                    or len(cached_actions["replace_backward_op"]) > 0
+                    or len(cached_actions["insert_after_backward_op"]) > 0
+                ):
+                    _cached_actions[context.op_id]["backward_actions"] = True
                 for grad_input, new_grad_input in zip(grad_inputs, new_grad_inputs):
                     if isinstance(grad_input, torch.Tensor) and isinstance(
                         new_grad_input, torch.Tensor
                     ):
                         grad_input.data = new_grad_input
-                seed(context.backward_op_id)
-                for index, (grad_input, (next_op, input_index)) in enumerate(
-                    zip(grad_inputs, bw_op.next_functions)
+                # seed(context.backward_op_id)
+                # arg_id = 0x10_0001
+                arg_id = next_id(bw_op_id)
+                for grad_input, (next_op, input_index) in zip(
+                    grad_inputs, bw_op.next_functions
                 ):
                     if grad_input is not None:
                         if id(next_op) not in _grad_ids:
@@ -279,7 +292,9 @@ def register_bw_events_recursively(context, outputs, input_grad_fns):
                         # _grad_ids[id(next_op)][input_index] = (
                         #     context.backward_op_id + index + 1
                         # )
-                        _grad_ids[id(next_op)][input_index] = getrandbits(32)
+                        # _grad_ids[id(next_op)][input_index] = getrandbits(32)
+                        # _grad_ids[id(next_op)][input_index] = bw_op_id ^ arg_id
+                        _grad_ids[id(next_op)][input_index] = arg_id
                         # print(
                         #     "output",
                         #     bw_op.__class__.__name__,
@@ -288,6 +303,8 @@ def register_bw_events_recursively(context, outputs, input_grad_fns):
                         #     input_index, _grad_ids[id(next_op)][input_index],
                         #     grad_input.sum(),
                         # )
+                    # arg_id = arg_id << 1
+                    arg_id = next_id(arg_id)
                 handle.remove()
 
         if not (
@@ -397,11 +414,17 @@ def get_input_id(input, default_id):
         return id(input)
     # elif isinstance(input, Sequence):
     elif isinstance(input, (list, tuple)):
-        input_id = reduce(
-            xor,
-            [get_input_id(x, default_id=getrandbits(32)) for x in input],
-            default_id,
-        )
+        input_id = default_id
+        global _seed
+        _seed = next_id(default_id)
+        for x in input:
+            input_id = input_id ^ get_input_id(x, default_id=_seed)
+            _seed = next_id(_seed)
+        # input_id = reduce(
+        #     xor,
+        #     [get_input_id(x, default_id=getrandbits(32)) for x in input],
+        #     default_id,
+        # )
         # print("sequence:", input_id)
         return input_id
     else:
@@ -415,8 +438,9 @@ def get_input_id(input, default_id):
 
 def calc_op_id(op, args, kwargs=None, bw_op=None):
     op_id = 0
-    seed(id(op))
-    # arg_id = 1
+    # seed(id(op))
+    # arg_id = 0x1_0001
+    arg_id = next_id(id(op))
     # arg_id = getrandbits(32)
     # print(f"input of {op.__name__}")
     for index, input in enumerate(args):
@@ -428,9 +452,11 @@ def calc_op_id(op, args, kwargs=None, bw_op=None):
             # print("grad:", _grad_ids[id(bw_op)][index], input.sum())
             op_id = op_id ^ _grad_ids[id(bw_op)][index]
         else:
-            op_id = op_id ^ get_input_id(input, default_id=getrandbits(32))
+            # op_id = op_id ^ get_input_id(input, default_id=getrandbits(32))
+            op_id = op_id ^ get_input_id(input, default_id=arg_id)
         # arg_id = getrandbits(32)
         # arg_id = arg_id << 1
+        arg_id = next_id(arg_id)
         # arg_id = arg_id + 1
     if kwargs is not None:
         for name, input in kwargs.items():
@@ -454,9 +480,9 @@ def function_wrapper(func):
                 _apply_scope = get_apply_scope()
                 register_cleanup_task(cleanup)
             tools = get_tools()
-            input_grad_fns = unpack_input_grad_fns(args) + unpack_input_grad_fns(
-                kwargs.values()
-            )
+            # input_grad_fns = unpack_input_grad_fns(args) + unpack_input_grad_fns(
+            #     kwargs.values()
+            # )
             inputs = [*args, kwargs]
             raw_func = func
             if isinstance(func, functools.partial):
@@ -474,6 +500,7 @@ def function_wrapper(func):
                     "insert_before_op": [],
                     "replace_op": [],
                     "insert_after_op": [],
+                    "backward_actions": False,
                 }
 
             if is_cached:
@@ -543,10 +570,13 @@ def function_wrapper(func):
                 )
             elif is_cache_enabled():
                 _cached_actions[op_id] = cached_actions
-            register_bw_events_recursively(context, outputs, input_grad_fns)
+            if not is_cached or cached_actions["backward_actions"]:
+                register_bw_events_recursively(context, outputs)
             # print(f"output of {raw_func}")
-            seed(op_id)
-            for index, output in enumerate(outputs):
+            # seed(op_id)
+            # arg_id = 0x100_0001
+            arg_id = next_id(op_id)
+            for output in outputs:
                 if isinstance(output, torch.Tensor):
                     # assert not hasattr(output, "__stable_id__")
                     # output.__stable_id__ = op_id + index + 1
@@ -557,7 +587,9 @@ def function_wrapper(func):
                     #     "id:", id(output),
                     #     output.sum()
                     # )
-                    _tensor_ids[tensor_id(output)] = getrandbits(32)
+                    # _tensor_ids[tensor_id(output)] = getrandbits(32)
+                    # _tensor_ids[tensor_id(output)] = op_id ^ arg_id
+                    _tensor_ids[tensor_id(output)] = arg_id
                     # print(
                     #     "output tensor:",
                     #     "sid:", _tensor_ids[tensor_id(output)],
@@ -570,12 +602,16 @@ def function_wrapper(func):
                 else:
                     # _stable_ids[output] = op_id + index + 1
                     # _stable_ids[id(output)] = op_id + index + 1
-                    _stable_ids[id(output)] = getrandbits(32)
+                    # _stable_ids[id(output)] = getrandbits(32)
+                    # _stable_ids[id(output)] = op_id ^ arg_id
+                    _stable_ids[id(output)] = arg_id
                     # print(
                     #     "other:",
                     #     "sid:", _stable_ids[id(output)],
                     #     "id:", id(output)
                     # )
+                # arg_id = arg_id << 1
+                arg_id = next_id(arg_id)
             if is_output_nested:
                 output = outputs[0]
             else:
