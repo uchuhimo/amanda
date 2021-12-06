@@ -1,7 +1,7 @@
-import amanda
 import torch
 from loguru import logger
 
+import amanda
 from examples.pruning.vector_wise_sparsity import create_mask
 
 
@@ -56,10 +56,12 @@ class PruneTool(amanda.Tool):
                     mask=context["mask"],
                 )
 
+    @torch.enable_grad()
     def mask_forward_weight(self, weight, mask):
         logger.debug(f"forward op with shape:{weight.shape} masked")
         return torch.mul(weight, mask)
 
+    @torch.enable_grad()
     def mask_backward_gradient(self, weight_grad, mask):
         logger.debug(f"backward op with shape:{weight_grad.shape} masked")
         return torch.mul(weight_grad, mask)

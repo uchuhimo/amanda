@@ -1,8 +1,9 @@
 from importlib.util import find_spec
 
 from . import event, import_hook, intercepts, io, tools  # noqa: F401
-from .adapter import Adapter, apply, get_adapter_registry  # noqa: F401
+from .adapter import Adapter, get_adapter_registry  # noqa: F401
 from .attributes import Attributes  # noqa: F401
+from .cache import cache_disabled, cache_enabled, is_cache_enabled  # noqa: F401
 from .event import Event, EventContext, OpContext  # noqa: F401
 from .graph import (  # noqa: F401
     Edge,
@@ -26,7 +27,7 @@ from .namespace import (  # noqa: F401
     get_mapper,
     get_mapping_table,
 )
-from .tool import Tool  # noqa: F401
+from .tool import Tool, apply  # noqa: F401
 from .type import DataType, unknown_type  # noqa: F401
 
 if find_spec("tensorflow"):

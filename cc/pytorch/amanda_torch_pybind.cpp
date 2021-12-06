@@ -1,5 +1,6 @@
 #include "function_pre_hook.cpp"
 #include "listener.cpp"
+#include "tensor_id.cpp"
 #include <pybind11/functional.h>
 #include <pybind11/pybind11.h>
 
@@ -12,4 +13,5 @@ PYBIND11_MODULE(amanda_torch_pybind, m) {
         "remove function pre hook");
   m.def("init_THPVariableClass", &init_THPVariableClass,
         "init THPVariableClass with torch.tensor");
+  m.def("tensor_id", &tensor_id, "get tensor's id");
 }
