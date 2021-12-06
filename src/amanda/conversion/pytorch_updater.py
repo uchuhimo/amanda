@@ -1,6 +1,7 @@
 import functools
 import inspect
 import weakref
+from collections import defaultdict
 from functools import wraps
 from typing import Any, Dict, List, MutableMapping, Set
 
@@ -155,7 +156,7 @@ _seed: int = None
 _grad_fns: Set[Any] = set()
 
 
-def register_bw_events_recursively(context, outputs):
+def register_bw_events_recursively(context, outputs, is_cached):
     """
     same functionality as register_bw_events() with subgraph matching,
     in this manner, a EventContext in bw phase have "op", "bw_op" two context,
@@ -212,7 +213,9 @@ def register_bw_events_recursively(context, outputs):
                 assert amanda_remove_pre_hook(bw_op, handle)
                 return tuple(grad_outputs)
 
-        def after_bw_op_hook(grad_input, grad_output, context, bw_op, handle):
+        def after_bw_op_hook(
+            grad_input, grad_output, context, bw_op, bw_subgraph_id, handle
+        ):
             with disabled():
                 _grad_fns.remove(bw_op)
                 if isinstance(grad_input, torch.Tensor):
@@ -270,11 +273,12 @@ def register_bw_events_recursively(context, outputs):
                     assert len(context.actions) == 0
 
                 if not is_cached and (
-                    len(cached_actions["insert_before_backward_op"]) > 0
-                    or len(cached_actions["replace_backward_op"]) > 0
-                    or len(cached_actions["insert_after_backward_op"]) > 0
+                    len(cached_actions["insert_before_backward_op"]) == 0
+                    and len(cached_actions["replace_backward_op"]) == 0
+                    and len(cached_actions["insert_after_backward_op"]) == 0
                 ):
-                    _cached_actions[context.op_id]["backward_actions"] = True
+                    _cached_actions[context.op_id]["has_backward_actions"] = False
+                    _has_cached_actions[bw_subgraph_id] = False
                 for grad_input, new_grad_input in zip(grad_inputs, new_grad_inputs):
                     if isinstance(grad_input, torch.Tensor) and isinstance(
                         new_grad_input, torch.Tensor
@@ -326,25 +330,33 @@ def register_bw_events_recursively(context, outputs):
                 handle=pre_handle,
             ),
         )
+        nonlocal bw_subgraph_id
         post_handle = grad_fn.register_hook(
             lambda grad_input, grad_output: after_bw_op_hook(
                 grad_input,
                 grad_output,
                 context=bw_context,
                 bw_op=grad_fn,
+                bw_subgraph_id=bw_subgraph_id,
                 handle=post_handle,
             )
         )
         for next_grad_fn, next_input_pos in grad_fn.next_functions:
+            bw_subgraph_id = next_id(bw_subgraph_id)
             # if next_grad_fn and next_grad_fn not in input_grad_fns:
             # if next_grad_fn and next_grad_fn not in _grad_fns:
-            _register_bw_events(context, next_grad_fn)
+            if not is_cached or _has_cached_actions[bw_subgraph_id]:
+                _register_bw_events(context, next_grad_fn)
 
     # registered_grad_fn = list()
 
+    bw_subgraph_id = next_id(context.op_id)
     for output in outputs:
-        if hasattr(output, "grad_fn"):
+        if hasattr(output, "grad_fn") and (
+            not is_cached or _has_cached_actions[bw_subgraph_id]
+        ):
             _register_bw_events(context, output.grad_fn)
+        bw_subgraph_id = next_id(bw_subgraph_id)
 
 
 """ unpack_input_grad_fns()
@@ -373,6 +385,7 @@ _stable_ids: MutableMapping[Any, int] = {}
 _grad_ids: MutableMapping[Any, Dict[int, int]] = {}
 _tensor_ids: MutableMapping[Any, int] = {}
 _cached_actions: Dict[int, Dict[str, List[Action]]] = {}
+_has_cached_actions: Dict[int, bool] = defaultdict(lambda: True)
 
 
 def cleanup():
@@ -382,6 +395,7 @@ def cleanup():
     _grad_ids.clear()
     _tensor_ids.clear()
     _cached_actions.clear()
+    _has_cached_actions.clear()
 
 
 def get_cache_size():
@@ -476,6 +490,7 @@ def function_wrapper(func):
                 assert _apply_scope == get_apply_scope()
                 _apply_scope = None
                 _cached_actions.clear()
+                _has_cached_actions.clear()
             if _apply_scope is None:
                 _apply_scope = get_apply_scope()
                 register_cleanup_task(cleanup)
@@ -500,7 +515,7 @@ def function_wrapper(func):
                     "insert_before_op": [],
                     "replace_op": [],
                     "insert_after_op": [],
-                    "backward_actions": False,
+                    "has_backward_actions": True,
                 }
 
             if is_cached:
@@ -570,8 +585,8 @@ def function_wrapper(func):
                 )
             elif is_cache_enabled():
                 _cached_actions[op_id] = cached_actions
-            if not is_cached or cached_actions["backward_actions"]:
-                register_bw_events_recursively(context, outputs)
+            if not is_cached or cached_actions["has_backward_actions"]:
+                register_bw_events_recursively(context, outputs, is_cached)
             # print(f"output of {raw_func}")
             # seed(op_id)
             # arg_id = 0x100_0001
