@@ -24,7 +24,7 @@ from amanda.io.file import root_dir
     scope="module",
     params=[
         models.resnet18,
-        # models.inception_v3,
+        models.inception_v3,
         pytest.param(models.resnet50, marks=pytest.mark.slow),
         pytest.param(models.inception_v3, marks=pytest.mark.slow),
         pytest.param(models.alexnet, marks=pytest.mark.slow),
