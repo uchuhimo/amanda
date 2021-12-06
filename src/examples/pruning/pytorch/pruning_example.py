@@ -1,6 +1,5 @@
 import os
 import sys
-from timeit import default_timer as timer
 
 import amanda
 import torch
@@ -10,6 +9,7 @@ import torchvision.transforms as transforms
 from loguru import logger
 
 from examples.pruning.pytorch.pruning_tool import PruneTool
+from examples.utils.timer import Timer
 
 
 def main():
@@ -74,30 +74,53 @@ def main():
     # Train the model
     total_step = len(train_loader)
 
-    tool = PruneTool()
+    # tool = PruneTool()
+    tool = None
+
+    total_time = 0
+    total_cnt = 0
 
     for epoch in range(num_epochs):
+
         for i, (images, labels) in enumerate(train_loader):
 
-            start = timer()
+            with Timer(verbose=True) as t:
 
-            with amanda.tool.apply(tool):
+                # with amanda.tool.apply(tool):
+                # with amanda.tool.apply(tool), amanda.cache_disabled():
+                with amanda.tool.apply(
+                    tool
+                ), amanda.cache_disabled(), amanda.disabled():
 
-                model.train()
-                images = images.to(device)
-                labels = labels.to(device)
+                    model.train()
+                    images = images.to(device)
+                    labels = labels.to(device)
 
-                # Forward pass
-                outputs = model(images)
-                loss = criterion(outputs, labels)
+                    # Forward pass
+                    outputs = model(images)
+                    loss = criterion(outputs, labels)
 
-                # Backward and optimize
-                optimizer.zero_grad()
-                loss.backward()
+                    # Backward and optimize
+                    optimizer.zero_grad()
+                    loss.backward()
 
-                optimizer.step()
+                    optimizer.step()
 
-            end = timer()
+            if i < 5:
+                pass
+            elif i < 15:
+                total_time += t.elapsed
+                total_cnt += 1
+            else:
+                print(f"avg time with warmup {total_time/total_cnt}")
+
+                # pr.disable()
+                # s = io.StringIO()
+                # ps = pstats.Stats(pr, stream=s).sort_stats('cumtime')
+                # ps.print_stats()
+                # pr.dump_stats('tmp/main.prof')
+
+                return
 
             if (i + 1) % 100 == 0:
                 print(
@@ -105,10 +128,6 @@ def main():
                         epoch + 1, num_epochs, i + 1, total_step, loss.item()
                     )
                 )
-
-            print(end - start)
-            # if i == 16:
-            #     return
 
         if epoch == 150:
             update_lr(optimizer, 0.01)
