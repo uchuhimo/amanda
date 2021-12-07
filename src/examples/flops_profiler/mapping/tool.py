@@ -66,16 +66,7 @@ class FlopsProfileTool(amanda.Tool):
     def tf_calculate_flops(self, *outputs, node):
         def op(*outputs):
             node.outputs = outputs
-            for key, kernel in pytorch_map:
-                if isinstance(key, str):
-                    key = [key]
-                if node.name in key:
-                    if kernel:
-                        print(node.name, kernel(node))
-                    else:
-                        print(node.name, 0)
-                    return outputs
-            print(node.name, "no impl.")
+            cal_node_flops(node, outputs)
             return outputs
 
         new_outputs = tf.py_function(
@@ -87,17 +78,7 @@ class FlopsProfileTool(amanda.Tool):
         return new_outputs
 
     def torch_calculate_flops(self, *outputs, node):
-        node.outputs = outputs
-        for key, kernel in pytorch_map:
-            if isinstance(key, str):
-                key = [key]
-            if node.name in key:
-                if kernel:
-                    print(node.name, kernel(node))
-                else:
-                    print(node.name, 0)
-                return
-        print(node.name, "no impl.")
+        cal_node_flops(node, outputs)
 
     def tf_profile_inputs(self, *inputs, node):
         def op(*inputs):
@@ -114,3 +95,18 @@ class FlopsProfileTool(amanda.Tool):
 
     def torch_profile_inputs(self, *inputs, node):
         node.inputs = inputs
+
+
+def cal_node_flops(node, outputs):
+    node.outputs = outputs
+    for key, kernel in pytorch_map:
+        if isinstance(key, str):
+            key = [key]
+        if node.name in key:
+            if kernel:
+                print(node.name, kernel(node))
+            else:
+                print(node.name, 0)
+            return outputs
+    print(node.name, "no impl.")
+    return outputs

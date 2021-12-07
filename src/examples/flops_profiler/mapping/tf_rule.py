@@ -23,4 +23,5 @@ tf_type_mapping = {
     "MatMul": "matmul",
     "Relu": "relu",
     "Addv2": "add",
+    "Conv2D": "conv2d",
 }
