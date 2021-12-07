@@ -1,8 +1,10 @@
 import amanda
 import torch
 import torchvision
+from amanda.cache import cache_disabled
 
 from examples.trace.pytorch.trace_tool import TraceTool
+from examples.utils.timer import Timer
 
 
 def main():
@@ -12,11 +14,13 @@ def main():
     x = torch.rand((2, 3, 227, 227)).to(device)
 
     tool = TraceTool(output_dir="tmp/trace_resnet50/tracetool.txt")
+    # tool = None
 
-    with amanda.tool.apply(tool):
+    with Timer(verbose=True) as t, cache_disabled():
+        with amanda.tool.apply(tool):
 
-        y = model(x)
-        y.backward(torch.rand_like(y))
+            y = model(x)
+            y.backward(torch.rand_like(y))
 
 
 if __name__ == "__main__":
