@@ -6,8 +6,10 @@ from functools import wraps
 from threading import RLock
 from typing import Any, Dict, List, MutableMapping, Set
 
+import torch
 from loguru import logger
 
+from amanda import intercepts
 from amanda.cache import is_cache_enabled
 from amanda.conversion.amanda_torch_pybind import (
     HookRegisterer,
@@ -54,8 +56,6 @@ def cleanup():
 
 
 def apply_insert_before_op(action, inputs):
-    import torch
-
     # logger.debug("apply_insert_before_op")
     with torch.no_grad():
         filtered_inputs = inputs
@@ -72,8 +72,6 @@ def apply_insert_before_op(action, inputs):
 
 
 def apply_insert_after_op(action, outputs):
-    import torch
-
     # logger.debug("apply_insert_after_op")
     with torch.no_grad():
         filtered_outputs = outputs
@@ -90,8 +88,6 @@ def apply_insert_after_op(action, outputs):
 
 
 def apply_replace_op(action, inputs):
-    import torch
-
     logger.debug("apply_replace_op")
     with torch.no_grad():
         filtered_inputs = inputs
@@ -119,7 +115,6 @@ def register_bw_events_recursively(context, outputs, is_cached):
     in this manner, a EventContext in bw phase have "op", "bw_op" two context,
     either of them may be None or not exists, denoting only exists in fw or bw,
     """
-    import torch
 
     def _register_bw_events(context, grad_fn):
         def before_bw_op_hook(grad_output, context, bw_op, bw_subgraph_id, handle):
@@ -359,8 +354,6 @@ def get_cache_size():
 
 
 def get_input_id(input, default_id, next_seed=None, inputs=None, is_unknown=None):
-    import torch
-
     if _debug_cache:
         if isinstance(input, torch.nn.Parameter):
             inputs.append(id(input))
@@ -484,8 +477,6 @@ def calc_op_id(self_id, args, kwargs=None, next_seed=None, is_unknown=None):
 def function_wrapper(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
-        import torch
-
         with disabled(), _lock:
             global _apply_scope
             if _apply_scope is not None and _apply_scope != get_apply_scope():
@@ -662,8 +653,6 @@ def _hook_for_profile_wrapper(_hook_for_profile_func):
     @wraps(_hook_for_profile_func)
     def wrapper(self):
         def hook_step(step_func):
-            import torch
-
             @wraps(step_func)
             def wrapper(self, closure=None):
                 step_func(self, closure)
@@ -687,8 +676,6 @@ def _hook_for_profile_wrapper(_hook_for_profile_func):
 
 
 def step_wrapper(func):
-    import torch
-
     @wraps(func)
     def wrapper(self, closure=None):
         func(self, closure)
@@ -704,8 +691,6 @@ def step_wrapper(func):
 
 
 def set_grad_wrapper(func):
-    import torch
-
     @wraps(func)
     def wrapper(self, grad):
         if grad is not None:
@@ -724,8 +709,6 @@ def set_grad_wrapper(func):
 
 
 def get_grad_wrapper(func):
-    import torch
-
     @wraps(func)
     def wrapper(self):
         grad = func(self)
@@ -825,10 +808,6 @@ TORCH_OP_LIST.update(TORCH_OP_OVERLOAD_LIST)
 
 
 def wrap_op(module, name, wrapper):
-    import torch
-
-    from amanda import intercepts
-
     handler = intercepts.to_handler(wrapper)
     if isinstance(module, torch._C._VariableFunctionsClass):
         if hasattr(module, name):
@@ -847,8 +826,6 @@ def listener_callback(op_name: str) -> str:
             return name[pos + 2 :]
         else:
             return name
-
-    import torch
 
     name = remove_namespace(op_name)
     # if name in ["is_leaf"]:
@@ -1021,10 +998,6 @@ def register_import_hook() -> None:
 
 
 def register_intercepts() -> None:
-    import torch
-
-    from amanda import intercepts
-
     HookRegisterer(listener_callback)
     intercepts.register(
         torch.nn.Module.register_buffer, intercepts.to_handler(register_buffer_wrapper)

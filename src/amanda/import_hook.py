@@ -10,9 +10,11 @@ from importlib._bootstrap_external import FileLoader
 from typing import Callable, List, Type
 
 import _imp
+from loguru import logger
+
 from amanda.lang import Handler, register_handler
 from amanda.threading import ThreadLocalStack
-from loguru import logger
+from amanda.tool import get_tools
 
 
 class Updater(ABC):
@@ -219,8 +221,6 @@ def is_enabled() -> bool:
 def check_enabled(func, hooked_func):
     @wraps(func)
     def wrapper(*args, **kwargs):
-        from amanda.tool import get_tools
-
         if is_enabled():
             tools = get_tools()
             if len(tools) == 0:

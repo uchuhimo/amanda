@@ -1,5 +1,6 @@
 import atexit
 import ctypes
+import importlib.util
 import sys
 import types
 from collections import OrderedDict
@@ -316,8 +317,6 @@ _inited: bool = False
 
 
 def init() -> None:
-    import importlib.util
-
     global _inited
     if _inited:
         return
@@ -334,6 +333,3 @@ def init() -> None:
 
         tensorflow_register_intercepts()
     _inited = True
-
-
-init()

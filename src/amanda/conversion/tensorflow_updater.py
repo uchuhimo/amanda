@@ -3,7 +3,17 @@ from dataclasses import dataclass
 from functools import wraps
 from typing import Any, List, MutableMapping, NamedTuple, OrderedDict, Set
 
+import tensorflow as tf
+from tensorflow.python import pywrap_tensorflow as tf_session
+from tensorflow.python.data.ops.iterator_ops import _IteratorSaveable
+from tensorflow.python.framework.meta_graph import import_scoped_meta_graph
+from tensorflow.python.training.saver import BaseSaverBuilder
+from tensorflow.python.util import function_utils
+
+from amanda import intercepts
 from amanda.cache import is_cache_enabled
+from amanda.conversion.amanda_tf_pybind import remove_op
+from amanda.conversion.tf import FuncSessionHook, apply_actions, collect_actions
 from amanda.import_hook import (
     InstScopeHook,
     check_enabled,
@@ -35,8 +45,6 @@ def update_node(tf_graph, node, updates):
 
 
 def update_fetches(tf_graph, variables_by_name, fetches, updates):
-    import tensorflow as tf
-
     if isinstance(fetches, list):
         for index, element in enumerate(fetches):
             new_element = update_fetches(tf_graph, variables_by_name, element, updates)
@@ -122,8 +130,6 @@ def update_graph(tf_graph, updates):
 
 
 def remove_op_from_graph(graph, op):
-    from amanda.conversion.amanda_tf_pybind import remove_op
-
     del graph._nodes_by_id[op._id]
     del graph._nodes_by_name[op.name]
     del graph._names_in_use[op.name.lower()]
@@ -131,22 +137,16 @@ def remove_op_from_graph(graph, op):
 
 
 def save_op(filename_tensor, saveables):
-    from tensorflow.python.training.saver import BaseSaverBuilder
-
     saver = BaseSaverBuilder()
     return saver.save_op(filename_tensor, saveables)
 
 
 def restore_op(filename_tensor, saveables):
-    from tensorflow.python.training.saver import BaseSaverBuilder
-
     saver = BaseSaverBuilder()
     return saver.bulk_restore(filename_tensor, saveables, 0, False)
 
 
 def get_saveable(iterator):
-    from tensorflow.python.data.ops.iterator_ops import _IteratorSaveable
-
     return _IteratorSaveable(iterator.outputs[0], iterator.name)
 
 
@@ -161,8 +161,6 @@ def get_iterator_inits(graph):
 
 
 def get_all_variables(graph):
-    import tensorflow as tf
-
     return graph.get_collection(tf.GraphKeys.GLOBAL_VARIABLES) + graph.get_collection(
         tf.GraphKeys.LOCAL_VARIABLES
     )
@@ -186,9 +184,6 @@ class TensorFlowAdapter:
         session._graph = graph
 
     def clone(self, graph):
-        import tensorflow as tf
-        from tensorflow.python.framework.meta_graph import import_scoped_meta_graph
-
         original_last_id = graph._last_id
         meta_graph_def = tf.train.export_meta_graph(graph=graph)
         new_graph = tf.Graph()
@@ -202,8 +197,6 @@ class TensorFlowAdapter:
         return new_graph
 
     def extract(self, session):
-        import tensorflow as tf
-
         snapshot = {}
         tf_graph_finalized = session.graph._finalized
         session.graph._finalized = False
@@ -243,9 +236,6 @@ class TensorFlowAdapter:
         return session.graph, snapshot
 
     def load(self, session, graph, snapshot):
-        import tensorflow as tf
-        from tensorflow.python import pywrap_tensorflow as tf_session
-
         opts = tf_session.TF_NewSessionOptions(
             target=session._target, config=session._config
         )
@@ -297,16 +287,12 @@ class TensorFlowAdapter:
         return new_fetches, new_feed_dict
 
     def execute_routines(self, session):
-        from amanda.conversion.tf import collect_actions
-
         graph = session.graph
         with graph.as_default(), session.as_default():
             actions = collect_actions(graph, get_tools())
         return actions
 
     def execute_actions(self, graph, actions):
-        from amanda.conversion.tf import apply_actions
-
         with graph.as_default():
             updates = apply_actions(graph, actions)
         update_graph(graph, updates)
@@ -383,8 +369,6 @@ def session_run_wrapper(func):
 
 
 def create_amanda_hook():
-    from amanda.conversion.tf import FuncSessionHook
-
     def begin():
         nonlocal context
         context = disabled()
@@ -419,24 +403,17 @@ class FilterHook(InstScopeHook):
         return disabled_ops
 
     def begin(self, is_enabled: bool) -> None:
-        import tensorflow as tf
-
         tf_graph = tf.get_default_graph()
         self.begin_ops_list.append(set(op.name for op in tf_graph.get_operations()))
         self.is_enabled_list.append(is_enabled)
 
     def end(self, is_enabled: bool) -> None:
-        import tensorflow as tf
-
         tf_graph = tf.get_default_graph()
         self.end_ops_list.insert(0, set(op.name for op in tf_graph.get_operations()))
 
 
 def model_fn_wrapper(model_fn):
     def new_model_fn(features, labels, mode, params, config):
-        import tensorflow as tf
-        from tensorflow.python.util import function_utils
-
         model_fn_args = function_utils.fn_args(model_fn)
         kwargs = {}
         if "labels" in model_fn_args:
@@ -553,10 +530,6 @@ def register_import_hook() -> None:
 
 
 def register_intercepts() -> None:
-    import tensorflow as tf
-
-    from amanda import intercepts
-
     intercepts.register(tf.Session.run, intercepts.to_handler(session_run_wrapper))
     intercepts.register(
         tf.estimator.Estimator.train, intercepts.to_handler(train_wrapper)
