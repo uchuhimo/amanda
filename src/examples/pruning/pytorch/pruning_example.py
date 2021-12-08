@@ -83,9 +83,9 @@ def main():
 
     from amanda.conversion import pytorch_updater
 
-    pytorch_updater._debug_cache = True
+    # pytorch_updater._debug_cache = True
+    # with amanda.tool.apply(tool), amanda.disabled():
     with amanda.tool.apply(tool):
-        # with amanda.tool.apply(tool), amanda.disabled():
         for epoch in range(num_epochs):
 
             for i, (images, labels) in enumerate(train_loader):

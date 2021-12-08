@@ -326,6 +326,8 @@ def register_bw_events_recursively(context, outputs, is_cached):
         nonlocal bw_subgraph_id
         local_bw_subgraph_id = bw_subgraph_id
         if not is_cached or _has_cached_pre_actions[local_bw_subgraph_id]:
+            # if _debug_cache and _should_hit:
+            #     print("before_bw_op_hook", grad_fn)
             pre_handle = amanda_add_pre_hook(
                 grad_fn,
                 lambda grad_output: before_bw_op_hook(
@@ -336,6 +338,8 @@ def register_bw_events_recursively(context, outputs, is_cached):
                 ),
             )
         if not is_cached or _has_cached_post_actions[local_bw_subgraph_id]:
+            # if _debug_cache and _should_hit:
+            #     print("after_bw_op_hook", grad_fn)
             post_handle = grad_fn.register_hook(
                 lambda grad_input, grad_output: after_bw_op_hook(
                     grad_input,
@@ -352,14 +356,16 @@ def register_bw_events_recursively(context, outputs, is_cached):
             # print("x4", bw_subgraph_id.ref)
             _register_bw_events(context, next_grad_fn)
 
-    bw_subgraph_id = next_id(context.op_id)
+    bw_subgraph_id = context.op_id
     # print(f"begin {context.op}")
     for output in outputs:
-        if hasattr(output, "grad_fn"):
+        bw_subgraph_id = next_id(bw_subgraph_id)
+        if hasattr(output, "grad_fn") and output.requires_grad:
+            # if _debug_cache and _should_hit:
+            #     print("_register_bw_events", context.op, type(output))
             # print(f"is_cached: {is_cached}, bw_subgraph_id: {bw_subgraph_id}")
             _register_bw_events(context, output.grad_fn)
         # print("x1", bw_subgraph_id.ref)
-        bw_subgraph_id = next_id(bw_subgraph_id)
         # print("x2", bw_subgraph_id.ref)
     # print("end")
 
@@ -714,7 +720,9 @@ def function_wrapper(func):
                             and not hasattr(output, "__stable_id__")
                         ):
                             output.__stable_id__ = arg_id
-            if not is_cached or cached_actions["has_backward_actions"]:
+            if torch.is_grad_enabled() and (
+                not is_cached or cached_actions["has_backward_actions"]
+            ):
                 register_bw_events_recursively(context, outputs, is_cached)
             if is_output_nested:
                 output = outputs[0]
