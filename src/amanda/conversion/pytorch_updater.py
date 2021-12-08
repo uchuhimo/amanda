@@ -122,26 +122,16 @@ def register_bw_events_recursively(context, outputs, is_cached):
     import torch
 
     def _register_bw_events(context, grad_fn):
-        def before_bw_op_hook(grad_output, context, bw_op, handle):
+        def before_bw_op_hook(grad_output, context, bw_op, bw_subgraph_id, handle):
             with disabled(), _lock:
                 if isinstance(grad_output, torch.Tensor):
                     grad_outputs = [grad_output]
                 else:
                     grad_outputs = list(grad_output)
                 bw_raw_op = bw_op.__class__
-                self_id = id(bw_raw_op)
-                # print(f"bw input of {id(bw_op)}")
-                is_unknown = Ref(True)
-                next_seed = Ref(self_id)
                 if _debug_cache:
-                    bw_op_id, cached_inputs = calc_op_id(
-                        self_id,
-                        grad_outputs,
-                        bw_op=bw_op,
-                        next_seed=next_seed,
-                        is_unknown=is_unknown,
-                    )
-                    _cache_tracer.op_to_inputs[id(bw_op)] = cached_inputs
+                    bw_op_id = bw_subgraph_id
+                    _cache_tracer.op_to_inputs[id(bw_op)] = []
                     _cache_tracer.id_to_cache[id(bw_op)] = [
                         "bw_op",
                         bw_op,
@@ -149,18 +139,10 @@ def register_bw_events_recursively(context, outputs, is_cached):
                         bw_op_id,
                     ]
                 else:
-                    bw_op_id = calc_op_id(
-                        self_id,
-                        grad_outputs,
-                        bw_op=bw_op,
-                        next_seed=next_seed,
-                        is_unknown=is_unknown,
-                    )
-                context["is_unknown"] = is_unknown
+                    bw_op_id = bw_subgraph_id
 
                 is_cached = False
                 if is_cache_enabled() and bw_op_id in _cached_actions:
-                    # print("hit", bw_raw_op, bw_op_id)
                     cached_actions = _cached_actions[bw_op_id]
                     is_cached = True
                 else:
@@ -216,7 +198,6 @@ def register_bw_events_recursively(context, outputs, is_cached):
                 new_grad_inputs = list(grad_inputs)
 
                 bw_op_id = context.backward_op_id
-                # print(f"bw_op: {bw_op.__class__}, bw_op_id: {bw_op_id}")
                 is_cached = False
                 cached_actions = _cached_actions.get(bw_op_id, {})
                 if (
@@ -274,44 +255,6 @@ def register_bw_events_recursively(context, outputs, is_cached):
                             _cached_actions[context.op_id][
                                 "has_backward_actions"
                             ] = False
-                arg_id = next_id(bw_op_id)
-                if _debug_cache:
-                    for grad_input, (next_op, input_index) in zip(
-                        grad_inputs, bw_op.next_functions
-                    ):
-                        if grad_input is not None:
-                            if id(next_op) not in _grad_ids:
-                                _grad_ids[id(next_op)] = {}
-                            if context["is_unknown"].ref:
-                                _grad_ids[id(next_op)].pop(input_index, None)
-                            else:
-                                _cache_tracer.output_to_op[
-                                    (id(next_op), input_index)
-                                ] = id(bw_op)
-                                _cache_tracer.id_to_cache[
-                                    (id(next_op), input_index)
-                                ] = [
-                                    "bw_output",
-                                    type(grad_input),
-                                    "id:",
-                                    id(grad_input),
-                                    "sid:",
-                                    arg_id,
-                                ]
-                                _grad_ids[id(next_op)][input_index] = arg_id
-                        arg_id = next_id(arg_id)
-                else:
-                    for grad_input, (next_op, input_index) in zip(
-                        grad_inputs, bw_op.next_functions
-                    ):
-                        if grad_input is not None:
-                            if id(next_op) not in _grad_ids:
-                                _grad_ids[id(next_op)] = {}
-                            if context["is_unknown"].ref:
-                                _grad_ids[id(next_op)].pop(input_index, None)
-                            else:
-                                _grad_ids[id(next_op)][input_index] = arg_id
-                        arg_id = next_id(arg_id)
                 for grad_input, new_grad_input in zip(grad_inputs, new_grad_inputs):
                     if isinstance(grad_input, torch.Tensor) and isinstance(
                         new_grad_input, torch.Tensor
@@ -334,6 +277,7 @@ def register_bw_events_recursively(context, outputs, is_cached):
                     grad_output,
                     context=bw_context,
                     bw_op=grad_fn,
+                    bw_subgraph_id=local_bw_subgraph_id,
                     handle=pre_handle,
                 ),
             )
@@ -351,23 +295,16 @@ def register_bw_events_recursively(context, outputs, is_cached):
                 )
             )
         for next_grad_fn, next_input_pos in grad_fn.next_functions:
-            # print("x3", bw_subgraph_id.ref)
             bw_subgraph_id = next_id(bw_subgraph_id)
-            # print("x4", bw_subgraph_id.ref)
             _register_bw_events(context, next_grad_fn)
 
     bw_subgraph_id = context.op_id
-    # print(f"begin {context.op}")
     for output in outputs:
         bw_subgraph_id = next_id(bw_subgraph_id)
         if hasattr(output, "grad_fn") and output.requires_grad:
             # if _debug_cache and _should_hit:
             #     print("_register_bw_events", context.op, type(output))
-            # print(f"is_cached: {is_cached}, bw_subgraph_id: {bw_subgraph_id}")
             _register_bw_events(context, output.grad_fn)
-        # print("x1", bw_subgraph_id.ref)
-        # print("x2", bw_subgraph_id.ref)
-    # print("end")
 
 
 """ unpack_input_grad_fns()
@@ -498,28 +435,19 @@ def get_input_id(input, default_id, next_seed=None, inputs=None, is_unknown=None
             return default_id
 
 
-def calc_op_id(self_id, args, kwargs=None, bw_op=None, next_seed=None, is_unknown=None):
+def calc_op_id(self_id, args, kwargs=None, next_seed=None, is_unknown=None):
     if _debug_cache:
         inputs = []
         op_id = 0
-        for index, input in enumerate(args):
+        for input in args:
             next_seed.ref = next_id(next_seed.ref)
-            if (
-                bw_op is not None
-                and id(bw_op) in _grad_ids
-                and index in _grad_ids[id(bw_op)]
-            ):
-                inputs.append((id(bw_op), index))
-                op_id = op_id ^ _grad_ids[id(bw_op)][index]
-                is_unknown.ref = False
-            else:
-                op_id = op_id ^ get_input_id(
-                    input,
-                    default_id=next_seed.ref,
-                    next_seed=next_seed,
-                    inputs=inputs,
-                    is_unknown=is_unknown,
-                )
+            op_id = op_id ^ get_input_id(
+                input,
+                default_id=next_seed.ref,
+                next_seed=next_seed,
+                inputs=inputs,
+                is_unknown=is_unknown,
+            )
         if kwargs is not None:
             for name, input in kwargs.items():
                 op_id = op_id ^ get_input_id(
@@ -533,22 +461,14 @@ def calc_op_id(self_id, args, kwargs=None, bw_op=None, next_seed=None, is_unknow
         return op_id, inputs
     else:
         op_id = 0
-        for index, input in enumerate(args):
+        for input in args:
             next_seed.ref = next_id(next_seed.ref)
-            if (
-                bw_op is not None
-                and id(bw_op) in _grad_ids
-                and index in _grad_ids[id(bw_op)]
-            ):
-                op_id = op_id ^ _grad_ids[id(bw_op)][index]
-                is_unknown.ref = False
-            else:
-                op_id = op_id ^ get_input_id(
-                    input,
-                    default_id=next_seed.ref,
-                    next_seed=next_seed,
-                    is_unknown=is_unknown,
-                )
+            op_id = op_id ^ get_input_id(
+                input,
+                default_id=next_seed.ref,
+                next_seed=next_seed,
+                is_unknown=is_unknown,
+            )
         if kwargs is not None:
             for name, input in kwargs.items():
                 op_id = op_id ^ get_input_id(
@@ -599,7 +519,6 @@ def function_wrapper(func):
                 op_id = calc_op_id(
                     self_id, args, kwargs, next_seed=next_seed, is_unknown=is_unknown
                 )
-            # print(f"op: {raw_func}, op_id: {op_id}")
 
             is_cached = False
             if is_cache_enabled() and op_id in _cached_actions:
@@ -614,15 +533,10 @@ def function_wrapper(func):
                     "has_backward_actions": True,
                 }
                 if _debug_cache and _should_hit:
-                    # print("miss", raw_func.__name__, op_id)
                     print()
                     _cache_tracer.print_trace_from_op(op_id)
                     raise RuntimeError()
                     # pass
-            # if _debug_cache and _should_hit and raw_op.__name__ == "grad":
-            # if _debug_cache and raw_op.__name__ == "grad":
-            #     print()
-            #     _cache_tracer.print_trace_from_op(op_id)
 
             if is_cached:
                 for action in cached_actions["insert_before_op"]:

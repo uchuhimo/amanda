@@ -119,7 +119,7 @@ def main():
                 #     exit(0)
                 if i < 5:
                     pass
-                elif i < 15:
+                elif i < 25:
                     total_time += t.elapsed
                     total_cnt += 1
                 else:
