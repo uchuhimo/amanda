@@ -1,13 +1,13 @@
 import os
 import sys
 
-import amanda
 import torch
 import torch.nn as nn
 import torchvision
 import torchvision.transforms as transforms
 from loguru import logger
 
+import amanda
 from examples.pruning.pytorch.pruning_tool import PruneTool
 from examples.utils.timer import Timer
 
@@ -83,7 +83,7 @@ def main():
 
     from amanda.conversion import pytorch_updater
 
-    # pytorch_updater._debug_cache = True
+    pytorch_updater._debug_cache = True
     with amanda.tool.apply(tool):
         # with amanda.tool.apply(tool), amanda.disabled():
         for epoch in range(num_epochs):

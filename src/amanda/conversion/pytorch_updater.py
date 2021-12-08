@@ -1,7 +1,6 @@
 import functools
 import inspect
 import types
-import weakref
 from collections import defaultdict
 from functools import wraps
 from threading import RLock
@@ -19,9 +18,7 @@ from amanda.event import (
     Action,
     OpContext,
     after_backward_op_call,
-    after_backward_op_executed,
     after_op_call,
-    before_backward_op_executed,
     on_backward_op_call,
     on_op_call,
 )
@@ -36,14 +33,9 @@ from amanda.import_hook import (
 from amanda.lang import get_superclasses
 from amanda.tool import get_apply_scope, get_tools, register_cleanup_task
 
-# def tensor_id(tensor):
-#     return id(tensor)
-
 _lock: RLock = RLock()
 _apply_scope = None
-_stable_ids: MutableMapping[Any, int] = {}
 _grad_ids: MutableMapping[Any, Dict[int, int]] = {}
-_tensor_ids: MutableMapping[Any, int] = {}
 _cached_actions: Dict[int, Dict[str, List[Action]]] = {}
 _has_cached_pre_actions: Dict[int, bool] = defaultdict(lambda: True)
 _has_cached_post_actions: Dict[int, bool] = defaultdict(lambda: True)
@@ -55,75 +47,10 @@ def cleanup():
     global _apply_scope
     _apply_scope = None
     with _lock:
-        _stable_ids.clear()
         _grad_ids.clear()
-        _tensor_ids.clear()
         _cached_actions.clear()
         _has_cached_pre_actions.clear()
         _has_cached_post_actions.clear()
-
-
-def registry_bw_events(context, output):
-    """
-    registry the backward hooks for before/after backward op events.
-    before_bw_op_event is hooked on output tensor.
-    after_bw_op_event is hooked on backward function of output tensor.
-        it is the output.grad_fn.
-    note that this method is coupled with pytorch and need to be refactored
-
-    hook wrapper= triggers the event with context and remove the hook.
-    note that if a hook is not triggered, then it will not be collected!
-    this may caused by ops only existed only in forward phase.
-    """
-
-    def before_bw_op_hook(context, output):
-        context.trigger(before_backward_op_executed, output_grad=output)
-        before_bw_op_hook_handle.remove()
-
-    def after_bw_op_hook(context, input, output):
-        context.trigger(
-            after_backward_op_executed, input_grad=input, output_grad=output
-        )
-        after_bw_op_hook_handle.remove()
-
-    if hasattr(output, "register_hook") and output.requires_grad:
-        before_bw_op_hook_handle = output.register_hook(
-            lambda output: before_bw_op_hook(context, output)
-        )
-
-    if hasattr(output, "grad_fn"):  # skip ops with non-tensor output
-        if (
-            output.grad_fn.__class__.__name__ == "UnsafeViewBackward"
-        ):  # check for broadcast case
-            """check for broadcast case
-            not considering broadcast of input tensors now
-            """
-            # print(f"add backward with broadcast")
-            if output.grad_fn.next_functions[0][0]:
-                after_bw_op_hook_handle = output.grad_fn.next_functions[0][
-                    0
-                ].register_hook(
-                    lambda input, output: after_bw_op_hook(
-                        context, input, context["output_grad"]
-                    )
-                )
-        elif output.grad_fn.__class__.__name__ == "AddBackward0":  # check for bias
-            # print(f"add backward with bias founded")
-            if output.grad_fn.next_functions[0][0]:
-                after_bw_op_hook_handle = output.grad_fn.next_functions[0][
-                    0
-                ].register_hook(
-                    lambda input, output: after_bw_op_hook(
-                        context, input, context["output_grad"]
-                    )
-                )
-        else:
-            if output.grad_fn:
-                after_bw_op_hook_handle = output.grad_fn.register_hook(
-                    lambda input, output: after_bw_op_hook(context, input, output)
-                )
-    else:
-        pass
 
 
 def apply_insert_before_op(action, inputs):
@@ -197,7 +124,6 @@ def register_bw_events_recursively(context, outputs, is_cached):
     def _register_bw_events(context, grad_fn):
         def before_bw_op_hook(grad_output, context, bw_op, handle):
             with disabled(), _lock:
-                # with disabled():
                 if isinstance(grad_output, torch.Tensor):
                     grad_outputs = [grad_output]
                 else:
@@ -205,7 +131,6 @@ def register_bw_events_recursively(context, outputs, is_cached):
                 bw_raw_op = bw_op.__class__
                 self_id = id(bw_raw_op)
                 # print(f"bw input of {id(bw_op)}")
-                # with _lock:
                 is_unknown = Ref(True)
                 next_seed = Ref(self_id)
                 if _debug_cache:
@@ -283,7 +208,6 @@ def register_bw_events_recursively(context, outputs, is_cached):
             grad_input, grad_output, context, bw_op, bw_subgraph_id, handle
         ):
             with disabled(), _lock:
-                # with disabled():
                 _grad_fns.remove(bw_op)
                 if isinstance(grad_input, torch.Tensor):
                     grad_inputs = [grad_input]
@@ -350,10 +274,7 @@ def register_bw_events_recursively(context, outputs, is_cached):
                             _cached_actions[context.op_id][
                                 "has_backward_actions"
                             ] = False
-                # seed(context.backward_op_id)
-                # arg_id = 0x10_0001
                 arg_id = next_id(bw_op_id)
-                # with _lock:
                 if _debug_cache:
                     for grad_input, (next_op, input_index) in zip(
                         grad_inputs, bw_op.next_functions
@@ -398,15 +319,9 @@ def register_bw_events_recursively(context, outputs, is_cached):
                         grad_input.data = new_grad_input
                 handle.remove()
 
-        if not (
-            grad_fn
-            # and grad_fn not in input_grad_fns
-            # and grad_fn not in registered_grad_fn
-            and grad_fn not in _grad_fns
-        ):
+        if not (grad_fn and grad_fn not in _grad_fns):
             return
         _grad_fns.add(grad_fn)
-        # registered_grad_fn.append(grad_fn)
         bw_context = context.inherite()
         nonlocal bw_subgraph_id
         local_bw_subgraph_id = bw_subgraph_id
@@ -435,12 +350,7 @@ def register_bw_events_recursively(context, outputs, is_cached):
             # print("x3", bw_subgraph_id.ref)
             bw_subgraph_id = next_id(bw_subgraph_id)
             # print("x4", bw_subgraph_id.ref)
-            # if next_grad_fn and next_grad_fn not in input_grad_fns:
-            # if next_grad_fn and next_grad_fn not in _grad_fns:
-            # if not is_cached or _has_cached_actions[bw_subgraph_id.ref]:
             _register_bw_events(context, next_grad_fn)
-
-    # registered_grad_fn = list()
 
     bw_subgraph_id = next_id(context.op_id)
     # print(f"begin {context.op}")
@@ -448,8 +358,6 @@ def register_bw_events_recursively(context, outputs, is_cached):
         if hasattr(output, "grad_fn"):
             # print(f"is_cached: {is_cached}, bw_subgraph_id: {bw_subgraph_id}")
             _register_bw_events(context, output.grad_fn)
-        # if is_cached and not _has_cached_actions[bw_subgraph_id.ref]:
-        #     print(f"skip actions for {output.grad_fn}")
         # print("x1", bw_subgraph_id.ref)
         bw_subgraph_id = next_id(bw_subgraph_id)
         # print("x2", bw_subgraph_id.ref)
@@ -653,7 +561,6 @@ def function_wrapper(func):
         import torch
 
         with disabled(), _lock:
-            # with disabled():
             global _apply_scope
             if _apply_scope is not None and _apply_scope != get_apply_scope():
                 assert _apply_scope == get_apply_scope()
@@ -665,15 +572,11 @@ def function_wrapper(func):
                 _apply_scope = get_apply_scope()
                 register_cleanup_task(cleanup)
             tools = get_tools()
-            # input_grad_fns = unpack_input_grad_fns(args) + unpack_input_grad_fns(
-            #     kwargs.values()
-            # )
             inputs = [*args, kwargs]
             raw_func = func
             if isinstance(func, functools.partial):
                 raw_func = func.__wrapped__
             context = OpContext(tools=tools, namespace="pytorch")
-            # with _lock:
             raw_op = raw_func
             if isinstance(raw_func, types.MethodWrapperType):
                 raw_op = raw_func.__self__
@@ -822,15 +725,10 @@ def function_wrapper(func):
     return check_enabled(func, wrapper)
 
 
-_buffers: MutableMapping[int, Any] = weakref.WeakValueDictionary()
-_grads: MutableMapping[int, Any] = weakref.WeakValueDictionary()
-
-
 def register_buffer_wrapper(func):
     @wraps(func)
     def wrapper(self, name, tensor, persistent=True):
         if tensor is not None:
-            # _buffers[id(tensor)] = tensor
             tensor.__stable_id__ = id(tensor)
             tensor.__is_buffer__ = True
         return func(self, name, tensor, persistent)
@@ -854,7 +752,6 @@ def _hook_for_profile_wrapper(_hook_for_profile_func):
                             if isinstance(value, torch.Tensor):
                                 value.__stable_id__ = id(value)
                                 value.__is_state__ = True
-                                # _buffers[id(value)] = value
 
             return wrapper
 
@@ -880,7 +777,6 @@ def step_wrapper(func):
                     if isinstance(value, torch.Tensor):
                         value.__stable_id__ = id(value)
                         value.__is_state__ = True
-                        # _buffers[id(value)] = value
 
     return wrapper
 

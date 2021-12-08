@@ -257,7 +257,7 @@ def test_pytorch_cache_enabled(model_and_input):
     tool = TestCacheTool()
     with amanda.tool.apply(tool):
         try:
-            # pytorch_updater._debug_cache = True
+            pytorch_updater._debug_cache = True
             assert is_cache_enabled()
             # model = model.to(device)
             if isinstance(model, GeneralizedRCNN):
