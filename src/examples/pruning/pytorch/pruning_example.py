@@ -48,16 +48,17 @@ def main():
         root="./data", train=True, download=True, transform=transform_train
     )
     train_loader = torch.utils.data.DataLoader(
-        trainset, batch_size=batch_size, shuffle=True, num_workers=4
+        trainset, batch_size=batch_size, shuffle=True, num_workers=0
     )
     testset = torchvision.datasets.CIFAR100(
         root="./data", train=False, download=True, transform=transform_test
     )
     test_loader = torch.utils.data.DataLoader(
-        testset, batch_size=batch_size, shuffle=False, num_workers=4
+        testset, batch_size=batch_size, shuffle=False, num_workers=0
     )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # device = "cpu"
 
     model = torchvision.models.resnet50(num_classes=100).to(device)
 
@@ -74,24 +75,30 @@ def main():
     # Train the model
     total_step = len(train_loader)
 
-    # tool = PruneTool()
+    tool = PruneTool()
     tool = None
 
     total_time = 0
     total_cnt = 0
 
-    for epoch in range(num_epochs):
+    from amanda.conversion import pytorch_updater
 
-        for i, (images, labels) in enumerate(train_loader):
+    # pytorch_updater._debug_cache = True
+    with amanda.tool.apply(tool):
+        # with amanda.tool.apply(tool), amanda.disabled():
+        for epoch in range(num_epochs):
 
-            with Timer(verbose=True) as t:
+            for i, (images, labels) in enumerate(train_loader):
 
-                # with amanda.tool.apply(tool):
-                # with amanda.tool.apply(tool), amanda.cache_disabled():
-                with amanda.tool.apply(
-                    tool
-                ), amanda.cache_disabled(), amanda.disabled():
+                with Timer(verbose=True) as t:
 
+                    # with amanda.tool.apply(tool):
+                    # with amanda.tool.apply(tool), amanda.cache_disabled():
+                    # with amanda.tool.apply(
+                    #     tool
+                    # ), amanda.cache_disabled(), amanda.disabled():
+
+                    print(f"batch {i}")
                     model.train()
                     images = images.to(device)
                     labels = labels.to(device)
@@ -106,55 +113,59 @@ def main():
 
                     optimizer.step()
 
-            if i < 5:
-                pass
-            elif i < 15:
-                total_time += t.elapsed
-                total_cnt += 1
-            else:
-                print(f"avg time with warmup {total_time/total_cnt}")
+                if i == 1:
+                    pytorch_updater._should_hit = True
+                # if i >= 2:
+                #     exit(0)
+                if i < 5:
+                    pass
+                elif i < 15:
+                    total_time += t.elapsed
+                    total_cnt += 1
+                else:
+                    print(f"avg time with warmup {total_time/total_cnt}")
 
-                # pr.disable()
-                # s = io.StringIO()
-                # ps = pstats.Stats(pr, stream=s).sort_stats('cumtime')
-                # ps.print_stats()
-                # pr.dump_stats('tmp/main.prof')
+                    # pr.disable()
+                    # s = io.StringIO()
+                    # ps = pstats.Stats(pr, stream=s).sort_stats('cumtime')
+                    # ps.print_stats()
+                    # pr.dump_stats('tmp/main.prof')
 
-                return
+                    return
 
-            if (i + 1) % 100 == 0:
+                if (i + 1) % 100 == 0:
+                    print(
+                        "Epoch [{}/{}], Step [{}/{}] Loss: {:.4f}".format(
+                            epoch + 1, num_epochs, i + 1, total_step, loss.item()
+                        )
+                    )
+
+            if epoch == 150:
+                update_lr(optimizer, 0.01)
+            elif epoch == 250:
+                update_lr(optimizer, 0.001)
+
+            # Test the model
+            model.eval()
+            with torch.no_grad():
+                correct = 0
+                total = 0
+                for images, labels in test_loader:
+                    images = images.to(device)
+                    labels = labels.to(device)
+                    outputs = model(images)
+                    _, predicted = torch.max(outputs.data, 1)
+                    total += labels.size(0)
+                    correct += (predicted == labels).sum().item()
+
                 print(
-                    "Epoch [{}/{}], Step [{}/{}] Loss: {:.4f}".format(
-                        epoch + 1, num_epochs, i + 1, total_step, loss.item()
+                    "Accuracy of the model on the test images: {} %".format(
+                        100 * correct / total
                     )
                 )
 
-        if epoch == 150:
-            update_lr(optimizer, 0.01)
-        elif epoch == 250:
-            update_lr(optimizer, 0.001)
-
-        # Test the model
-        model.eval()
-        with torch.no_grad():
-            correct = 0
-            total = 0
-            for images, labels in test_loader:
-                images = images.to(device)
-                labels = labels.to(device)
-                outputs = model(images)
-                _, predicted = torch.max(outputs.data, 1)
-                total += labels.size(0)
-                correct += (predicted == labels).sum().item()
-
-            print(
-                "Accuracy of the model on the test images: {} %".format(
-                    100 * correct / total
-                )
-            )
-
-        # Save the model checkpoint
-        torch.save(model.state_dict(), f"{save_path}/epoch_{epoch}.ckpt")
+            # Save the model checkpoint
+            torch.save(model.state_dict(), f"{save_path}/epoch_{epoch}.ckpt")
 
 
 if __name__ == "__main__":

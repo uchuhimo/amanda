@@ -1,8 +1,10 @@
 import functools
 import inspect
+import types
 import weakref
 from collections import defaultdict
 from functools import wraps
+from threading import RLock
 from typing import Any, Dict, List, MutableMapping, Set
 
 from loguru import logger
@@ -12,7 +14,6 @@ from amanda.conversion.amanda_torch_pybind import (
     HookRegisterer,
     amanda_add_pre_hook,
     amanda_remove_pre_hook,
-    tensor_id,
 )
 from amanda.event import (
     Action,
@@ -34,6 +35,32 @@ from amanda.import_hook import (
 )
 from amanda.lang import get_superclasses
 from amanda.tool import get_apply_scope, get_tools, register_cleanup_task
+
+# def tensor_id(tensor):
+#     return id(tensor)
+
+_lock: RLock = RLock()
+_apply_scope = None
+_stable_ids: MutableMapping[Any, int] = {}
+_grad_ids: MutableMapping[Any, Dict[int, int]] = {}
+_tensor_ids: MutableMapping[Any, int] = {}
+_cached_actions: Dict[int, Dict[str, List[Action]]] = {}
+_has_cached_pre_actions: Dict[int, bool] = defaultdict(lambda: True)
+_has_cached_post_actions: Dict[int, bool] = defaultdict(lambda: True)
+_debug_cache: bool = False
+_should_hit = False
+
+
+def cleanup():
+    global _apply_scope
+    _apply_scope = None
+    with _lock:
+        _stable_ids.clear()
+        _grad_ids.clear()
+        _tensor_ids.clear()
+        _cached_actions.clear()
+        _has_cached_pre_actions.clear()
+        _has_cached_post_actions.clear()
 
 
 def registry_bw_events(context, output):
@@ -147,13 +174,16 @@ def apply_replace_op(action, inputs):
 
 
 def next_id(id):
-    return (id * 1103515245 + 12345) & 0x7FFFFFFF
-
-
-_seed: int = None
+    # return (id * 1103515245 + 12345) & 0x7FFFFFFF
+    return (id * 25214903917 + 11) & 0xFFFF_FFFF_FFFF
 
 
 _grad_fns: Set[Any] = set()
+
+
+class Ref:
+    def __init__(self, ref):
+        self.ref = ref
 
 
 def register_bw_events_recursively(context, outputs, is_cached):
@@ -166,14 +196,42 @@ def register_bw_events_recursively(context, outputs, is_cached):
 
     def _register_bw_events(context, grad_fn):
         def before_bw_op_hook(grad_output, context, bw_op, handle):
-            with disabled():
+            with disabled(), _lock:
+                # with disabled():
                 if isinstance(grad_output, torch.Tensor):
                     grad_outputs = [grad_output]
                 else:
                     grad_outputs = list(grad_output)
                 bw_raw_op = bw_op.__class__
+                self_id = id(bw_raw_op)
                 # print(f"bw input of {id(bw_op)}")
-                bw_op_id = calc_op_id(bw_raw_op, grad_outputs, bw_op=bw_op)
+                # with _lock:
+                is_unknown = Ref(True)
+                next_seed = Ref(self_id)
+                if _debug_cache:
+                    bw_op_id, cached_inputs = calc_op_id(
+                        self_id,
+                        grad_outputs,
+                        bw_op=bw_op,
+                        next_seed=next_seed,
+                        is_unknown=is_unknown,
+                    )
+                    _cache_tracer.op_to_inputs[id(bw_op)] = cached_inputs
+                    _cache_tracer.id_to_cache[id(bw_op)] = [
+                        "bw_op",
+                        bw_op,
+                        "sid:",
+                        bw_op_id,
+                    ]
+                else:
+                    bw_op_id = calc_op_id(
+                        self_id,
+                        grad_outputs,
+                        bw_op=bw_op,
+                        next_seed=next_seed,
+                        is_unknown=is_unknown,
+                    )
+                context["is_unknown"] = is_unknown
 
                 is_cached = False
                 if is_cache_enabled() and bw_op_id in _cached_actions:
@@ -184,6 +242,11 @@ def register_bw_events_recursively(context, outputs, is_cached):
                     cached_actions = {
                         "insert_before_backward_op": [],
                     }
+                    if _debug_cache and _should_hit:
+                        print()
+                        _cache_tracer.print_trace_from_op(id(bw_op))
+                        raise RuntimeError()
+                        # pass
 
                 if is_cached:
                     for action in cached_actions["insert_before_backward_op"]:
@@ -210,13 +273,17 @@ def register_bw_events_recursively(context, outputs, is_cached):
                     )
                 elif is_cache_enabled():
                     _cached_actions[bw_op_id] = cached_actions
+                    if len(cached_actions["insert_before_backward_op"]) == 0:
+                        _has_cached_pre_actions[bw_subgraph_id] = False
+
                 assert amanda_remove_pre_hook(bw_op, handle)
                 return tuple(grad_outputs)
 
         def after_bw_op_hook(
             grad_input, grad_output, context, bw_op, bw_subgraph_id, handle
         ):
-            with disabled():
+            with disabled(), _lock:
+                # with disabled():
                 _grad_fns.remove(bw_op)
                 if isinstance(grad_input, torch.Tensor):
                     grad_inputs = [grad_input]
@@ -225,6 +292,7 @@ def register_bw_events_recursively(context, outputs, is_cached):
                 new_grad_inputs = list(grad_inputs)
 
                 bw_op_id = context.backward_op_id
+                # print(f"bw_op: {bw_op.__class__}, bw_op_id: {bw_op_id}")
                 is_cached = False
                 cached_actions = _cached_actions.get(bw_op_id, {})
                 if (
@@ -272,43 +340,62 @@ def register_bw_events_recursively(context, outputs, is_cached):
                             cached_actions["insert_after_backward_op"].append(action)
                     assert len(context.actions) == 0
 
-                if not is_cached and (
-                    len(cached_actions["insert_before_backward_op"]) == 0
-                    and len(cached_actions["replace_backward_op"]) == 0
-                    and len(cached_actions["insert_after_backward_op"]) == 0
-                ):
-                    _cached_actions[context.op_id]["has_backward_actions"] = False
-                    _has_cached_actions[bw_subgraph_id] = False
+                if not is_cached and is_cache_enabled():
+                    if (
+                        len(cached_actions["replace_backward_op"]) == 0
+                        and len(cached_actions["insert_after_backward_op"]) == 0
+                    ):
+                        _has_cached_post_actions[bw_subgraph_id] = False
+                        if len(cached_actions["insert_before_backward_op"]) == 0:
+                            _cached_actions[context.op_id][
+                                "has_backward_actions"
+                            ] = False
+                # seed(context.backward_op_id)
+                # arg_id = 0x10_0001
+                arg_id = next_id(bw_op_id)
+                # with _lock:
+                if _debug_cache:
+                    for grad_input, (next_op, input_index) in zip(
+                        grad_inputs, bw_op.next_functions
+                    ):
+                        if grad_input is not None:
+                            if id(next_op) not in _grad_ids:
+                                _grad_ids[id(next_op)] = {}
+                            if context["is_unknown"].ref:
+                                _grad_ids[id(next_op)].pop(input_index, None)
+                            else:
+                                _cache_tracer.output_to_op[
+                                    (id(next_op), input_index)
+                                ] = id(bw_op)
+                                _cache_tracer.id_to_cache[
+                                    (id(next_op), input_index)
+                                ] = [
+                                    "bw_output",
+                                    type(grad_input),
+                                    "id:",
+                                    id(grad_input),
+                                    "sid:",
+                                    arg_id,
+                                ]
+                                _grad_ids[id(next_op)][input_index] = arg_id
+                        arg_id = next_id(arg_id)
+                else:
+                    for grad_input, (next_op, input_index) in zip(
+                        grad_inputs, bw_op.next_functions
+                    ):
+                        if grad_input is not None:
+                            if id(next_op) not in _grad_ids:
+                                _grad_ids[id(next_op)] = {}
+                            if context["is_unknown"].ref:
+                                _grad_ids[id(next_op)].pop(input_index, None)
+                            else:
+                                _grad_ids[id(next_op)][input_index] = arg_id
+                        arg_id = next_id(arg_id)
                 for grad_input, new_grad_input in zip(grad_inputs, new_grad_inputs):
                     if isinstance(grad_input, torch.Tensor) and isinstance(
                         new_grad_input, torch.Tensor
                     ):
                         grad_input.data = new_grad_input
-                # seed(context.backward_op_id)
-                # arg_id = 0x10_0001
-                arg_id = next_id(bw_op_id)
-                for grad_input, (next_op, input_index) in zip(
-                    grad_inputs, bw_op.next_functions
-                ):
-                    if grad_input is not None:
-                        if id(next_op) not in _grad_ids:
-                            _grad_ids[id(next_op)] = {}
-                        # _grad_ids[id(next_op)][input_index] = (
-                        #     context.backward_op_id + index + 1
-                        # )
-                        # _grad_ids[id(next_op)][input_index] = getrandbits(32)
-                        # _grad_ids[id(next_op)][input_index] = bw_op_id ^ arg_id
-                        _grad_ids[id(next_op)][input_index] = arg_id
-                        # print(
-                        #     "output",
-                        #     bw_op.__class__.__name__,
-                        #     next_op.__class__.__name__,
-                        #     id(next_op),
-                        #     input_index, _grad_ids[id(next_op)][input_index],
-                        #     grad_input.sum(),
-                        # )
-                    # arg_id = arg_id << 1
-                    arg_id = next_id(arg_id)
                 handle.remove()
 
         if not (
@@ -321,42 +408,52 @@ def register_bw_events_recursively(context, outputs, is_cached):
         _grad_fns.add(grad_fn)
         # registered_grad_fn.append(grad_fn)
         bw_context = context.inherite()
-        pre_handle = amanda_add_pre_hook(
-            grad_fn,
-            lambda grad_output: before_bw_op_hook(
-                grad_output,
-                context=bw_context,
-                bw_op=grad_fn,
-                handle=pre_handle,
-            ),
-        )
         nonlocal bw_subgraph_id
-        post_handle = grad_fn.register_hook(
-            lambda grad_input, grad_output: after_bw_op_hook(
-                grad_input,
-                grad_output,
-                context=bw_context,
-                bw_op=grad_fn,
-                bw_subgraph_id=bw_subgraph_id,
-                handle=post_handle,
+        local_bw_subgraph_id = bw_subgraph_id
+        if not is_cached or _has_cached_pre_actions[local_bw_subgraph_id]:
+            pre_handle = amanda_add_pre_hook(
+                grad_fn,
+                lambda grad_output: before_bw_op_hook(
+                    grad_output,
+                    context=bw_context,
+                    bw_op=grad_fn,
+                    handle=pre_handle,
+                ),
             )
-        )
+        if not is_cached or _has_cached_post_actions[local_bw_subgraph_id]:
+            post_handle = grad_fn.register_hook(
+                lambda grad_input, grad_output: after_bw_op_hook(
+                    grad_input,
+                    grad_output,
+                    context=bw_context,
+                    bw_op=grad_fn,
+                    bw_subgraph_id=local_bw_subgraph_id,
+                    handle=post_handle,
+                )
+            )
         for next_grad_fn, next_input_pos in grad_fn.next_functions:
+            # print("x3", bw_subgraph_id.ref)
             bw_subgraph_id = next_id(bw_subgraph_id)
+            # print("x4", bw_subgraph_id.ref)
             # if next_grad_fn and next_grad_fn not in input_grad_fns:
             # if next_grad_fn and next_grad_fn not in _grad_fns:
-            if not is_cached or _has_cached_actions[bw_subgraph_id]:
-                _register_bw_events(context, next_grad_fn)
+            # if not is_cached or _has_cached_actions[bw_subgraph_id.ref]:
+            _register_bw_events(context, next_grad_fn)
 
     # registered_grad_fn = list()
 
     bw_subgraph_id = next_id(context.op_id)
+    # print(f"begin {context.op}")
     for output in outputs:
-        if hasattr(output, "grad_fn") and (
-            not is_cached or _has_cached_actions[bw_subgraph_id]
-        ):
+        if hasattr(output, "grad_fn"):
+            # print(f"is_cached: {is_cached}, bw_subgraph_id: {bw_subgraph_id}")
             _register_bw_events(context, output.grad_fn)
+        # if is_cached and not _has_cached_actions[bw_subgraph_id.ref]:
+        #     print(f"skip actions for {output.grad_fn}")
+        # print("x1", bw_subgraph_id.ref)
         bw_subgraph_id = next_id(bw_subgraph_id)
+        # print("x2", bw_subgraph_id.ref)
+    # print("end")
 
 
 """ unpack_input_grad_fns()
@@ -380,103 +477,174 @@ def unpack_input_grad_fns(inputs):
     return input_grad_fns
 
 
-_apply_scope = None
-_stable_ids: MutableMapping[Any, int] = {}
-_grad_ids: MutableMapping[Any, Dict[int, int]] = {}
-_tensor_ids: MutableMapping[Any, int] = {}
-_cached_actions: Dict[int, Dict[str, List[Action]]] = {}
-_has_cached_actions: Dict[int, bool] = defaultdict(lambda: True)
+class CacheTracer:
+    def __init__(self):
+        self.op_to_inputs = {}
+        self.output_to_op = {}
+        self.id_to_cache = {}
+
+    def print_trace_from_op(self, id, indent=0):
+        print(" " * indent + str(id) + str(self.id_to_cache[id]))
+        if indent > 10:
+            print(" " * (indent + 2) + "...")
+            return
+        for input in self.op_to_inputs[id]:
+            self.print_trace_from_input(input, indent=indent + 2)
+
+    def print_trace_from_input(self, id, indent=0):
+        print(" " * indent + str(id) + str(self.id_to_cache[id]))
+        if indent > 10:
+            print(" " * (indent + 2) + "...")
+            return
+        if id in self.output_to_op:
+            self.print_trace_from_op(self.output_to_op[id], indent=indent + 2)
 
 
-def cleanup():
-    global _apply_scope
-    _apply_scope = None
-    _stable_ids.clear()
-    _grad_ids.clear()
-    _tensor_ids.clear()
-    _cached_actions.clear()
-    _has_cached_actions.clear()
+_cache_tracer: CacheTracer = CacheTracer()
 
 
 def get_cache_size():
     return len(_cached_actions)
 
 
-def get_input_id(input, default_id):
+def get_input_id(input, default_id, next_seed=None, inputs=None, is_unknown=None):
     import torch
 
-    if isinstance(input, torch.Tensor) and tensor_id(input) in _tensor_ids:
-        # print("tensor:", _tensor_ids[tensor_id(input)], input.sum())
-        return _tensor_ids[tensor_id(input)]
-    # if hasattr(input, "__stable_id__"):
-    #     print("tensor:", input.__stable_id__, input.sum())
-    #     return input.__stable_id__
-    # if isinstance(input, torch.Tensor) and tensor_id(input) in _tensor_ids:
-    #     print("tensor:", _tensor_ids[tensor_id(input)], input.sum())
-    #     op_id = op_id ^ _tensor_ids[tensor_id(input)]
-    # elif input in _stable_ids:
-    #     # print("other:", _stable_ids[input])
-    #     op_id = op_id ^ _stable_ids[input]
-    elif id(input) in _stable_ids:
-        # print("other:", _stable_ids[id(input)])
-        return _stable_ids[id(input)]
-    elif isinstance(input, torch.nn.Parameter):
-        # print("parameter:", id(input))
-        return id(input)
-    elif id(input) in _buffers:
-        # print("buffer:", id(input))
-        return id(input)
-    # elif isinstance(input, Sequence):
-    elif isinstance(input, (list, tuple)):
-        input_id = default_id
-        global _seed
-        _seed = next_id(default_id)
-        for x in input:
-            input_id = input_id ^ get_input_id(x, default_id=_seed)
-            _seed = next_id(_seed)
-        # input_id = reduce(
-        #     xor,
-        #     [get_input_id(x, default_id=getrandbits(32)) for x in input],
-        #     default_id,
-        # )
-        # print("sequence:", input_id)
-        return input_id
-    else:
-        # if input is not None:
-        #     if isinstance(input, torch.Tensor):
-        #         print("unknown:", "id:", id(input), input.sum(), default_id)
-        #     else:
-        #         print("unknown:", "id:", id(input), default_id)
-        return default_id
-
-
-def calc_op_id(op, args, kwargs=None, bw_op=None):
-    op_id = 0
-    # seed(id(op))
-    # arg_id = 0x1_0001
-    arg_id = next_id(id(op))
-    # arg_id = getrandbits(32)
-    # print(f"input of {op.__name__}")
-    for index, input in enumerate(args):
-        if (
-            bw_op is not None
-            and id(bw_op) in _grad_ids
-            and index in _grad_ids[id(bw_op)]
-        ):
-            # print("grad:", _grad_ids[id(bw_op)][index], input.sum())
-            op_id = op_id ^ _grad_ids[id(bw_op)][index]
+    if _debug_cache:
+        if isinstance(input, torch.nn.Parameter):
+            inputs.append(id(input))
+            _cache_tracer.id_to_cache[id(input)] = ["parameter", type(input)]
+            is_unknown.ref = False
+            return id(input)
+        elif hasattr(input, "__stable_id__"):
+            inputs.append(id(input))
+            if hasattr(input, "__is__buffer__"):
+                _cache_tracer.id_to_cache[id(input)] = [
+                    "buffer",
+                    type(input),
+                    "sid:",
+                    input.__stable_id__,
+                ]
+            elif hasattr(input, "__is__state__"):
+                _cache_tracer.id_to_cache[id(input)] = [
+                    "state",
+                    type(input),
+                    "sid:",
+                    input.__stable_id__,
+                ]
+            elif hasattr(input, "__is__grad__"):
+                _cache_tracer.id_to_cache[id(input)] = [
+                    "grad",
+                    type(input),
+                    "sid:",
+                    input.__stable_id__,
+                ]
+            is_unknown.ref = False
+            return input.__stable_id__
+        elif isinstance(input, (list, tuple)):
+            input_id = default_id
+            for x in input:
+                next_seed.ref = next_id(next_seed.ref)
+                input_id = input_id ^ get_input_id(
+                    x,
+                    default_id=next_seed.ref,
+                    next_seed=next_seed,
+                    inputs=inputs,
+                    is_unknown=is_unknown,
+                )
+            return input_id
         else:
-            # op_id = op_id ^ get_input_id(input, default_id=getrandbits(32))
-            op_id = op_id ^ get_input_id(input, default_id=arg_id)
-        # arg_id = getrandbits(32)
-        # arg_id = arg_id << 1
-        arg_id = next_id(arg_id)
-        # arg_id = arg_id + 1
-    if kwargs is not None:
-        for name, input in kwargs.items():
-            op_id = op_id ^ get_input_id(input, default_id=id(name))
-    op_id = op_id ^ id(op)
-    return op_id
+            inputs.append(id(input))
+            _cache_tracer.id_to_cache[id(input)] = [
+                "unknown",
+                type(input),
+                "default_id:",
+                default_id,
+            ]
+            return default_id
+    else:
+        if isinstance(input, torch.nn.Parameter):
+            is_unknown.ref = False
+            return id(input)
+        elif hasattr(input, "__stable_id__"):
+            is_unknown.ref = False
+            return input.__stable_id__
+        elif isinstance(input, (list, tuple)):
+            input_id = default_id
+            for x in input:
+                next_seed.ref = next_id(next_seed.ref)
+                input_id = input_id ^ get_input_id(
+                    x,
+                    default_id=next_seed.ref,
+                    next_seed=next_seed,
+                    is_unknown=is_unknown,
+                )
+            return input_id
+        else:
+            return default_id
+
+
+def calc_op_id(self_id, args, kwargs=None, bw_op=None, next_seed=None, is_unknown=None):
+    if _debug_cache:
+        inputs = []
+        op_id = 0
+        for index, input in enumerate(args):
+            next_seed.ref = next_id(next_seed.ref)
+            if (
+                bw_op is not None
+                and id(bw_op) in _grad_ids
+                and index in _grad_ids[id(bw_op)]
+            ):
+                inputs.append((id(bw_op), index))
+                op_id = op_id ^ _grad_ids[id(bw_op)][index]
+                is_unknown.ref = False
+            else:
+                op_id = op_id ^ get_input_id(
+                    input,
+                    default_id=next_seed.ref,
+                    next_seed=next_seed,
+                    inputs=inputs,
+                    is_unknown=is_unknown,
+                )
+        if kwargs is not None:
+            for name, input in kwargs.items():
+                op_id = op_id ^ get_input_id(
+                    input,
+                    default_id=id(name),
+                    next_seed=next_seed,
+                    inputs=inputs,
+                    is_unknown=is_unknown,
+                )
+        op_id = op_id ^ self_id
+        return op_id, inputs
+    else:
+        op_id = 0
+        for index, input in enumerate(args):
+            next_seed.ref = next_id(next_seed.ref)
+            if (
+                bw_op is not None
+                and id(bw_op) in _grad_ids
+                and index in _grad_ids[id(bw_op)]
+            ):
+                op_id = op_id ^ _grad_ids[id(bw_op)][index]
+                is_unknown.ref = False
+            else:
+                op_id = op_id ^ get_input_id(
+                    input,
+                    default_id=next_seed.ref,
+                    next_seed=next_seed,
+                    is_unknown=is_unknown,
+                )
+        if kwargs is not None:
+            for name, input in kwargs.items():
+                op_id = op_id ^ get_input_id(
+                    input,
+                    default_id=id(name),
+                    next_seed=next_seed,
+                    is_unknown=is_unknown,
+                )
+        op_id = op_id ^ self_id
+        return op_id
 
 
 def function_wrapper(func):
@@ -484,13 +652,15 @@ def function_wrapper(func):
     def wrapper(*args, **kwargs):
         import torch
 
-        with disabled():
+        with disabled(), _lock:
+            # with disabled():
             global _apply_scope
             if _apply_scope is not None and _apply_scope != get_apply_scope():
                 assert _apply_scope == get_apply_scope()
                 _apply_scope = None
                 _cached_actions.clear()
-                _has_cached_actions.clear()
+                _has_cached_pre_actions.clear()
+                _has_cached_post_actions.clear()
             if _apply_scope is None:
                 _apply_scope = get_apply_scope()
                 register_cleanup_task(cleanup)
@@ -503,7 +673,24 @@ def function_wrapper(func):
             if isinstance(func, functools.partial):
                 raw_func = func.__wrapped__
             context = OpContext(tools=tools, namespace="pytorch")
-            op_id = calc_op_id(raw_func, args, kwargs)
+            # with _lock:
+            raw_op = raw_func
+            if isinstance(raw_func, types.MethodWrapperType):
+                raw_op = raw_func.__self__
+            self_id = id(raw_op)
+            is_unknown = Ref(True)
+            next_seed = Ref(self_id)
+            if _debug_cache:
+                op_id, cached_inputs = calc_op_id(
+                    self_id, args, kwargs, next_seed=next_seed, is_unknown=is_unknown
+                )
+                _cache_tracer.op_to_inputs[op_id] = cached_inputs
+                _cache_tracer.id_to_cache[op_id] = ["op", raw_op]
+            else:
+                op_id = calc_op_id(
+                    self_id, args, kwargs, next_seed=next_seed, is_unknown=is_unknown
+                )
+            # print(f"op: {raw_func}, op_id: {op_id}")
 
             is_cached = False
             if is_cache_enabled() and op_id in _cached_actions:
@@ -517,6 +704,16 @@ def function_wrapper(func):
                     "insert_after_op": [],
                     "has_backward_actions": True,
                 }
+                if _debug_cache and _should_hit:
+                    # print("miss", raw_func.__name__, op_id)
+                    print()
+                    _cache_tracer.print_trace_from_op(op_id)
+                    raise RuntimeError()
+                    # pass
+            # if _debug_cache and _should_hit and raw_op.__name__ == "grad":
+            # if _debug_cache and raw_op.__name__ == "grad":
+            #     print()
+            #     _cache_tracer.print_trace_from_op(op_id)
 
             if is_cached:
                 for action in cached_actions["insert_before_op"]:
@@ -585,48 +782,37 @@ def function_wrapper(func):
                 )
             elif is_cache_enabled():
                 _cached_actions[op_id] = cached_actions
+            arg_id = op_id
+            if (not is_unknown.ref) and (
+                (not raw_op.__name__.endswith("_")) or raw_op.__name__.endswith("__")
+            ):
+                if _debug_cache:
+                    for output in outputs:
+                        arg_id = next_id(arg_id)
+                        if (
+                            isinstance(output, torch.Tensor)
+                            and not isinstance(output, torch.nn.Parameter)
+                            and not hasattr(output, "__stable_id__")
+                        ):
+                            _cache_tracer.output_to_op[id(output)] = op_id
+                            _cache_tracer.id_to_cache[id(output)] = [
+                                "output",
+                                type(output),
+                                "sid:",
+                                arg_id,
+                            ]
+                            output.__stable_id__ = arg_id
+                else:
+                    for output in outputs:
+                        arg_id = next_id(arg_id)
+                        if (
+                            isinstance(output, torch.Tensor)
+                            and not isinstance(output, torch.nn.Parameter)
+                            and not hasattr(output, "__stable_id__")
+                        ):
+                            output.__stable_id__ = arg_id
             if not is_cached or cached_actions["has_backward_actions"]:
                 register_bw_events_recursively(context, outputs, is_cached)
-            # print(f"output of {raw_func}")
-            # seed(op_id)
-            # arg_id = 0x100_0001
-            arg_id = next_id(op_id)
-            for output in outputs:
-                if isinstance(output, torch.Tensor):
-                    # assert not hasattr(output, "__stable_id__")
-                    # output.__stable_id__ = op_id + index + 1
-                    # output.__stable_id__ = getrandbits(32)
-                    # print(
-                    #     "tensor:",
-                    #     "sid:", output.__stable_id__,
-                    #     "id:", id(output),
-                    #     output.sum()
-                    # )
-                    # _tensor_ids[tensor_id(output)] = getrandbits(32)
-                    # _tensor_ids[tensor_id(output)] = op_id ^ arg_id
-                    _tensor_ids[tensor_id(output)] = arg_id
-                    # print(
-                    #     "output tensor:",
-                    #     "sid:", _tensor_ids[tensor_id(output)],
-                    #     "id:", tensor_id(output),
-                    #     output.sum()
-                    # )
-                    # assert tensor_id(output) not in _tensor_ids
-                    # _tensor_ids[tensor_id(output)] = op_id + index + 1
-                    # print("tensor:", _tensor_ids[tensor_id(output)], output.sum())
-                else:
-                    # _stable_ids[output] = op_id + index + 1
-                    # _stable_ids[id(output)] = op_id + index + 1
-                    # _stable_ids[id(output)] = getrandbits(32)
-                    # _stable_ids[id(output)] = op_id ^ arg_id
-                    _stable_ids[id(output)] = arg_id
-                    # print(
-                    #     "other:",
-                    #     "sid:", _stable_ids[id(output)],
-                    #     "id:", id(output)
-                    # )
-                # arg_id = arg_id << 1
-                arg_id = next_id(arg_id)
             if is_output_nested:
                 output = outputs[0]
             else:
@@ -637,14 +823,105 @@ def function_wrapper(func):
 
 
 _buffers: MutableMapping[int, Any] = weakref.WeakValueDictionary()
+_grads: MutableMapping[int, Any] = weakref.WeakValueDictionary()
 
 
 def register_buffer_wrapper(func):
     @wraps(func)
     def wrapper(self, name, tensor, persistent=True):
         if tensor is not None:
-            _buffers[id(tensor)] = tensor
+            # _buffers[id(tensor)] = tensor
+            tensor.__stable_id__ = id(tensor)
+            tensor.__is_buffer__ = True
         return func(self, name, tensor, persistent)
+
+    return wrapper
+
+
+def _hook_for_profile_wrapper(_hook_for_profile_func):
+    @wraps(_hook_for_profile_func)
+    def wrapper(self):
+        def hook_step(step_func):
+            import torch
+
+            @wraps(step_func)
+            def wrapper(self, closure=None):
+                step_func(self, closure)
+                for group in self.param_groups:
+                    for p in group["params"]:
+                        state = self.state[p]
+                        for value in state.values():
+                            if isinstance(value, torch.Tensor):
+                                value.__stable_id__ = id(value)
+                                value.__is_state__ = True
+                                # _buffers[id(value)] = value
+
+            return wrapper
+
+        hooked = getattr(self.__class__.step, "hooked_by_amanda", None)
+        if not hooked:
+            self.__class__.step = hook_step(self.__class__.step)
+            self.__class__.step.hooked_by_amanda = True
+        return _hook_for_profile_func(self)
+
+    return wrapper
+
+
+def step_wrapper(func):
+    import torch
+
+    @wraps(func)
+    def wrapper(self, closure=None):
+        func(self, closure)
+        for group in self.param_groups:
+            for p in group["params"]:
+                state = self.state[p]
+                for value in state.values():
+                    if isinstance(value, torch.Tensor):
+                        value.__stable_id__ = id(value)
+                        value.__is_state__ = True
+                        # _buffers[id(value)] = value
+
+    return wrapper
+
+
+def set_grad_wrapper(func):
+    import torch
+
+    @wraps(func)
+    def wrapper(self, grad):
+        if grad is not None:
+            if isinstance(self, torch.nn.Parameter):
+                grad.__stable_id__ = next_id(id(self))
+                grad.__is_grad__ = True
+            elif hasattr(self, "__is_buffer__"):
+                grad.__stable_id__ = next_id(self.__stable_id__)
+                grad.__is_grad__ = True
+            elif hasattr(self, "__is_state__"):
+                grad.__stable_id__ = next_id(self.__stable_id__)
+                grad.__is_grad__ = True
+        return func(self, grad)
+
+    return wrapper
+
+
+def get_grad_wrapper(func):
+    import torch
+
+    @wraps(func)
+    def wrapper(self):
+        grad = func(self)
+        if grad is not None:
+            if isinstance(self, torch.nn.Parameter):
+                grad.__stable_id__ = next_id(id(self))
+                grad.__is_grad__ = True
+            elif hasattr(self, "__is_buffer__"):
+                grad.__stable_id__ = next_id(self.__stable_id__)
+                grad.__is_grad__ = True
+            elif hasattr(self, "__is_state__"):
+                grad.__stable_id__ = next_id(self.__stable_id__)
+                grad.__is_grad__ = True
+        return grad
 
     return wrapper
 
@@ -756,7 +1033,7 @@ def listener_callback(op_name: str) -> str:
     import torch
 
     name = remove_namespace(op_name)
-    # if name in ["size"]:
+    # if name in ["is_leaf"]:
     #     return op_name
     for module in [
         torch._C._nn,
@@ -934,3 +1211,12 @@ def register_intercepts() -> None:
     intercepts.register(
         torch.nn.Module.register_buffer, intercepts.to_handler(register_buffer_wrapper)
     )
+    # intercepts.register(
+    #     torch.optim.Optimizer.step, intercepts.to_handler(step_wrapper)
+    # )
+    intercepts.register(
+        torch.optim.Optimizer._hook_for_profile,
+        intercepts.to_handler(_hook_for_profile_wrapper),
+    )
+    intercepts.register(torch.Tensor.grad.fset, intercepts.to_handler(set_grad_wrapper))
+    intercepts.register(torch.Tensor.grad.fget, intercepts.to_handler(get_grad_wrapper))

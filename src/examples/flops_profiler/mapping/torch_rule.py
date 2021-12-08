@@ -1,5 +1,6 @@
+from typing import Dict
+
 import amanda
-import torch
 
 
 def torch_get_shape(context: amanda.OpContext):
@@ -14,4 +15,4 @@ def torch_type(context: amanda.OpContext):
     )
 
 
-torch_type_mapping = dict()
+torch_type_mapping: Dict[str, str] = dict()
