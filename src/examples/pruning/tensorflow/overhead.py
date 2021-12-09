@@ -69,9 +69,19 @@ def train_resnet_18_cifar100(
             input = input.take(take_num)
         return input
 
+    def train_input_fn_warmup():
+        input = input_fn(
+            is_training=True,
+            data_dir=data_dir,
+            batch_size=batch_size,
+            num_epochs=epochs_between_evals,
+        )
+        return input.take(1)
+
     # Set up training hook that logs the training accuracy every 100 steps.
     tensors_to_log = {"train_accuracy": "train_accuracy"}
     logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=100)
+    classifier.train(input_fn=train_input_fn_warmup, hooks=[logging_hook])
     start_time = time.time()
     classifier.train(input_fn=train_input_fn, hooks=[logging_hook])
     end_time = time.time()
