@@ -162,11 +162,6 @@ def register_bw_events_recursively(context, outputs, is_cached, cached_actions):
                     if not _skip_actions:
                         for action in cached_actions["insert_before_backward_op"]:
                             apply_insert_before_op(action, grad_outputs)
-                    # context.update(
-                    #     backward_op=bw_raw_op,
-                    #     backward_op_id=bw_op_id,
-                    #     grad_outputs=grad_outputs,
-                    # )
                 else:
                     with torch.no_grad():
                         context.trigger(
@@ -182,9 +177,6 @@ def register_bw_events_recursively(context, outputs, is_cached, cached_actions):
                             cached_actions["insert_before_backward_op"].append(action)
                     if is_cache_enabled():
                         _cached_actions[bw_op_id] = cached_actions
-                        _cached_actions[context.get_op_id()][
-                            "uncached_backward_count"
-                        ] -= 1
                         if len(cached_actions["insert_before_backward_op"]) == 0:
                             _has_cached_pre_actions[bw_subgraph_id] = False
 
@@ -201,7 +193,7 @@ def register_bw_events_recursively(context, outputs, is_cached, cached_actions):
             prev_enabled = import_hook._enabled
             import_hook._enabled = False
             try:
-                # _grad_fns.remove(bw_op)
+                _grad_fns.remove(bw_op)
                 if isinstance(grad_output, torch.Tensor):
                     grad_outputs = [grad_output]
                 else:
@@ -222,9 +214,6 @@ def register_bw_events_recursively(context, outputs, is_cached, cached_actions):
                         cached_actions["replace_backward_op"] = []
                         cached_actions["insert_after_backward_op"] = []
                         _cached_actions[bw_op_id] = cached_actions
-                        _cached_actions[context.get_op_id()][
-                            "uncached_backward_count"
-                        ] -= 1
                 else:
                     cached_actions["replace_backward_op"] = []
                     cached_actions["insert_after_backward_op"] = []
@@ -278,28 +267,19 @@ def register_bw_events_recursively(context, outputs, is_cached, cached_actions):
             finally:
                 import_hook._enabled = prev_enabled
 
-        if is_bw_cached:
-            if next(grad_fn_trace_iter):
-                # print("after_bw_op_hook", grad_fn)
-                return
-        else:
-            is_walked = not grad_fn or grad_fn in _grad_fns
-            grad_fn_trace.append(is_walked)
-            if is_walked:
-                return
-            else:
-                _grad_fns.add(grad_fn)
+        if not grad_fn or grad_fn in _grad_fns:
+            return
+        _grad_fns.add(grad_fn)
         bw_context = None
         nonlocal bw_subgraph_id
         local_bw_subgraph_id = bw_subgraph_id
         if not is_cached or _has_cached_pre_actions[local_bw_subgraph_id]:
             # if _debug_cache and _should_hit:
             #     print("before_bw_op_hook", grad_fn)
-            if uncached_backward_count != 0:
-                if uncached_backward_count is None:
-                    cached_actions["uncached_backward_count"] += 1
-                if bw_context is None:
-                    bw_context = context.inherite()
+            if bw_context is None and not (
+                is_cache_enabled() and local_bw_subgraph_id in _cached_actions
+            ):
+                bw_context = context.inherite()
             pre_handle = amanda_add_pre_hook(
                 grad_fn,
                 lambda grad_output: before_bw_op_hook(
@@ -313,11 +293,10 @@ def register_bw_events_recursively(context, outputs, is_cached, cached_actions):
         if not is_cached or _has_cached_post_actions[local_bw_subgraph_id]:
             # if _debug_cache and _should_hit:
             #     print("after_bw_op_hook", grad_fn)
-            if uncached_backward_count != 0:
-                if uncached_backward_count is None:
-                    cached_actions["uncached_backward_count"] += 1
-                if bw_context is None:
-                    bw_context = context.inherite()
+            if bw_context is None and not (
+                is_cache_enabled() and local_bw_subgraph_id in _cached_actions
+            ):
+                bw_context = context.inherite()
             post_handle = grad_fn.register_hook(
                 lambda grad_input, grad_output: after_bw_op_hook(
                     grad_input,
@@ -330,7 +309,10 @@ def register_bw_events_recursively(context, outputs, is_cached, cached_actions):
             )
         if is_bw_cached:
             for next_grad_fn, next_input_pos in grad_fn.next_functions:
-                bw_subgraph_id = next(backward_ids_iter)
+                bw_subgraph_id = next(backward_ids_iter, None)
+                if bw_subgraph_id is None:
+                    bw_subgraph_id = next_id(backward_ids[-1])
+                    backward_ids.append(bw_subgraph_id)
                 _register_bw_events(context, next_grad_fn)
         else:
             for next_grad_fn, next_input_pos in grad_fn.next_functions:
@@ -338,24 +320,22 @@ def register_bw_events_recursively(context, outputs, is_cached, cached_actions):
                 backward_ids.append(bw_subgraph_id)
                 _register_bw_events(context, next_grad_fn)
 
-    uncached_backward_count = cached_actions["uncached_backward_count"]
-    if uncached_backward_count is None:
-        cached_actions["uncached_backward_count"] = 0
     is_bw_cached = is_cached and cached_actions["backward_ids"] is not None
     bw_subgraph_id = context["op_id"]
     if is_bw_cached:
-        grad_fn_trace_iter = iter(cached_actions["grad_fn_trace"])
-        backward_ids_iter = iter(cached_actions["backward_ids"])
+        backward_ids = cached_actions["backward_ids"]
+        backward_ids_iter = iter(backward_ids)
         for output in outputs:
-            bw_subgraph_id = next(backward_ids_iter)
+            bw_subgraph_id = next(backward_ids_iter, None)
+            if bw_subgraph_id is None:
+                bw_subgraph_id = next_id(backward_ids[-1])
+                backward_ids.append(bw_subgraph_id)
             # if hasattr(output, "grad_fn") and output.requires_grad:
             if isinstance(output, torch.Tensor):
                 # if _debug_cache and _should_hit:
                 #     print("_register_bw_events", context.op, type(output))
                 _register_bw_events(context, output.grad_fn)
     else:
-        grad_fn_trace = []
-        cached_actions["grad_fn_trace"] = grad_fn_trace
         backward_ids = []
         cached_actions["backward_ids"] = backward_ids
         for output in outputs:
@@ -520,6 +500,7 @@ def calc_op_id(self_id, args, kwargs=None, next_seed=None, is_unknown=None):
 
 
 def function_wrapper(func, *args, **kwargs):
+    # print("fw", func)
     if not is_enabled():
         return func(*args, **kwargs)
     tools = get_tools()
@@ -564,8 +545,6 @@ def function_wrapper(func, *args, **kwargs):
             "insert_after_op": [],
             "output_ids": None,
             "backward_ids": None,
-            "grad_fn_trace": None,
-            "uncached_backward_count": None,
         }
         if _debug_cache and _should_hit:
             print()
@@ -626,12 +605,6 @@ def function_wrapper(func, *args, **kwargs):
             if not _skip_actions:
                 for action in cached_actions["insert_after_op"]:
                     apply_insert_after_op(action, outputs)
-            # context.update(
-            #     op=raw_func,
-            #     op_id=op_id,
-            #     inputs=inputs,
-            #     outputs=outputs,
-            # )
         else:
             with torch.no_grad():
                 context.trigger(
@@ -703,22 +676,13 @@ def function_wrapper(func, *args, **kwargs):
                             output_ids.append(None)
         if torch.is_grad_enabled():
             if is_cached:
-                if cached_actions["uncached_backward_count"] == 0:
-                    register_bw_events_recursively(
-                        context, outputs, is_cached, cached_actions
-                    )
-                else:
-                    context.update(
-                        op=raw_func,
-                        op_id=op_id,
-                        inputs=inputs,
-                        outputs=outputs,
-                    )
-                    register_bw_events_recursively(
-                        context, outputs, is_cached, cached_actions
-                    )
-                    context["inputs"] = None
-                    context["outputs"] = None
+                context["inputs"] = inputs
+                context["outputs"] = outputs
+                register_bw_events_recursively(
+                    context, outputs, is_cached, cached_actions
+                )
+                context["inputs"] = None
+                context["outputs"] = None
             else:
                 register_bw_events_recursively(
                     context, outputs, is_cached, cached_actions
