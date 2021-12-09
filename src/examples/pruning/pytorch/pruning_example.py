@@ -1,15 +1,43 @@
 import os
 import sys
 
+import amanda
 import torch
 import torch.nn as nn
 import torchvision
 import torchvision.transforms as transforms
 from loguru import logger
 
-import amanda
 from examples.pruning.pytorch.pruning_tool import PruneTool
 from examples.utils.timer import Timer
+
+
+class CountConvTool(amanda.Tool):
+    def __init__(self):
+        super().__init__()
+        self.counter = 0
+        self.add_inst_for_op(self.callback)
+        self.add_inst_for_op(self.callback_bw, backward=True)
+
+    def callback(self, context: amanda.OpContext):
+        op = context.get_op()
+        if op.__name__ == "conv2d":
+            context.insert_before_op(self.count)
+            context.insert_after_op(self.count)
+
+    def callback_bw(self, context: amanda.OpContext):
+        op = context.get_op()
+        backward_op = context.get_backward_op()
+        if (
+            op.__name__ == "conv2d"
+            and backward_op.__name__ == "CudnnConvolutionBackward"
+        ):
+            context.insert_before_backward_op(self.count)
+            context.insert_after_backward_op(self.count)
+
+    def count(self, *tensors):
+        self.counter += 1
+        return tensors
 
 
 def main():
@@ -77,6 +105,8 @@ def main():
 
     tool = PruneTool()
     tool = None
+    tool = CountConvTool()
+    counter = 0
 
     total_time = 0
     total_cnt = 0
@@ -85,11 +115,13 @@ def main():
 
     # pytorch_updater._debug_cache = True
     # with amanda.tool.apply(tool), amanda.disabled():
+    # with amanda.tool.apply(tool), amanda.cache_disabled():
     with amanda.tool.apply(tool):
         for epoch in range(num_epochs):
 
             for i, (images, labels) in enumerate(train_loader):
 
+                # with Timer(verbose=True) as t, amanda.enabled():
                 with Timer(verbose=True) as t:
 
                     # with amanda.tool.apply(tool):
@@ -113,13 +145,18 @@ def main():
 
                     optimizer.step()
 
+                print("num of conv2d:", tool.counter - counter)
+                counter = tool.counter
                 if i == 1:
                     pytorch_updater._should_hit = True
+                    # pytorch_updater._skip_actions = True
                 # if i >= 2:
                 #     exit(0)
                 if i < 5:
                     pass
-                elif i < 25:
+                # elif i < 25:
+                elif i < 250:
+                    # elif i < 1000:
                     total_time += t.elapsed
                     total_cnt += 1
                 else:

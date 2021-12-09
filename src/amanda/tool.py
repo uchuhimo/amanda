@@ -99,6 +99,8 @@ class ApplyScope:
 
 
 _apply_scopes = ThreadLocalStack()
+_current_apply_scope = None
+_cached_tools = None
 
 
 @contextmanager
@@ -106,17 +108,24 @@ def apply(*tools: Tool):
     apply_scope = ApplyScope()
     for tool in tools:
         apply_scope.tools.append(tool)
+    global _cached_tools
+    _cached_tools = None
     _apply_scopes.push(apply_scope)
+    global _current_apply_scope
+    prev_apply_scope = _current_apply_scope
+    _current_apply_scope = apply_scope
     try:
         yield
     finally:
         _apply_scopes.pop()
+        _current_apply_scope = prev_apply_scope
+        _cached_tools = None
         for task in apply_scope.cleanup_tasks:
             task()
 
 
 def get_apply_scope():
-    return _apply_scopes.top()
+    return _current_apply_scope
 
 
 def register_cleanup_task(task: Callable[[], None]) -> Handler:
@@ -124,9 +133,14 @@ def register_cleanup_task(task: Callable[[], None]) -> Handler:
 
 
 def get_tools() -> List[Tool]:
-    if len(_apply_scopes) == 1:
-        return _apply_scopes.top().tools
-    elif len(_apply_scopes) == 0:
-        return []
-    else:
-        return list(itertools.chain([scope.tools for scope in _apply_scopes]))
+    global _cached_tools
+    if _cached_tools is None:
+        if len(_apply_scopes) == 1:
+            _cached_tools = _apply_scopes.top().tools
+        elif len(_apply_scopes) == 0:
+            _cached_tools = []
+        else:
+            _cached_tools = list(
+                itertools.chain([scope.tools for scope in _apply_scopes])
+            )
+    return _cached_tools

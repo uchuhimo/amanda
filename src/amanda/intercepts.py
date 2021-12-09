@@ -3,9 +3,8 @@ import ctypes
 import importlib.util
 import sys
 import types
-from collections import OrderedDict
 from functools import partial
-from typing import Any, Callable, Dict, Tuple
+from typing import Any, Dict, List
 
 from intercepts.functypes import PyCFunctionObject, PyMethodDef, PyObject, PyTypeObject
 from intercepts.utils import (
@@ -94,45 +93,25 @@ def replace_getset_descriptor(dst, src):
     ctypes.memmove(dst + 16, src + 16, 32)
 
 
-_HANDLERS: Dict[int, Tuple[Callable, Callable, Dict[Any, Callable]]] = {}
+_HANDLERS: Dict[int, List[Any]] = {}
 
 
 def func_handler(func_id, *args, **kwargs):
-    func = _HANDLERS[func_id][0]
-    updated_func = func
-    for _handler in _HANDLERS[func_id][2].values():
-        updated_func = update_wrapper(partial(_handler, updated_func), func)
-    result = updated_func(*args, **kwargs)
-    return result
+    return _HANDLERS[func_id][2](*args, **kwargs)
 
 
 def func_handler_prototype(*args, **kwargs):
     consts = sys._getframe(0).f_code.co_consts
     func_id = consts[-1]
-    func = _HANDLERS[func_id][0]
-    updated_func = func
-    for _handler in _HANDLERS[func_id][2].values():
-        updated_func = update_wrapper(partial(_handler, updated_func), func)
-    result = updated_func(*args, **kwargs)
-    return result
+    return _HANDLERS[func_id][2](*args, **kwargs)
 
 
 def getter_handler(func_id, *args, **kwargs):
-    func = _HANDLERS[func_id][0].__get__
-    updated_func = func
-    for _handler in _HANDLERS[func_id][2].values():
-        updated_func = update_wrapper(partial(_handler, updated_func), func)
-    result = updated_func(*args, **kwargs)
-    return result
+    return _HANDLERS[func_id][2](*args, **kwargs)
 
 
 def setter_handler(func_id, *args, **kwargs):
-    func = _HANDLERS[func_id][0].__set__
-    updated_func = func
-    for _handler in _HANDLERS[func_id][2].values():
-        updated_func = update_wrapper(partial(_handler, updated_func), func)
-    result = updated_func(*args, **kwargs)
-    return result
+    return _HANDLERS[func_id][3](*args, **kwargs)
 
 
 def register_builtin(func, handler, key):
@@ -142,11 +121,14 @@ def register_builtin(func, handler, key):
         copy_builtin(addr(func_copy), func_addr)
         handler_with_addr = partial(func_handler, func_addr)
         new_func = get_builtin_handler(func, handler_with_addr)
-        _HANDLERS[func_addr] = (func_copy, new_func, OrderedDict())
+        _HANDLERS[func_addr] = [func_copy, new_func, func_copy, set()]
         replace_builtin(func_addr, addr(new_func))
-    _HANDLERS[func_addr][2][key] = handler
-    if len(_HANDLERS[func_addr][2]) > 1:
-        print(_HANDLERS[func_addr][2])
+    keys = _HANDLERS[func_addr][3]
+    if key not in keys:
+        keys.add(key)
+        _HANDLERS[func_addr][2] = update_wrapper(
+            partial(handler, _HANDLERS[func_addr][2]), _HANDLERS[func_addr][0]
+        )
     return func
 
 
@@ -174,11 +156,14 @@ def register_function(
             func.__closure__,
         )
         new_func.__code__ = handler_code
-        _HANDLERS[func_addr] = (func_copy, new_func, OrderedDict())
+        _HANDLERS[func_addr] = [func_copy, new_func, func_copy, set()]
         replace_function(func_addr, addr(new_func))
-    _HANDLERS[func_addr][2][key] = handler
-    if len(_HANDLERS[func_addr][2]) > 1:
-        print(_HANDLERS[func_addr][2])
+    keys = _HANDLERS[func_addr][3]
+    if key not in keys:
+        keys.add(key)
+        _HANDLERS[func_addr][2] = update_wrapper(
+            partial(handler, _HANDLERS[func_addr][2]), _HANDLERS[func_addr][0]
+        )
     return func
 
 
@@ -196,11 +181,14 @@ def register_method_descriptor(func, handler, key):
         copy_method_descriptor(addr(func_copy), func_addr)
         handler_with_addr = partial(func_handler, func_addr)
         new_func = get_method_descriptor_handler(func, handler_with_addr)
-        _HANDLERS[func_addr] = (func_copy, new_func, OrderedDict())
+        _HANDLERS[func_addr] = [func_copy, new_func, func_copy, set()]
         replace_method_descriptor(func_addr, addr(new_func))
-    _HANDLERS[func_addr][2][key] = handler
-    if len(_HANDLERS[func_addr][2]) > 1:
-        print(_HANDLERS[func_addr][2])
+    keys = _HANDLERS[func_addr][3]
+    if key not in keys:
+        keys.add(key)
+        _HANDLERS[func_addr][2] = update_wrapper(
+            partial(handler, _HANDLERS[func_addr][2]), _HANDLERS[func_addr][0]
+        )
     return func
 
 
@@ -216,11 +204,23 @@ def register_getset_descriptor(attribute, handler, key):
             getter_handler_with_addr,
             setter_handler_with_addr,
         )
-        _HANDLERS[func_addr] = (func_copy, new_func, OrderedDict())
+        _HANDLERS[func_addr] = [
+            func_copy,
+            new_func,
+            func_copy.__get__,
+            func_copy.__set__,
+            set(),
+        ]
         replace_method_descriptor(func_addr, addr(new_func))
-    _HANDLERS[func_addr][2][key] = handler
-    if len(_HANDLERS[func_addr][2]) > 1:
-        print(_HANDLERS[func_addr][2])
+    keys = _HANDLERS[func_addr][4]
+    if key not in keys:
+        keys.add(key)
+        _HANDLERS[func_addr][2] = update_wrapper(
+            partial(handler, _HANDLERS[func_addr][2]), _HANDLERS[func_addr][0].__get__
+        )
+        _HANDLERS[func_addr][3] = update_wrapper(
+            partial(handler, _HANDLERS[func_addr][3]), _HANDLERS[func_addr][0].__set__
+        )
     return attribute
 
 

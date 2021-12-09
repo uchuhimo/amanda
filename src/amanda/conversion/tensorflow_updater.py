@@ -4,12 +4,6 @@ from functools import wraps
 from typing import Any, List, MutableMapping, NamedTuple, OrderedDict, Set
 
 import tensorflow as tf
-from tensorflow.python import pywrap_tensorflow as tf_session
-from tensorflow.python.data.ops.iterator_ops import _IteratorSaveable
-from tensorflow.python.framework.meta_graph import import_scoped_meta_graph
-from tensorflow.python.training.saver import BaseSaverBuilder
-from tensorflow.python.util import function_utils
-
 from amanda import intercepts
 from amanda.cache import is_cache_enabled
 from amanda.conversion.amanda_tf_pybind import remove_op
@@ -22,6 +16,11 @@ from amanda.import_hook import (
     register_inst_scope_hook,
 )
 from amanda.tool import get_apply_scope, get_tools, register_cleanup_task
+from tensorflow.python import pywrap_tensorflow as tf_session
+from tensorflow.python.data.ops.iterator_ops import _IteratorSaveable
+from tensorflow.python.framework.meta_graph import import_scoped_meta_graph
+from tensorflow.python.training.saver import BaseSaverBuilder
+from tensorflow.python.util import function_utils
 
 
 def update_node(tf_graph, node, updates):
@@ -530,13 +529,19 @@ def register_import_hook() -> None:
 
 
 def register_intercepts() -> None:
-    intercepts.register(tf.Session.run, intercepts.to_handler(session_run_wrapper))
     intercepts.register(
-        tf.estimator.Estimator.train, intercepts.to_handler(train_wrapper)
+        tf.Session.run, intercepts.to_handler(session_run_wrapper), key="amanda"
     )
     intercepts.register(
-        tf.estimator.Estimator.predict, intercepts.to_handler(predict_wrapper)
+        tf.estimator.Estimator.train, intercepts.to_handler(train_wrapper), key="amanda"
     )
     intercepts.register(
-        tf.estimator.Estimator.evaluate, intercepts.to_handler(evaluate_wrapper)
+        tf.estimator.Estimator.predict,
+        intercepts.to_handler(predict_wrapper),
+        key="amanda",
+    )
+    intercepts.register(
+        tf.estimator.Estimator.evaluate,
+        intercepts.to_handler(evaluate_wrapper),
+        key="amanda",
     )

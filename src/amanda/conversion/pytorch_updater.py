@@ -7,9 +7,8 @@ from threading import RLock
 from typing import Any, Dict, List, MutableMapping, Set
 
 import torch
-from loguru import logger
 
-from amanda import intercepts
+from amanda import import_hook, intercepts
 from amanda.cache import is_cache_enabled
 from amanda.conversion.amanda_torch_pybind import (
     HookRegisterer,
@@ -29,30 +28,37 @@ from amanda.import_hook import (
     MatchedFunctionUpdater,
     MethodUpdater,
     Updater,
-    check_enabled,
-    disabled,
+    is_enabled,
 )
 from amanda.lang import get_superclasses
-from amanda.tool import get_apply_scope, get_tools, register_cleanup_task
+from amanda.tool import get_tools, register_cleanup_task
 
 _lock: RLock = RLock()
 _apply_scope = None
+_tools = None
 _grad_ids: MutableMapping[Any, Dict[int, int]] = {}
 _cached_actions: Dict[int, Dict[str, List[Action]]] = {}
 _has_cached_pre_actions: Dict[int, bool] = defaultdict(lambda: True)
 _has_cached_post_actions: Dict[int, bool] = defaultdict(lambda: True)
+_cached_contexts: Dict[int, OpContext] = {}
 _debug_cache: bool = False
 _should_hit = False
+_skip_actions = False
+_grad_fns: Set[Any] = set()
 
 
 def cleanup():
     global _apply_scope
     _apply_scope = None
-    with _lock:
-        _grad_ids.clear()
-        _cached_actions.clear()
-        _has_cached_pre_actions.clear()
-        _has_cached_post_actions.clear()
+    global _tools
+    _tools = None
+    # with _lock:
+    _grad_ids.clear()
+    _cached_actions.clear()
+    _has_cached_pre_actions.clear()
+    _has_cached_post_actions.clear()
+    _cached_contexts.clear()
+    _grad_fns.clear()
 
 
 def apply_insert_before_op(action, inputs):
@@ -88,7 +94,7 @@ def apply_insert_after_op(action, outputs):
 
 
 def apply_replace_op(action, inputs):
-    logger.debug("apply_replace_op")
+    # logger.debug("apply_replace_op")
     with torch.no_grad():
         filtered_inputs = inputs
         if action.inputs is not None:
@@ -96,12 +102,10 @@ def apply_replace_op(action, inputs):
         return action.func(*filtered_inputs, **action.kwargs)
 
 
+# @numba.jit(numba.int64(numba.int64), nopython=True)
 def next_id(id):
     # return (id * 1103515245 + 12345) & 0x7FFFFFFF
     return (id * 25214903917 + 11) & 0xFFFF_FFFF_FFFF
-
-
-_grad_fns: Set[Any] = set()
 
 
 class Ref:
@@ -109,7 +113,7 @@ class Ref:
         self.ref = ref
 
 
-def register_bw_events_recursively(context, outputs, is_cached):
+def register_bw_events_recursively(context, outputs, is_cached, cached_actions):
     """
     same functionality as register_bw_events() with subgraph matching,
     in this manner, a EventContext in bw phase have "op", "bw_op" two context,
@@ -118,7 +122,11 @@ def register_bw_events_recursively(context, outputs, is_cached):
 
     def _register_bw_events(context, grad_fn):
         def before_bw_op_hook(grad_output, context, bw_op, bw_subgraph_id, handle):
-            with disabled(), _lock:
+            # with disabled(), _lock:
+            # with disabled():
+            prev_enabled = import_hook._enabled
+            import_hook._enabled = False
+            try:
                 if isinstance(grad_output, torch.Tensor):
                     grad_outputs = [grad_output]
                 else:
@@ -151,8 +159,14 @@ def register_bw_events_recursively(context, outputs, is_cached):
                         # pass
 
                 if is_cached:
-                    for action in cached_actions["insert_before_backward_op"]:
-                        apply_insert_before_op(action, grad_outputs)
+                    if not _skip_actions:
+                        for action in cached_actions["insert_before_backward_op"]:
+                            apply_insert_before_op(action, grad_outputs)
+                    # context.update(
+                    #     backward_op=bw_raw_op,
+                    #     backward_op_id=bw_op_id,
+                    #     grad_outputs=grad_outputs,
+                    # )
                 else:
                     with torch.no_grad():
                         context.trigger(
@@ -166,52 +180,66 @@ def register_bw_events_recursively(context, outputs, is_cached):
                             apply_insert_before_op(action, grad_outputs)
                             context.actions.remove(action)
                             cached_actions["insert_before_backward_op"].append(action)
-
-                if is_cached:
-                    context.update(
-                        backward_op=bw_raw_op,
-                        backward_op_id=bw_op_id,
-                        grad_outputs=grad_outputs,
-                    )
-                elif is_cache_enabled():
-                    _cached_actions[bw_op_id] = cached_actions
-                    if len(cached_actions["insert_before_backward_op"]) == 0:
-                        _has_cached_pre_actions[bw_subgraph_id] = False
+                    if is_cache_enabled():
+                        _cached_actions[bw_op_id] = cached_actions
+                        _cached_actions[context.get_op_id()][
+                            "uncached_backward_count"
+                        ] -= 1
+                        if len(cached_actions["insert_before_backward_op"]) == 0:
+                            _has_cached_pre_actions[bw_subgraph_id] = False
 
                 assert amanda_remove_pre_hook(bw_op, handle)
                 return tuple(grad_outputs)
+            finally:
+                import_hook._enabled = prev_enabled
 
         def after_bw_op_hook(
             grad_input, grad_output, context, bw_op, bw_subgraph_id, handle
         ):
-            with disabled(), _lock:
-                _grad_fns.remove(bw_op)
+            # with disabled(), _lock:
+            # with disabled():
+            prev_enabled = import_hook._enabled
+            import_hook._enabled = False
+            try:
+                # _grad_fns.remove(bw_op)
+                if isinstance(grad_output, torch.Tensor):
+                    grad_outputs = [grad_output]
+                else:
+                    grad_outputs = list(grad_output)
                 if isinstance(grad_input, torch.Tensor):
                     grad_inputs = [grad_input]
                 else:
                     grad_inputs = grad_input
                 new_grad_inputs = list(grad_inputs)
 
-                bw_op_id = context.backward_op_id
+                bw_op_id = bw_subgraph_id
                 is_cached = False
                 cached_actions = _cached_actions.get(bw_op_id, {})
-                if (
-                    is_cache_enabled()
-                    and "insert_after_backward_op" in _cached_actions[bw_op_id]
-                ):
-                    is_cached = True
+                if is_cache_enabled():
+                    if "insert_after_backward_op" in _cached_actions[bw_op_id]:
+                        is_cached = True
+                    else:
+                        cached_actions["replace_backward_op"] = []
+                        cached_actions["insert_after_backward_op"] = []
+                        _cached_actions[bw_op_id] = cached_actions
+                        _cached_actions[context.get_op_id()][
+                            "uncached_backward_count"
+                        ] -= 1
                 else:
                     cached_actions["replace_backward_op"] = []
                     cached_actions["insert_after_backward_op"] = []
 
                 if is_cached:
-                    for action in cached_actions["replace_backward_op"]:
-                        new_input = apply_replace_op(action, context.grad_outputs)
-                        if isinstance(new_input, torch.Tensor):
-                            new_grad_inputs = [new_input]
-                        else:
-                            new_grad_inputs = new_input
-                        break
+                    if not _skip_actions:
+                        for action in cached_actions["replace_backward_op"]:
+                            new_input = apply_replace_op(action, grad_outputs)
+                            if isinstance(new_input, torch.Tensor):
+                                new_grad_inputs = [new_input]
+                            else:
+                                new_grad_inputs = new_input
+                            break
+                        for action in cached_actions["insert_after_backward_op"]:
+                            apply_insert_after_op(action, new_grad_inputs)
                 else:
                     with torch.no_grad():
                         context.trigger(
@@ -220,7 +248,7 @@ def register_bw_events_recursively(context, outputs, is_cached):
                         )
                     for action in list(context.actions):
                         if action.type == "replace_op":
-                            new_input = apply_replace_op(action, context.grad_outputs)
+                            new_input = apply_replace_op(action, grad_outputs)
                             context.actions.remove(action)
                             cached_actions["replace_backward_op"].append(action)
                             if isinstance(new_input, torch.Tensor):
@@ -228,11 +256,6 @@ def register_bw_events_recursively(context, outputs, is_cached):
                             else:
                                 new_grad_inputs = new_input
                             break
-
-                if is_cached:
-                    for action in cached_actions["insert_after_backward_op"]:
-                        apply_insert_after_op(action, new_grad_inputs)
-                else:
                     for action in list(context.actions):
                         if action.type == "insert_after_backward_op":
                             apply_insert_after_op(action, new_grad_inputs)
@@ -246,26 +269,37 @@ def register_bw_events_recursively(context, outputs, is_cached):
                         and len(cached_actions["insert_after_backward_op"]) == 0
                     ):
                         _has_cached_post_actions[bw_subgraph_id] = False
-                        if len(cached_actions["insert_before_backward_op"]) == 0:
-                            _cached_actions[context.op_id][
-                                "has_backward_actions"
-                            ] = False
                 for grad_input, new_grad_input in zip(grad_inputs, new_grad_inputs):
                     if isinstance(grad_input, torch.Tensor) and isinstance(
                         new_grad_input, torch.Tensor
                     ):
                         grad_input.data = new_grad_input
                 handle.remove()
+            finally:
+                import_hook._enabled = prev_enabled
 
-        if not (grad_fn and grad_fn not in _grad_fns):
-            return
-        _grad_fns.add(grad_fn)
-        bw_context = context.inherite()
+        if is_bw_cached:
+            if next(grad_fn_trace_iter):
+                # print("after_bw_op_hook", grad_fn)
+                return
+        else:
+            is_walked = not grad_fn or grad_fn in _grad_fns
+            grad_fn_trace.append(is_walked)
+            if is_walked:
+                return
+            else:
+                _grad_fns.add(grad_fn)
+        bw_context = None
         nonlocal bw_subgraph_id
         local_bw_subgraph_id = bw_subgraph_id
         if not is_cached or _has_cached_pre_actions[local_bw_subgraph_id]:
             # if _debug_cache and _should_hit:
             #     print("before_bw_op_hook", grad_fn)
+            if uncached_backward_count != 0:
+                if uncached_backward_count is None:
+                    cached_actions["uncached_backward_count"] += 1
+                if bw_context is None:
+                    bw_context = context.inherite()
             pre_handle = amanda_add_pre_hook(
                 grad_fn,
                 lambda grad_output: before_bw_op_hook(
@@ -279,6 +313,11 @@ def register_bw_events_recursively(context, outputs, is_cached):
         if not is_cached or _has_cached_post_actions[local_bw_subgraph_id]:
             # if _debug_cache and _should_hit:
             #     print("after_bw_op_hook", grad_fn)
+            if uncached_backward_count != 0:
+                if uncached_backward_count is None:
+                    cached_actions["uncached_backward_count"] += 1
+                if bw_context is None:
+                    bw_context = context.inherite()
             post_handle = grad_fn.register_hook(
                 lambda grad_input, grad_output: after_bw_op_hook(
                     grad_input,
@@ -289,38 +328,44 @@ def register_bw_events_recursively(context, outputs, is_cached):
                     handle=post_handle,
                 )
             )
-        for next_grad_fn, next_input_pos in grad_fn.next_functions:
+        if is_bw_cached:
+            for next_grad_fn, next_input_pos in grad_fn.next_functions:
+                bw_subgraph_id = next(backward_ids_iter)
+                _register_bw_events(context, next_grad_fn)
+        else:
+            for next_grad_fn, next_input_pos in grad_fn.next_functions:
+                bw_subgraph_id = next_id(bw_subgraph_id)
+                backward_ids.append(bw_subgraph_id)
+                _register_bw_events(context, next_grad_fn)
+
+    uncached_backward_count = cached_actions["uncached_backward_count"]
+    if uncached_backward_count is None:
+        cached_actions["uncached_backward_count"] = 0
+    is_bw_cached = is_cached and cached_actions["backward_ids"] is not None
+    bw_subgraph_id = context["op_id"]
+    if is_bw_cached:
+        grad_fn_trace_iter = iter(cached_actions["grad_fn_trace"])
+        backward_ids_iter = iter(cached_actions["backward_ids"])
+        for output in outputs:
+            bw_subgraph_id = next(backward_ids_iter)
+            # if hasattr(output, "grad_fn") and output.requires_grad:
+            if isinstance(output, torch.Tensor):
+                # if _debug_cache and _should_hit:
+                #     print("_register_bw_events", context.op, type(output))
+                _register_bw_events(context, output.grad_fn)
+    else:
+        grad_fn_trace = []
+        cached_actions["grad_fn_trace"] = grad_fn_trace
+        backward_ids = []
+        cached_actions["backward_ids"] = backward_ids
+        for output in outputs:
             bw_subgraph_id = next_id(bw_subgraph_id)
-            _register_bw_events(context, next_grad_fn)
-
-    bw_subgraph_id = context.op_id
-    for output in outputs:
-        bw_subgraph_id = next_id(bw_subgraph_id)
-        if hasattr(output, "grad_fn") and output.requires_grad:
-            # if _debug_cache and _should_hit:
-            #     print("_register_bw_events", context.op, type(output))
-            _register_bw_events(context, output.grad_fn)
-
-
-""" unpack_input_grad_fns()
-unpack a nested iterable (currently list and set supported)
-    of tensors recursively into a list,
-the grad_fn of each tensor is gathered into the output list,
-this list is used to identify the backward subgraph tracing boundary
-"""
-
-
-def unpack_input_grad_fns(inputs):
-    def _unpack_input_grad_fns(inputs):
-        for input in inputs:
-            if hasattr(input, "grad_fn") and input.grad_fn:
-                input_grad_fns.append(input.grad_fn)
-            elif isinstance(input, list) or isinstance(input, set):
-                _unpack_input_grad_fns(input)
-
-    input_grad_fns = []
-    _unpack_input_grad_fns(inputs)
-    return input_grad_fns
+            backward_ids.append(bw_subgraph_id)
+            # if hasattr(output, "grad_fn") and output.requires_grad:
+            if isinstance(output, torch.Tensor):
+                # if _debug_cache and _should_hit:
+                #     print("_register_bw_events", context.op, type(output))
+                _register_bw_events(context, output.grad_fn)
 
 
 class CacheTracer:
@@ -355,12 +400,7 @@ def get_cache_size():
 
 def get_input_id(input, default_id, next_seed=None, inputs=None, is_unknown=None):
     if _debug_cache:
-        if isinstance(input, torch.nn.Parameter):
-            inputs.append(id(input))
-            _cache_tracer.id_to_cache[id(input)] = ["parameter", type(input)]
-            is_unknown.ref = False
-            return id(input)
-        elif hasattr(input, "__stable_id__"):
+        if hasattr(input, "__stable_id__"):
             inputs.append(id(input))
             if hasattr(input, "__is__buffer__"):
                 _cache_tracer.id_to_cache[id(input)] = [
@@ -385,7 +425,12 @@ def get_input_id(input, default_id, next_seed=None, inputs=None, is_unknown=None
                 ]
             is_unknown.ref = False
             return input.__stable_id__
-        elif isinstance(input, (list, tuple)):
+        elif isinstance(input, torch.nn.Parameter):
+            inputs.append(id(input))
+            _cache_tracer.id_to_cache[id(input)] = ["parameter", type(input)]
+            is_unknown.ref = False
+            return id(input)
+        elif type(input) is list or type(input) is tuple:
             input_id = default_id
             for x in input:
                 next_seed.ref = next_id(next_seed.ref)
@@ -407,13 +452,13 @@ def get_input_id(input, default_id, next_seed=None, inputs=None, is_unknown=None
             ]
             return default_id
     else:
-        if isinstance(input, torch.nn.Parameter):
-            is_unknown.ref = False
-            return id(input)
-        elif hasattr(input, "__stable_id__"):
+        if hasattr(input, "__stable_id__"):
             is_unknown.ref = False
             return input.__stable_id__
-        elif isinstance(input, (list, tuple)):
+        elif isinstance(input, torch.nn.Parameter):
+            is_unknown.ref = False
+            return id(input)
+        elif type(input) is list or type(input) is tuple:
             input_id = default_id
             for x in input:
                 next_seed.ref = next_id(next_seed.ref)
@@ -474,132 +519,157 @@ def calc_op_id(self_id, args, kwargs=None, next_seed=None, is_unknown=None):
         return op_id
 
 
-def function_wrapper(func):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        with disabled(), _lock:
-            global _apply_scope
-            if _apply_scope is not None and _apply_scope != get_apply_scope():
-                assert _apply_scope == get_apply_scope()
-                _apply_scope = None
-                _cached_actions.clear()
-                _has_cached_pre_actions.clear()
-                _has_cached_post_actions.clear()
-            if _apply_scope is None:
-                _apply_scope = get_apply_scope()
-                register_cleanup_task(cleanup)
-            tools = get_tools()
-            inputs = [*args, kwargs]
-            raw_func = func
-            if isinstance(func, functools.partial):
-                raw_func = func.__wrapped__
-            context = OpContext(tools=tools, namespace="pytorch")
-            raw_op = raw_func
-            if isinstance(raw_func, types.MethodWrapperType):
-                raw_op = raw_func.__self__
-            self_id = id(raw_op)
-            is_unknown = Ref(True)
-            next_seed = Ref(self_id)
-            if _debug_cache:
-                op_id, cached_inputs = calc_op_id(
-                    self_id, args, kwargs, next_seed=next_seed, is_unknown=is_unknown
-                )
-                _cache_tracer.op_to_inputs[op_id] = cached_inputs
-                _cache_tracer.id_to_cache[op_id] = ["op", raw_op]
-            else:
-                op_id = calc_op_id(
-                    self_id, args, kwargs, next_seed=next_seed, is_unknown=is_unknown
-                )
+def function_wrapper(func, *args, **kwargs):
+    if not is_enabled():
+        return func(*args, **kwargs)
+    tools = get_tools()
+    if len(tools) == 0:
+        return func(*args, **kwargs)
+    global _tools
+    if _tools is not tools:
+        _tools = tools
+        _cached_actions.clear()
+        _has_cached_pre_actions.clear()
+        _has_cached_post_actions.clear()
+        register_cleanup_task(cleanup)
+    raw_func = func
+    if type(func) is functools.partial:
+        raw_func = func.__wrapped__
+    raw_op = raw_func
+    if isinstance(raw_func, types.MethodWrapperType):
+        raw_op = raw_func.__self__
+    self_id = id(raw_op)
+    is_unknown = Ref(True)
+    next_seed = Ref(self_id)
+    if _debug_cache:
+        op_id, cached_inputs = calc_op_id(
+            self_id, args, kwargs, next_seed=next_seed, is_unknown=is_unknown
+        )
+        _cache_tracer.op_to_inputs[op_id] = cached_inputs
+        _cache_tracer.id_to_cache[op_id] = ["op", raw_op]
+    else:
+        op_id = calc_op_id(
+            self_id, args, kwargs, next_seed=next_seed, is_unknown=is_unknown
+        )
 
-            is_cached = False
-            if is_cache_enabled() and op_id in _cached_actions:
-                # print("hit", raw_func.__name__, op_id)
-                cached_actions = _cached_actions[op_id]
-                is_cached = True
-            else:
-                cached_actions = {
-                    "insert_before_op": [],
-                    "replace_op": [],
-                    "insert_after_op": [],
-                    "has_backward_actions": True,
-                }
-                if _debug_cache and _should_hit:
-                    print()
-                    _cache_tracer.print_trace_from_op(op_id)
-                    raise RuntimeError()
-                    # pass
+    is_cached = False
+    if is_cache_enabled() and op_id in _cached_actions:
+        # print("hit", raw_func.__name__, op_id)
+        cached_actions = _cached_actions[op_id]
+        is_cached = True
+    else:
+        cached_actions = {
+            "insert_before_op": [],
+            "replace_op": [],
+            "insert_after_op": [],
+            "output_ids": None,
+            "backward_ids": None,
+            "grad_fn_trace": None,
+            "uncached_backward_count": None,
+        }
+        if _debug_cache and _should_hit:
+            print()
+            _cache_tracer.print_trace_from_op(op_id)
+            raise RuntimeError()
+            # pass
 
-            if is_cached:
+    if op_id not in _cached_contexts:
+        _cached_contexts[op_id] = OpContext(tools=tools, namespace="pytorch")
+    context = _cached_contexts[op_id]
+    inputs = [*args, kwargs]
+    is_replaced = False
+
+    # with disabled(), _lock:
+    # with disabled():
+    prev_enabled = import_hook._enabled
+    import_hook._enabled = False
+    try:
+        if is_cached:
+            if not _skip_actions:
                 for action in cached_actions["insert_before_op"]:
                     apply_insert_before_op(action, inputs)
-            else:
-                with torch.no_grad():
-                    context.trigger(
-                        on_op_call,
-                        op=raw_func,
-                        op_id=op_id,
-                        inputs=inputs,
-                    )
-                for action in list(context.actions):
-                    if action.type == "insert_before_op":
-                        apply_insert_before_op(action, inputs)
-                        context.actions.remove(action)
-                        cached_actions["insert_before_op"].append(action)
-
-            is_replaced = False
-
-            if is_cached:
                 for action in cached_actions["replace_op"]:
                     output = apply_replace_op(action, inputs)
                     is_replaced = True
                     break
-            else:
-                for action in list(context.actions):
-                    if action.type == "replace_op":
-                        output = apply_replace_op(action, inputs)
-                        context.actions.remove(action)
-                        cached_actions["replace_op"].append(action)
-                        is_replaced = True
-                        break
-
-            if not is_replaced:
-                output = func(*inputs[:-1], **inputs[-1])
-            if type(output) != tuple:
-                outputs = [output]
-                is_output_nested = True
-            else:
-                outputs = output
-                is_output_nested = False
-
-            if is_cached:
-                for action in cached_actions["insert_after_op"]:
-                    apply_insert_after_op(action, outputs)
-            else:
-                with torch.no_grad():
-                    context.trigger(
-                        after_op_call,
-                        outputs=outputs,
-                    )
-                for action in list(context.actions):
-                    if action.type == "insert_after_op":
-                        apply_insert_after_op(action, outputs)
-                        context.actions.remove(action)
-                        cached_actions["insert_after_op"].append(action)
-                assert len(context.actions) == 0
-
-            if is_cached:
-                context.update(
+        else:
+            with torch.no_grad():
+                context.trigger(
+                    on_op_call,
                     op=raw_func,
                     op_id=op_id,
                     inputs=inputs,
+                )
+            for action in list(context.actions):
+                if action.type == "insert_before_op":
+                    apply_insert_before_op(action, inputs)
+                    context.actions.remove(action)
+                    cached_actions["insert_before_op"].append(action)
+            for action in list(context.actions):
+                if action.type == "replace_op":
+                    output = apply_replace_op(action, inputs)
+                    context.actions.remove(action)
+                    cached_actions["replace_op"].append(action)
+                    is_replaced = True
+                    break
+
+        if not is_replaced:
+            output = func(*inputs[:-1], **inputs[-1])
+        if type(output) != tuple:
+            outputs = [output]
+            is_output_nested = True
+        else:
+            outputs = output
+            is_output_nested = False
+
+        if is_cached:
+            if not _skip_actions:
+                for action in cached_actions["insert_after_op"]:
+                    apply_insert_after_op(action, outputs)
+            # context.update(
+            #     op=raw_func,
+            #     op_id=op_id,
+            #     inputs=inputs,
+            #     outputs=outputs,
+            # )
+        else:
+            with torch.no_grad():
+                context.trigger(
+                    after_op_call,
                     outputs=outputs,
                 )
-            elif is_cache_enabled():
-                _cached_actions[op_id] = cached_actions
-            arg_id = op_id
+            for action in list(context.actions):
+                if action.type == "insert_after_op":
+                    apply_insert_after_op(action, outputs)
+                    context.actions.remove(action)
+                    cached_actions["insert_after_op"].append(action)
+            assert len(context.actions) == 0
+
+        if is_cached:
+            output_ids = cached_actions["output_ids"]
+            if output_ids is not None:
+                if _debug_cache:
+                    for output_id, output in zip(output_ids, outputs):
+                        if output_id is not None:
+                            _cache_tracer.output_to_op[id(output)] = op_id
+                            _cache_tracer.id_to_cache[id(output)] = [
+                                "output",
+                                type(output),
+                                "sid:",
+                                output_id,
+                            ]
+                            output.__stable_id__ = output_id
+                else:
+                    for output_id, output in zip(output_ids, outputs):
+                        if output_id is not None:
+                            output.__stable_id__ = output_id
+        else:
             if (not is_unknown.ref) and (
                 (not raw_op.__name__.endswith("_")) or raw_op.__name__.endswith("__")
             ):
+                arg_id = op_id
+                output_ids = []
+                cached_actions["output_ids"] = output_ids
                 if _debug_cache:
                     for output in outputs:
                         arg_id = next_id(arg_id)
@@ -616,6 +686,9 @@ def function_wrapper(func):
                                 arg_id,
                             ]
                             output.__stable_id__ = arg_id
+                            output_ids.append(arg_id)
+                        else:
+                            output_ids.append(None)
                 else:
                     for output in outputs:
                         arg_id = next_id(arg_id)
@@ -625,17 +698,43 @@ def function_wrapper(func):
                             and not hasattr(output, "__stable_id__")
                         ):
                             output.__stable_id__ = arg_id
-            if torch.is_grad_enabled() and (
-                not is_cached or cached_actions["has_backward_actions"]
-            ):
-                register_bw_events_recursively(context, outputs, is_cached)
-            if is_output_nested:
-                output = outputs[0]
+                            output_ids.append(arg_id)
+                        else:
+                            output_ids.append(None)
+        if torch.is_grad_enabled():
+            if is_cached:
+                if cached_actions["uncached_backward_count"] == 0:
+                    register_bw_events_recursively(
+                        context, outputs, is_cached, cached_actions
+                    )
+                else:
+                    context.update(
+                        op=raw_func,
+                        op_id=op_id,
+                        inputs=inputs,
+                        outputs=outputs,
+                    )
+                    register_bw_events_recursively(
+                        context, outputs, is_cached, cached_actions
+                    )
+                    context["inputs"] = None
+                    context["outputs"] = None
             else:
-                output = outputs
-            return output
-
-    return check_enabled(func, wrapper)
+                register_bw_events_recursively(
+                    context, outputs, is_cached, cached_actions
+                )
+        if not is_cached and is_cache_enabled():
+            _cached_actions[op_id] = cached_actions
+        if not is_cached:
+            context["inputs"] = None
+            context["outputs"] = None
+        if is_output_nested:
+            output = outputs[0]
+        else:
+            output = outputs
+        return output
+    finally:
+        import_hook._enabled = prev_enabled
 
 
 def register_buffer_wrapper(func):
@@ -807,14 +906,13 @@ TORCH_OP_OVERLOAD_LIST = (
 TORCH_OP_LIST.update(TORCH_OP_OVERLOAD_LIST)
 
 
-def wrap_op(module, name, wrapper):
-    handler = intercepts.to_handler(wrapper)
+def wrap_op(module, name, handler):
     if isinstance(module, torch._C._VariableFunctionsClass):
         if hasattr(module, name):
-            intercepts.register(getattr(module, name), handler, "amanda")
+            intercepts.register(getattr(module, name), handler, key="amanda")
             return True
     elif name in module.__dict__:
-        intercepts.register(module.__dict__[name], handler, "amanda")
+        intercepts.register(module.__dict__[name], handler, key="amanda")
         return True
     return False
 
@@ -828,7 +926,7 @@ def listener_callback(op_name: str) -> str:
             return name
 
     name = remove_namespace(op_name)
-    # if name in ["is_leaf"]:
+    # if name in ["grad"]:
     #     return op_name
     for module in [
         torch._C._nn,
@@ -1000,14 +1098,23 @@ def register_import_hook() -> None:
 def register_intercepts() -> None:
     HookRegisterer(listener_callback)
     intercepts.register(
-        torch.nn.Module.register_buffer, intercepts.to_handler(register_buffer_wrapper)
+        torch.nn.Module.register_buffer,
+        intercepts.to_handler(register_buffer_wrapper),
+        key="amanda",
     )
     # intercepts.register(
-    #     torch.optim.Optimizer.step, intercepts.to_handler(step_wrapper)
+    #     torch.optim.Optimizer.step,
+    #     intercepts.to_handler(step_wrapper),
+    #     key="amanda"
     # )
     intercepts.register(
         torch.optim.Optimizer._hook_for_profile,
         intercepts.to_handler(_hook_for_profile_wrapper),
+        key="amanda",
     )
-    intercepts.register(torch.Tensor.grad.fset, intercepts.to_handler(set_grad_wrapper))
-    intercepts.register(torch.Tensor.grad.fget, intercepts.to_handler(get_grad_wrapper))
+    intercepts.register(
+        torch.Tensor.grad.fset, intercepts.to_handler(set_grad_wrapper), key="amanda"
+    )
+    intercepts.register(
+        torch.Tensor.grad.fget, intercepts.to_handler(get_grad_wrapper), key="amanda"
+    )
