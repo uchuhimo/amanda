@@ -64,10 +64,8 @@ class OpContext(dict):
 
     def __init__(self, tools: Iterable[Tool], namespace: str):
         super().__init__()
-        from amanda.tool import Tool
-
         self.namespace = namespace
-        self.tools: Iterable[Tool] = tools
+        self.tools = tools
         self.actions: List[Action] = []
         self.is_op_replaced = False
         self.is_backward_op_replaced = False

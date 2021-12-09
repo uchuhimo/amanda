@@ -1,11 +1,11 @@
+import amanda
 import torch
 from torchvision.models import resnet50
-
-import amanda
 
 
 class CountConvTool(amanda.Tool):
     def __init__(self):
+        super().__init__()
         self.counter = 0
         self.add_inst_for_op(self.callback)
 

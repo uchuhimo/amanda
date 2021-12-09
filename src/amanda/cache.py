@@ -1,27 +1,29 @@
 from contextlib import contextmanager
 
-from amanda.threading import ThreadLocalStack
-
-_cache_enabled = ThreadLocalStack()
+_cache_enabled = True
 
 
 @contextmanager
 def cache_disabled():
-    _cache_enabled.push(False)
+    global _cache_enabled
+    prev_cache_enabled = _cache_enabled
+    _cache_enabled = False
     try:
         yield
     finally:
-        _cache_enabled.pop()
+        _cache_enabled = prev_cache_enabled
 
 
 @contextmanager
 def cache_enabled():
-    _cache_enabled.push(True)
+    global _cache_enabled
+    prev_cache_enabled = _cache_enabled
+    _cache_enabled = True
     try:
         yield
     finally:
-        _cache_enabled.pop()
+        _cache_enabled = prev_cache_enabled
 
 
 def is_cache_enabled() -> bool:
-    return _cache_enabled.top() or _cache_enabled.top() is None
+    return _cache_enabled

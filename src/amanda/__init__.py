@@ -41,4 +41,6 @@ if find_spec("mmdnn"):
 
 from .conversion.checkpoint import Checkpoint  # noqa: F401
 
+intercepts.init()
+
 __version__ = "0.1.0"

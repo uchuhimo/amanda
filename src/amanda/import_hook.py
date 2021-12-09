@@ -10,9 +10,10 @@ from importlib._bootstrap_external import FileLoader
 from typing import Callable, List, Type
 
 import _imp
-from amanda.lang import Handler, register_handler
-from amanda.threading import ThreadLocalStack
 from loguru import logger
+
+from amanda.lang import Handler, register_handler
+from amanda.tool import get_tools
 
 
 class Updater(ABC):
@@ -183,12 +184,14 @@ def register_inst_scope_hook(hook: InstScopeHook) -> Handler:
     return register_handler(_inst_scope_hooks, hook)
 
 
-_enabled = ThreadLocalStack()
+_enabled = True
 
 
 @contextmanager
 def disabled():
-    _enabled.push(False)
+    global _enabled
+    prev_enabled = _enabled
+    _enabled = False
     for hook in _inst_scope_hooks:
         hook.begin(False)
     try:
@@ -196,12 +199,14 @@ def disabled():
     finally:
         for hook in _inst_scope_hooks:
             hook.end(False)
-        _enabled.pop()
+        _enabled = prev_enabled
 
 
 @contextmanager
 def enabled():
-    _enabled.push(True)
+    global _enabled
+    prev_enabled = _enabled
+    _enabled = True
     for hook in _inst_scope_hooks:
         hook.begin(True)
     try:
@@ -209,18 +214,16 @@ def enabled():
     finally:
         for hook in _inst_scope_hooks:
             hook.end(True)
-        _enabled.pop()
+        _enabled = prev_enabled
 
 
 def is_enabled() -> bool:
-    return _enabled.top() or _enabled.top() is None
+    return _enabled
 
 
 def check_enabled(func, hooked_func):
     @wraps(func)
     def wrapper(*args, **kwargs):
-        from amanda.tool import get_tools
-
         if is_enabled():
             tools = get_tools()
             if len(tools) == 0:

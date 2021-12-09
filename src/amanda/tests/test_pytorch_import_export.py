@@ -24,7 +24,7 @@ from amanda.io.file import root_dir
     scope="module",
     params=[
         models.resnet18,
-        models.inception_v3,
+        # models.inception_v3,
         pytest.param(models.resnet50, marks=pytest.mark.slow),
         pytest.param(models.inception_v3, marks=pytest.mark.slow),
         pytest.param(models.alexnet, marks=pytest.mark.slow),
@@ -38,6 +38,7 @@ from amanda.io.file import root_dir
         pytest.param(
             partial(models.detection.maskrcnn_resnet50_fpn, pretrained_backbone=False),
             id="maskrcnn_resnet50_fpn",
+            marks=pytest.mark.slow,
         ),
         # pytest.param(
         #     partial(models.quantization.mobilenet_v2, quantize=True),
@@ -241,32 +242,69 @@ class TestCacheTool(amanda.Tool):
 
 
 def test_pytorch_cache_enabled(model_and_input):
+    from amanda.conversion import pytorch_updater
+
     # linear = torch.nn.Linear(227, 128, bias=False)
     # x = torch.rand(3, 9, 227, 227)
     model, x = model_and_input
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+    criterion = torch.nn.MSELoss()
+    optimizer = torch.optim.SGD(
+        model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4
+    )
 
     tool = TestCacheTool()
     with amanda.tool.apply(tool):
-        assert is_cache_enabled()
-        output = get_output(model(x), model)
-        if not isinstance(model, QuantizableMobileNetV2):
-            output.backward(torch.ones_like(output))
-        # y = linear(x)
-        # y.backward(torch.ones_like(y))
-        counter = tool.counter
-        cached_counter = tool.cached_counter
-        cache_num = get_cache_size()
-        assert cached_counter == cache_num
-        if not isinstance(model, GeneralizedRCNN):
-            assert counter == cache_num
-        output = get_output(model(x), model)
-        if not isinstance(model, QuantizableMobileNetV2):
-            output.backward(torch.ones_like(output))
-        # y = linear(x)
-        # y.backward(torch.ones_like(y))
-        assert tool.cached_counter == cached_counter
-        assert tool.cached_counter == get_cache_size()
-        assert tool.counter == counter * 2
+        try:
+            pytorch_updater._debug_cache = True
+            assert is_cache_enabled()
+            # model = model.to(device)
+            if isinstance(model, GeneralizedRCNN):
+                x[0] = x[0].to(device)
+            else:
+                x = x.to(device)
+            output = get_output(model(x), model)
+            if not isinstance(model, QuantizableMobileNetV2):
+                loss = criterion(output, torch.ones_like(output))
+                optimizer.zero_grad()
+                # output.backward(torch.ones_like(output))
+                loss.backward()
+                optimizer.step()
+
+            output = get_output(model(x), model)
+            if not isinstance(model, QuantizableMobileNetV2):
+                loss = criterion(output, torch.ones_like(output))
+                optimizer.zero_grad()
+                # output.backward(torch.ones_like(output))
+                loss.backward()
+                optimizer.step()
+
+            # y = linear(x)
+            # y.backward(torch.ones_like(y))
+            counter = tool.counter
+            cached_counter = tool.cached_counter
+            cache_num = get_cache_size()
+            assert cached_counter == cache_num
+            # if not isinstance(model, GeneralizedRCNN):
+            #     assert counter == cache_num
+            assert counter >= cache_num
+            pytorch_updater._should_hit = True
+            output = get_output(model(x), model)
+            if not isinstance(model, QuantizableMobileNetV2):
+                loss = criterion(output, torch.ones_like(output))
+                optimizer.zero_grad()
+                # output.backward(torch.ones_like(output))
+                loss.backward()
+                optimizer.step()
+            # y = linear(x)
+            # y.backward(torch.ones_like(y))
+            assert tool.cached_counter == cached_counter
+            assert tool.cached_counter == get_cache_size()
+            assert tool.counter <= counter * 2
+        finally:
+            pytorch_updater._debug_cache = False
+            pytorch_updater._should_hit = False
 
 
 def test_pytorch_cache_disabled(model_and_input):
