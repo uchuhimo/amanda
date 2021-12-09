@@ -16,7 +16,7 @@ from examples.pruning.tensorflow import (
     validate_batch_size_for_multi_gpu,
 )
 from examples.pruning.tensorflow.alexnet_imagenet_train import alexnet_model_fn
-from examples.pruning.tensorflow.pruning import PruningTool
+from examples.pruning.tensorflow.pruning_tool import PruningTool
 
 
 def train_resnet_18_cifar100(
@@ -317,9 +317,10 @@ def main(train_fn, model_name, prune_matmul: bool = True):
             epochs_between_evals=epochs_between_evals,
         )
 
+    # full
     if os.path.exists(model_dir):
         shutil.rmtree(model_dir, ignore_errors=True)
-    tool = PruningTool(disabled=False, prune_matmul=prune_matmul)
+    tool = PruningTool()
     with amanda.tool.apply(tool):
         train_with_pruning_time = train(
             take_num=take_num,
@@ -327,6 +328,7 @@ def main(train_fn, model_name, prune_matmul: bool = True):
         )
         train_with_pruning_time /= take_num
 
+    # origin
     if os.path.exists(model_dir):
         shutil.rmtree(model_dir, ignore_errors=True)
     with amanda.disabled():
@@ -336,9 +338,10 @@ def main(train_fn, model_name, prune_matmul: bool = True):
         )
         train_time /= take_num
 
+    # core
     if os.path.exists(model_dir):
         shutil.rmtree(model_dir, ignore_errors=True)
-    tool = PruningTool(disabled=True, prune_matmul=prune_matmul)
+    tool = None
     with amanda.tool.apply(tool):
         train_with_hook_time = train(
             take_num=take_num,

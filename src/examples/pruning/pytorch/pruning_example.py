@@ -104,8 +104,8 @@ def main():
     total_step = len(train_loader)
 
     tool = PruneTool()
-    tool = None
-    tool = CountConvTool()
+    # tool = None
+    # tool = CountConvTool()
     counter = 0
 
     total_time = 0
@@ -115,8 +115,8 @@ def main():
 
     # pytorch_updater._debug_cache = True
     # with amanda.tool.apply(tool), amanda.disabled():
-    # with amanda.tool.apply(tool), amanda.cache_disabled():
-    with amanda.tool.apply(tool):
+    with amanda.tool.apply(tool), amanda.cache_disabled():
+        # with amanda.tool.apply(tool):
         for epoch in range(num_epochs):
 
             for i, (images, labels) in enumerate(train_loader):
@@ -145,8 +145,8 @@ def main():
 
                     optimizer.step()
 
-                print("num of conv2d:", tool.counter - counter)
-                counter = tool.counter
+                # print("num of conv2d:", tool.counter - counter)
+                # counter = tool.counter
                 if i == 1:
                     pytorch_updater._should_hit = True
                     # pytorch_updater._skip_actions = True

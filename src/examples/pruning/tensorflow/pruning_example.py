@@ -24,6 +24,7 @@ from examples.common.tensorflow.dataset.envs import CIFAR100_RAW_DIR
 from examples.common.tensorflow.utils import new_session_config
 from examples.pruning.tensorflow import cifar100_model_fn
 from examples.pruning.tensorflow.pruning_tool import PruningTool
+from examples.utils.timer import Timer
 
 
 def train(
@@ -52,7 +53,7 @@ def train(
         )
 
     estimator_config = tf.estimator.RunConfig(
-        save_checkpoints_steps=1,
+        save_checkpoints_steps=500,
         # save_checkpoints_secs=60 * 60,
         keep_checkpoint_max=None,
         session_config=new_session_config(parallel=0),
@@ -72,6 +73,7 @@ def train(
             batch_size=batch_size,
             num_epochs=epochs_between_evals,
         )
+        input = input.take(100)
         return input
 
     # Set up training hook that logs the training accuracy every 100 steps.
@@ -84,9 +86,12 @@ def train(
 
 
 def main():
-    tool = PruningTool()
-    with amanda.tool.apply(tool):
+    # tool = PruningTool()
+    tool = None
+    with amanda.tool.apply(tool), amanda.disabled():
         train()
+        with Timer(verbose=True) as t:
+            train()
 
 
 if __name__ == "__main__":
