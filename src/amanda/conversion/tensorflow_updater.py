@@ -173,6 +173,7 @@ def get_variables_by_name(graph):
 class TensorFlowAdapter:
     last_id: int = None
     instrumented_graph: Any = None
+    variables_by_name: Any = None
     updates: Any = None
     apply_scope: Any = None
 
@@ -276,12 +277,11 @@ class TensorFlowAdapter:
         self.last_id = graph._last_id
 
     def update_args(self, fetches, feed_dict, updates):
-        variables_by_name = get_variables_by_name(self.instrumented_graph)
         new_fetches = update_fetches(
-            self.instrumented_graph, variables_by_name, fetches, updates
+            self.instrumented_graph, self.variables_by_name, fetches, updates
         )
         new_feed_dict = update_feed_dict(
-            self.instrumented_graph, variables_by_name, feed_dict, updates
+            self.instrumented_graph, self.variables_by_name, feed_dict, updates
         )
         return new_fetches, new_feed_dict
 
@@ -343,6 +343,7 @@ def session_run_wrapper(func):
             if (not is_cache_enabled()) or adapter.is_graph_updated(graph):
                 instrumented_graph, updates = adapter.instrument(session, graph)
                 adapter.instrumented_graph = instrumented_graph
+                adapter.variables_by_name = get_variables_by_name(instrumented_graph)
                 adapter.updates = updates
             instrumented_graph = adapter.instrumented_graph
             updates = adapter.updates

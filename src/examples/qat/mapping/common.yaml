@@ -1,0 +1,23 @@
+package: common
+rules:
+  tf_type:
+    - let:
+        type: op.type
+    - when: is_backward
+      let:
+        backward_type: backward_op.type
+  torch_type:
+    - let:
+        type: op.__name__
+    - when: is_backward
+      let:
+        backward_type: backward_op.__name__
+
+  tf_get_shape:
+    - let:
+        get_shape: |
+          lambda tensor: tensor.shape.as_list()
+  torch_get_shape:
+    - let:
+        get_shape: |
+          lambda tensor: tensor.shape

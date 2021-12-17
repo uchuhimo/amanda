@@ -3,7 +3,7 @@ from amanda.io.file import ensure_dir
 
 
 class TraceTool(amanda.Tool):
-    def __init__(self, output_dir="tmp"):
+    def __init__(self, output_dir="tmp/tmp/tmp.txt"):
         super(TraceTool, self).__init__(namespace="amanda/tensorflow")
         self.add_inst_for_op(self.forward_instrumentation)
         self.add_inst_for_op(

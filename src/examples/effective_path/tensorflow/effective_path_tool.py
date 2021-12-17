@@ -58,6 +58,8 @@ class EffectivePathTool(amanda.Tool):
         def extract_fn(*np_inputs):
             op.inputs = []
             for name in tensor_names:
+                if name not in self.name_to_tensor:
+                    break
                 tensor = self.name_to_tensor[name]
                 op.inputs.append(tensor)
                 tensor.outputs.append(op)

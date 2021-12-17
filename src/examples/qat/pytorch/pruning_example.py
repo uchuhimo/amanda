@@ -8,7 +8,7 @@ import torchvision
 import torchvision.transforms as transforms
 from loguru import logger
 
-from examples.pruning.pytorch.pruning_tool import PruneTool
+from examples.qat.pytorch.pruning_tool import PruneTool
 from examples.utils.timer import Timer
 
 image_size = 227
@@ -857,16 +857,14 @@ if __name__ == "__main__":
     # model = torchvision.models.vgg19_bn().to(device)
     # x = torch.zeros((batch_size, 3, 224, 224)).to(device)
 
-    origin_time = main_origin(model, x, batch_size)
-    core_time = main_core(model, x, batch_size)
+    # origin_time = main_origin(model, x, batch_size)
+    # core_time = main_core(model, x, batch_size)
     usecase_time = main_usecase(model, x, batch_size)
-    core_time_nocache = main_core_nocache(model, x, batch_size)
-    usecase_time_nocache = main_usecase_nocache(model, x, batch_size)
+    # core_time_nocache = main_core_nocache(model, x, batch_size)
+    # usecase_time_nocache = main_usecase_nocache(model,x,batch_size)
 
-    print(f"origin time {origin_time}")
-    print(f"core time {(core_time-origin_time)/origin_time}")
-    print(f"usecase time {(usecase_time-core_time)/origin_time}")
-    print(f"core no cache time {(core_time_nocache-origin_time)/origin_time}")
-    print(
-        f"usecase no cache time {(usecase_time_nocache-core_time_nocache)/origin_time}"
-    )
+    # print(f"origin time {origin_time}")
+    # print(f"core time {(core_time-origin_time)/origin_time}")
+    # print(f"usecase time {(usecase_time-core_time)/origin_time}")
+    # print(f"core no cache time {(core_time_nocache-origin_time)/origin_time}")
+    # print(f"usecase no cache time {(usecase_time_nocache-core_time_nocache)/origin_time}")

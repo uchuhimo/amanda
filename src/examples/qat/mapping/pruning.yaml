@@ -1,0 +1,61 @@
+package: pruning
+import:
+  - common.yaml
+rules:
+  tf_cnn_type:
+    - when: type == "Conv2D"
+      let:
+        type: "conv2d"
+    - when: type == "MatMul"
+      let:
+        type: "linear"
+    - when: is_backward
+      block:
+        - when: backward_type == "Conv2DBackpropFilter"
+          let:
+            backward_type: "conv2d_backward"
+        - when: type == "linear" and backward_type == "MatMul"
+          let:
+            backward_type: "linear_backward"
+  torch_cnn_type:
+    - when: is_backward
+      block:
+        - when: backward_type == "CudnnConvolutionBackward"
+          let:
+            backward_type: "conv2d_backward"
+        - when: type == "linear" and backward_type == "AddmmBackward"
+          let:
+            backward_type: "linear_backward"
+
+  tf_get_mask:
+    - let:
+        get_mask: |
+          from examples.pruning.mapping.pruning_tool import tf_get_mask
+          tf_get_mask
+  torch_get_mask:
+    - let:
+        get_mask: |
+          from examples.pruning.vector_wise_sparsity import create_mask
+          create_mask
+
+mappings:
+  tensorflow:
+    source: tensorflow
+    target: pruning
+    rules:
+      - common.tf_type
+      - common.tf_get_shape
+      - tf_cnn_type
+      - tf_get_mask
+  pytorch:
+    source: pytorch
+    target: pruning
+    rules:
+      - common.torch_type
+      - common.torch_get_shape
+      - torch_cnn_type
+      - torch_get_mask
+  all:
+    use:
+      - tensorflow
+      - pytorch

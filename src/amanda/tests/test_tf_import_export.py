@@ -189,6 +189,8 @@ input_shapes = {
     "nasnet-a_large": (1, 331, 331, 3),
     "facenet": (1, 160, 160, 3),
     "rnn_lstm_gru_stacked": (1, 150),
+    "alexnet": (1, 224, 224, 3),
+    "bert": (1, 128),
 }
 
 
@@ -588,4 +590,4 @@ def test_tf_import_export_partitioned_graph(partitioned_graph_file):
 
 
 if __name__ == "__main__":
-    test_tf_modify_graph_with_new_hook(arch_name="vgg16")
+    test_tf_modify_graph_with_new_hook(arch_name="vgg19")

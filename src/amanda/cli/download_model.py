@@ -4,9 +4,8 @@ from functools import partial
 from importlib.util import find_spec
 from pathlib import Path
 
-from loguru import logger
-
 from amanda.io.file import root_dir
+from loguru import logger
 
 
 def tf_model_zoo(path: str) -> str:
@@ -45,36 +44,38 @@ def download_tf_model(arch_name, model_dir, root=None, skip_download=False):
 # https://github.com/microsoft/MMdnn/blob/master/mmdnn/conversion/examples/tensorflow/extractor.py
 tf_arch_names = [
     "vgg16",
-    # "vgg19",
+    "vgg19",
     "inception_v1",
-    # "inception_v3",
-    # "resnet_v1_50",
-    # "resnet_v1_152",
+    "inception_v3",
+    "resnet_v1_50",
+    "resnet_v1_152",
     "resnet_v2_50",
-    # "resnet_v2_101",
-    # "resnet_v2_152",
-    # "mobilenet_v1_1.0",
+    "resnet_v2_101",
+    "resnet_v2_152",
+    "mobilenet_v1_1.0",
     "mobilenet_v2_1.0_224",
-    # "inception_resnet_v2",
-    # "nasnet-a_large",
-    # "facenet",
-    # "rnn_lstm_gru_stacked",
+    "inception_resnet_v2",
+    "nasnet-a_large",
+    "facenet",
+    "rnn_lstm_gru_stacked",
 ]
 
 
 def download_all_tf_models(root=None, skip_download=False):
-    with ProcessPoolExecutor() as executor:
-        list(
-            executor.map(
-                partial(
-                    download_tf_model,
-                    model_dir="model",
-                    root=root,
-                    skip_download=skip_download,
-                ),
-                list(tf_arch_names),
-            )
-        )
+    # with ProcessPoolExecutor() as executor:
+    #     list(
+    #         executor.map(
+    #             partial(
+    #                 download_tf_model,
+    #                 model_dir="model",
+    #                 root=root,
+    #                 skip_download=skip_download,
+    #             ),
+    #             list(tf_arch_names),
+    #         )
+    #     )
+    for name in tf_arch_names:
+        download_tf_model(name, model_dir="model", root=root, skip_download=False)
 
 
 def onnx_model_zoo(path: str) -> str:
@@ -245,5 +246,5 @@ def download_file(
 
 if __name__ == "__main__":
     with ProcessPoolExecutor() as executor:
-        executor.submit(download_all_tf_models, skip_download=True)
-        executor.submit(download_all_onnx_models)
+        executor.submit(download_all_tf_models, skip_download=False)
+        # executor.submit(download_all_onnx_models)
