@@ -530,7 +530,7 @@ def register_import_hook() -> None:
 
 def register_intercepts() -> None:
     intercepts.register(
-        tf.Session.run, intercepts.to_handler(session_run_wrapper), key="amanda"
+        tf.compat.v1.Session.run, intercepts.to_handler(session_run_wrapper), key="amanda"
     )
     intercepts.register(
         tf.estimator.Estimator.train, intercepts.to_handler(train_wrapper), key="amanda"
