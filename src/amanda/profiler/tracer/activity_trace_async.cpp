@@ -9,9 +9,20 @@
 #include <stdio.h>
 #include <cuda.h>
 #include <cupti.h>
+#include <pthread.h>
 #include <fstream>
 
 #include "tracer.h"
+
+// Timestamp at trace initialization time. Used to normalized other
+// timestamps
+static uint64_t startTimestamp;
+
+// Pointer to trace controler, which means we only allowed one tracing process
+// at a time.
+tracer *tracer = NULL;
+std::string file_path = "activity_record.txt";
+pthread_mutex_t tracer_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 #define CUPTI_CALL(call)                                                \
   do {                                                                  \
@@ -42,11 +53,6 @@
 #define ALIGN_SIZE (8)
 #define ALIGN_BUFFER(buffer, align)                                            \
   (((uintptr_t) (buffer) & ((align)-1)) ? ((buffer) + (align) - ((uintptr_t) (buffer) & ((align)-1))) : (buffer))
-
-// Timestamp at trace initialization time. Used to normalized other
-// timestamps
-static uint64_t startTimestamp;
-static std::string file_path = "kernel_activity.txt";
 
 static const char *
 getMemcpyKindString(CUpti_ActivityMemcpyKind kind)
