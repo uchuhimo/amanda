@@ -20,7 +20,9 @@ list(APPEND CUDA_NVCC_FLAGS "-std=c++17")
 list(APPEND CUDA_NVCC_FLAGS "-v")
 
 cuda_add_executable(activity_trace_async
+	activity_trace_test.cpp
     activity_trace_async.cpp
+	tracer.cpp
     kernel.cu
 )
 target_link_libraries(activity_trace_async cudart)

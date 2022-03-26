@@ -6,9 +6,8 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <stdio.h>
-#include <string.h>
 
-#include "tracer.h"
+#include "kernel.cuh"
 
 #define COMPUTE_N 50000
 
@@ -49,7 +48,7 @@ VecSub(const int* A, const int* B, int* C, int N)
     C[i] = A[i] - B[i];
 }
 
-static void
+void
 do_pass(cudaStream_t stream)
 {
   int *h_A, *h_B, *h_C;
@@ -89,45 +88,5 @@ do_pass(cudaStream_t stream)
   RUNTIME_API_CALL(cudaFree(d_A));
   RUNTIME_API_CALL(cudaFree(d_B));
   RUNTIME_API_CALL(cudaFree(d_C));
-}
-
-int
-main(int argc, char *argv[])
-{
-  CUdevice device;  
-  char deviceName[32];
-  int deviceNum = 0, devCount = 0;
-
-  // initialize the activity trace
-  // make sure activity is enabled before any CUDA API
-  initTrace();
-
-  DRIVER_API_CALL(cuInit(0));
-  
-  RUNTIME_API_CALL(cudaGetDeviceCount(&devCount));
-  for (deviceNum=0; deviceNum<devCount; deviceNum++) {
-      DRIVER_API_CALL(cuDeviceGet(&device, deviceNum));
-      DRIVER_API_CALL(cuDeviceGetName(deviceName, 32, device));
-      printf("Device Name: %s\n", deviceName);
-
-      RUNTIME_API_CALL(cudaSetDevice(deviceNum));
-      // do pass default stream
-      do_pass(0);
-
-      // do pass with user stream
-      cudaStream_t stream0;
-      RUNTIME_API_CALL(cudaStreamCreate(&stream0));
-      do_pass(stream0);
-
-      RUNTIME_API_CALL(cudaDeviceSynchronize());
-
-      // Flush all remaining CUPTI buffers before resetting the device.
-      // This can also be called in the cudaDeviceReset callback.
-      activityFlushAll();
-      RUNTIME_API_CALL(cudaDeviceReset());
-  }
-  
-  finishTrace();
-  return 0;
 }
 

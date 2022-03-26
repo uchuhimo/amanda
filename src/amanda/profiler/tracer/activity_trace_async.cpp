@@ -18,14 +18,10 @@
 // Timestamp at trace initialization time. Used to normalized other
 // timestamps
 static uint64_t startTimestamp;
-
-// Pointer to trace controler, which means we only allowed one tracing process
-// at a time.
-tracer *tracer = NULL;
-std::string file_path = "activity_record.txt";
-pthread_mutex_t tracer_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_rwlock_t rwlock_file;
-pthread_rwlock_t rwlock_traceData;
+static std::fstream traceFile;
+static pthread_mutex_t traceCount_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_rwlock_t rwlock_file;
+static pthread_rwlock_t rwlock_traceData;
 
 #define CUPTI_CALL(call)                                                \
   do {                                                                  \
@@ -165,8 +161,7 @@ getComputeApiKindString(CUpti_ActivityComputeApiKind kind)
 static void
 printActivity(CUpti_Activity *record)
 {
-  std::ofstream tmpFile;
-  tmpFile.open(file_path, std::ios::app);
+  int rc;
   switch (record->kind)
   {
   case CUPTI_ACTIVITY_KIND_DEVICE:
@@ -235,12 +230,14 @@ printActivity(CUpti_Activity *record)
              kernel->deviceId, kernel->contextId, kernel->streamId,
              kernel->correlationId);
       
-      tmpFile << kindString << " " << kernel->name << " "
+      rc = pthread_rwlock_wrlock(&rwlock_file);
+      traceFile << kindString << " " << kernel->name << " "
               << "[" << kernel->start - startTimestamp << " - " << kernel->end - startTimestamp << ", " << kernel->start - kernel->end << "] "
               << "device: " << kernel->deviceId << " "
               << "context: " << kernel->contextId << " "
               << "stream: " << kernel->streamId << " "
               << "correlation: " << kernel->correlationId << std::endl;
+      rc = pthread_rwlock_unlock(&rwlock_file);
 
       printf("    grid [%u,%u,%u], block [%u,%u,%u], shared memory (static %u, dynamic %u)\n",
              kernel->gridX, kernel->gridY, kernel->gridZ,
@@ -334,7 +331,6 @@ printActivity(CUpti_Activity *record)
     printf("  <unknown>\n");
     break;
   }
-  tmpFile.close();
 }
 
 void CUPTIAPI bufferRequested(uint8_t **buffer, size_t *size, size_t *maxNumRecords)
@@ -379,14 +375,23 @@ void CUPTIAPI bufferCompleted(CUcontext ctx, uint32_t streamId, uint8_t *buffer,
   free(buffer);
 }
 
-void activityFlushAll()
+void tracer::activityFlushAll()
 {
   CUPTI_CALL(cuptiActivityFlushAll(0));
 }
 
-void initTrace()
+void tracer::initTrace()
 {
   size_t attrValue = 0, attrValueSize = sizeof(size_t);
+
+  // Add the traceCount, if traceCount == 1, open the file.
+  int rc = pthread_mutex_lock(&traceCount_mutex);
+  this->traceCount++;
+  if (this->traceCount == 1) {
+    traceFile.open(this->filePath, std::ios::app);
+  }
+  rc = pthread_mutex_unlock(&traceCount_mutex);
+
   // Device activity record is created when CUDA initializes, so we
   // want to enable it before cuInit() or any CUDA runtime call.
   unsigned long flag = 0;
@@ -412,7 +417,13 @@ void initTrace()
   CUPTI_CALL(cuptiGetTimestamp(&startTimestamp));
 }
 
-void finishTrace()
+void tracer::finishTrace()
 {
    CUPTI_CALL(cuptiActivityFlushAll(1));
+   int rc = pthread_mutex_lock(&traceCount_mutex);
+   this->traceCount--;
+   if (this->traceCount == 0) {
+     traceFile.close();
+   }
+   pthread_mutex_unlock(&traceCount_mutex);
 }

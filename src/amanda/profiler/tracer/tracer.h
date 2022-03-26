@@ -2,8 +2,11 @@
 
 #include <string>
 #include <vector>
+#include <pthread.h>
+#include <fstream>
 
 namespace Tracer{
+
 	// This is used to store the data values during the tracing process. Only contains those
 	// types all the activities will record.
 	typedef struct traceData_st
@@ -50,26 +53,29 @@ class tracer {
 	 * 			specific relationship.
 	 */
 	unsigned long kindFlag;
-	bool firstTimeFlag = true;
 	std::string filePath;
 
 	/**
 	 * traceMode will control online/offline data record of current trace process.
 	 * Please refer to Trace::trace_Mode for more details.
 	 * 
+	 * traceCount will record how many threads are under execution of current tracer.
+	 * It will used to control open/close file.
+	 * 
 	 */
 	Tracer::trace_Mode traceMode;
+	int traceCount = 0;
 
 public:
 	std::vector<Tracer::traceData_t> traceData;
 
 	tracer();
-	tracer(unsigned short kindFlag);
+	tracer(unsigned long kindFlag);
 	tracer(std::string filePath);
-	tracer(unsigned short kindFlag, std::string filePath);
+	tracer(unsigned long kindFlag, std::string filePath);
 	~tracer();
 
-	void setKindFlag(unsigned short kindFlag);
+	void setKindFlag(unsigned long kindFlag);
 	void setFilePath(std::string filePath);
 	/**
 	 * The following two functions is used to set trace mode.
@@ -80,16 +86,29 @@ public:
 	void onlineAnalysisOnly();
 	void offlineAnalysisOnly();
 
-	unsigned short getKindFlag();
+	unsigned long getKindFlag();
 	std::string getFilePath();
-	Tracer::trace_Mode getTeaceMode();
+
+	/**
+	 * Flush all remaining CUPTI buffers before resetting the device.
+	 * This can also be called in the cudaDeviceReset callback.
+	 * 
+	 */
+	void activityFlushAll();
+
+	/**
+	 * Init and finish tracing process.
+	 * After initTrace is called, tracing process of current thread starts.
+	 * And the tracing process will last until finishTrace. They should occur in pair.
+	 * 
+	 */
+	void initTrace();
+	void finishTrace();
 };
 
-// Flush all remaining CUPTI buffers before resetting the device.
-// This can also be called in the cudaDeviceReset callback.
-void activityFlushAll();
-
-// Init the trace context
-void initTrace();
-// Finish the trace context, just flush the buffer
-void finishTrace();
+// Pointer to trace controler, which means we only allowed one tracing process
+// at a time.
+// We do this with constructors and destructors. If there has exist one tracer, then
+// the second one will not be construct successfully. 
+extern tracer *globalTracer_pointer;
+extern pthread_mutex_t tracer_mutex;
