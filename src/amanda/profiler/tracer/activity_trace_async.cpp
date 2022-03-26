@@ -13,6 +13,7 @@
 #include <fstream>
 
 #include "tracer.h"
+#include "kind_enable.h"
 
 // Timestamp at trace initialization time. Used to normalized other
 // timestamps
@@ -23,6 +24,8 @@ static uint64_t startTimestamp;
 tracer *tracer = NULL;
 std::string file_path = "activity_record.txt";
 pthread_mutex_t tracer_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_rwlock_t rwlock_file;
+pthread_rwlock_t rwlock_traceData;
 
 #define CUPTI_CALL(call)                                                \
   do {                                                                  \
@@ -386,17 +389,8 @@ void initTrace()
   size_t attrValue = 0, attrValueSize = sizeof(size_t);
   // Device activity record is created when CUDA initializes, so we
   // want to enable it before cuInit() or any CUDA runtime call.
-  CUPTI_CALL(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_DEVICE));
-  // Enable all other activity record kinds.
-  CUPTI_CALL(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONTEXT));
-  // CUPTI_CALL(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_DRIVER));
-  CUPTI_CALL(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_RUNTIME));
-  CUPTI_CALL(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_MEMCPY));
-  CUPTI_CALL(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_MEMSET));
-  CUPTI_CALL(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_NAME));
-  CUPTI_CALL(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_MARKER));
-  CUPTI_CALL(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL));
-  CUPTI_CALL(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_OVERHEAD));
+  unsigned long flag = 0;
+  enableActivityKind(flag);
 
   // Register callbacks for buffer requests and for buffers completed by CUPTI.
   CUPTI_CALL(cuptiActivityRegisterCallbacks(bufferRequested, bufferCompleted));

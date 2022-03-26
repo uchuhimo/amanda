@@ -45,11 +45,12 @@ class tracer {
 	 * 			the file can be used. Also if the offline be set and
 	 * 			file path not be given, we will write data to a fixed
 	 * 			file called "activity_data.txt" under current directory.
-	 * Domian_flag: we use domain flag to confirm the activities belong to which
-	 * 			domains should be recorded. Please refer to domain_enable.h for the
+	 * kind_flag: we use kind flag to confirm the activities belong to which
+	 * 			kinds should be recorded. Please refer to kind_enable.h for the
 	 * 			specific relationship.
 	 */
-	unsigned short domainFlag;
+	unsigned long kindFlag;
+	bool firstTimeFlag = true;
 	std::string filePath;
 
 	/**
@@ -63,12 +64,12 @@ public:
 	std::vector<Tracer::traceData_t> traceData;
 
 	tracer();
-	tracer(unsigned short domainFlag);
+	tracer(unsigned short kindFlag);
 	tracer(std::string filePath);
-	tracer(unsigned short domainFlag, std::string filePath);
+	tracer(unsigned short kindFlag, std::string filePath);
 	~tracer();
 
-	void setDomainFlag(unsigned short domainFlag);
+	void setKindFlag(unsigned short kindFlag);
 	void setFilePath(std::string filePath);
 	/**
 	 * The following two functions is used to set trace mode.
@@ -79,7 +80,7 @@ public:
 	void onlineAnalysisOnly();
 	void offlineAnalysisOnly();
 
-	unsigned short getDomainFlag();
+	unsigned short getKindFlag();
 	std::string getFilePath();
 	Tracer::trace_Mode getTeaceMode();
 };
