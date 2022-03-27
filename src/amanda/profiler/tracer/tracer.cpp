@@ -7,6 +7,7 @@ tracer::tracer() {
 	this->kindFlag = 0;
 	this->filePath = "activity_record.txt";
 	this->traceMode = Tracer::OFFLINE_AND_ONLINE;
+	this->dataTypeFlag = 0;
 
 	pthread_mutex_lock(&tracer_mutex);
 	if (globalTracer_pointer != nullptr) {
@@ -19,6 +20,7 @@ tracer::tracer() {
 tracer::tracer(unsigned long _kindFlag):kindFlag(_kindFlag) {
 	this->filePath = "activity_record.txt";
 	this->traceMode = Tracer::OFFLINE_AND_ONLINE;
+	this->dataTypeFlag = 0;
 
 	pthread_mutex_lock(&tracer_mutex);
 	if (globalTracer_pointer != nullptr) {
@@ -31,6 +33,7 @@ tracer::tracer(unsigned long _kindFlag):kindFlag(_kindFlag) {
 tracer::tracer(std::string _filePath):filePath(_filePath) {
 	this->kindFlag = 0;
 	this->traceMode = Tracer::OFFLINE_AND_ONLINE;
+	this->dataTypeFlag = 0;
 
 	pthread_mutex_lock(&tracer_mutex);
 	if (globalTracer_pointer != nullptr) {
@@ -42,6 +45,7 @@ tracer::tracer(std::string _filePath):filePath(_filePath) {
 
 tracer::tracer(unsigned long _kindFlag, std::string _filePath):kindFlag(_kindFlag), filePath(_filePath) {
 	this->traceMode = Tracer::OFFLINE_AND_ONLINE;
+	this->dataTypeFlag = 0;
 
 	pthread_mutex_lock(&tracer_mutex);
 	if (globalTracer_pointer != nullptr) {
@@ -65,6 +69,10 @@ void tracer::setFilePath(std::string _filePath) {
 	this->filePath = _filePath;
 }
 
+void tracer::setDataTypeFlag(unsigned short _dataTypeFlag) {
+	this->dataTypeFlag = (_dataTypeFlag & 0x7);
+}
+
 void tracer::onlineAnalysisOnly() {
 	this->traceMode = Tracer::ONLINE_ONLY;
 }
@@ -79,4 +87,8 @@ unsigned long tracer::getKindFlag() {
 
 std::string tracer::getFilePath() {
 	return this->filePath;
+}
+
+unsigned short tracer::getDataTypeFlag() {
+	return this->dataTypeFlag;
 }

@@ -22,6 +22,7 @@ static std::fstream traceFile;
 static pthread_mutex_t traceCount_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_rwlock_t rwlock_file;
 static pthread_rwlock_t rwlock_traceData;
+static const char* api_name;
 
 #define CUPTI_CALL(call)                                                \
   do {                                                                  \
@@ -158,6 +159,11 @@ getComputeApiKindString(CUpti_ActivityComputeApiKind kind)
   return "<unknown>";
 }
 
+/**
+ * Print Activity
+ * 
+ */
+
 static void
 printActivity(CUpti_Activity *record)
 {
@@ -221,7 +227,7 @@ printActivity(CUpti_Activity *record)
     {
       const char* kindString = (record->kind == CUPTI_ACTIVITY_KIND_KERNEL) ? "KERNEL" : "CONC KERNEL";
       CUpti_ActivityKernel5 *kernel = (CUpti_ActivityKernel5 *) record;
-      printf("%s \"%s\" [ %llu - %llu, %llu ] device %u, context %u, stream %u, correlation %u\n",
+      printf("%s \"%s\" [ %llu - %llu, %llu ] device %u, context %u, stream %u, correlation %u",
              kindString,
              kernel->name,
              (unsigned long long) (kernel->start - startTimestamp),
@@ -229,15 +235,6 @@ printActivity(CUpti_Activity *record)
              (unsigned long long) (kernel->end - kernel->start),
              kernel->deviceId, kernel->contextId, kernel->streamId,
              kernel->correlationId);
-      
-      rc = pthread_rwlock_wrlock(&rwlock_file);
-      traceFile << kindString << " " << kernel->name << " "
-              << "[" << kernel->start - startTimestamp << " - " << kernel->end - startTimestamp << ", " << kernel->start - kernel->end << "] "
-              << "device: " << kernel->deviceId << " "
-              << "context: " << kernel->contextId << " "
-              << "stream: " << kernel->streamId << " "
-              << "correlation: " << kernel->correlationId << std::endl;
-      rc = pthread_rwlock_unlock(&rwlock_file);
 
       printf("    grid [%u,%u,%u], block [%u,%u,%u], shared memory (static %u, dynamic %u)\n",
              kernel->gridX, kernel->gridY, kernel->gridZ,
@@ -333,6 +330,389 @@ printActivity(CUpti_Activity *record)
   }
 }
 
+/**
+ * Write File.
+ *  
+ */
+
+static void
+writeFileActivity(CUpti_Activity *record)
+{
+  int rc;
+  switch (record->kind)
+  {
+  case CUPTI_ACTIVITY_KIND_DEVICE:
+    {
+      CUpti_ActivityDevice2 *device = (CUpti_ActivityDevice2 *) record;
+
+      rc = pthread_rwlock_wrlock(&rwlock_file);
+      traceFile << "DEVICE " << device->name << " " << device->id << ", "
+                << "capability " << device->computeCapabilityMajor << "." << device->computeCapabilityMinor << ", "
+                << "global memory " << "(bandwidth " << (unsigned int) (device->globalMemoryBandwidth / 1024 / 1024) << " GB/s, " << "size " << (unsigned int) (device->globalMemorySize / 1024 / 1024) << " MB), "
+                << "multiprocessors " << device->numMultiprocessors << ", "
+                << "clock " << (unsigned int) (device->coreClockRate / 1000) << " MHz" << std::endl; 
+      rc = pthread_rwlock_unlock(&rwlock_file);
+      
+      break;
+    }
+  case CUPTI_ACTIVITY_KIND_DEVICE_ATTRIBUTE:
+    {
+      CUpti_ActivityDeviceAttribute *attribute = (CUpti_ActivityDeviceAttribute *)record;
+
+      rc = pthread_rwlock_wrlock(&rwlock_file);
+      traceFile << "DEVICE_ATTRIBUTE " << attribute->attribute.cupti << ", "
+                << "device " << attribute->deviceId << ", "
+                << "value=" << (unsigned long long)(attribute->value.vUint64) << std::endl; 
+      rc = pthread_rwlock_unlock(&rwlock_file);
+
+      break;
+    }
+  case CUPTI_ACTIVITY_KIND_CONTEXT:
+    {
+      CUpti_ActivityContext *context = (CUpti_ActivityContext *) record;
+
+      rc = pthread_rwlock_wrlock(&rwlock_file);
+      traceFile << "CONTEXT " << context->contextId << ", "
+                << "device " << context->deviceId << ", "
+                << "compute API " << getComputeApiKindString((CUpti_ActivityComputeApiKind) context->computeApiKind) << ", "
+                << "NULL stream " << (int)(context->nullStreamId) << std::endl;  
+      rc = pthread_rwlock_unlock(&rwlock_file);
+
+      break;
+    }
+  case CUPTI_ACTIVITY_KIND_MEMCPY:
+    {
+      CUpti_ActivityMemcpy3 *memcpy = (CUpti_ActivityMemcpy3 *) record;
+
+      rc = pthread_rwlock_wrlock(&rwlock_file);
+      traceFile << "MEMCPY " << getMemcpyKindString((CUpti_ActivityMemcpyKind) memcpy->copyKind) << " "
+              << "[" << (unsigned long long) (memcpy->start - startTimestamp) << " - " << (unsigned long long) (memcpy->end - startTimestamp) << ", " << (unsigned long long) (memcpy->end - memcpy->start) << "] "
+              << "device: " << memcpy->deviceId << " "
+              << "context: " << memcpy->contextId << " "
+              << "stream: " << memcpy->streamId << " "
+              << "correlation: " << memcpy->correlationId << "/" << memcpy->runtimeCorrelationId << std::endl;
+      rc = pthread_rwlock_unlock(&rwlock_file);
+
+      break;
+    }
+  case CUPTI_ACTIVITY_KIND_MEMSET:
+    {
+      CUpti_ActivityMemset2 *memset = (CUpti_ActivityMemset2 *) record;
+
+      rc = pthread_rwlock_wrlock(&rwlock_file);
+      traceFile <<  "MEMSET value=" << memset->value << " "
+              << "[" << (unsigned long long) (memset->start - startTimestamp) << " - " << (unsigned long long) (memset->end - startTimestamp) << ", " << (unsigned long long) (memset->end - memset->start) << "] "
+              << "device: " << memset->deviceId << " "
+              << "context: " << memset->contextId << " "
+              << "stream: " << memset->streamId << " "
+              << "correlation: " << memset->correlationId << std::endl;
+      rc = pthread_rwlock_unlock(&rwlock_file);
+
+      break;
+    }
+  case CUPTI_ACTIVITY_KIND_KERNEL:
+  case CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL:
+    {
+      const char* kindString = (record->kind == CUPTI_ACTIVITY_KIND_KERNEL) ? "KERNEL" : "CONC KERNEL";
+      CUpti_ActivityKernel5 *kernel = (CUpti_ActivityKernel5 *) record;
+      
+      rc = pthread_rwlock_wrlock(&rwlock_file);
+      traceFile << kindString << " " << kernel->name << " "
+              << "[" << (unsigned long long)(kernel->start - startTimestamp) << " - " << (unsigned long long)(kernel->end - startTimestamp) << ", " << (unsigned long long)(kernel->start - kernel->end) << "] "
+              << "device: " << kernel->deviceId << " "
+              << "context: " << kernel->contextId << " "
+              << "stream: " << kernel->streamId << " "
+              << "correlation: " << kernel->correlationId;
+
+      traceFile << "    grid [" << kernel->gridX << "," << kernel->gridY << "," << kernel->gridZ << "], "
+                << "shared memory (static " << kernel->staticSharedMemory << ", dynamic " << kernel->dynamicSharedMemory << ")" << std::endl;
+      rc = pthread_rwlock_unlock(&rwlock_file);
+
+      break;
+    }
+  case CUPTI_ACTIVITY_KIND_DRIVER:
+    {
+      CUpti_ActivityAPI *api = (CUpti_ActivityAPI *) record;
+      
+
+      rc = pthread_rwlock_wrlock(&rwlock_file);
+      cuptiGetCallbackName(CUPTI_CB_DOMAIN_DRIVER_API, api->cbid, &api_name);
+      traceFile << "DRIVER cbid=" <<  api->cbid << " " << "api_name=" << api_name << " "
+              << "[" << (unsigned long long) (api->start - startTimestamp) << " - " << (unsigned long long) (api->end - startTimestamp) << ", " << (unsigned long long) (api->end - api->start) << "] "
+              << "process: " << api->processId << " "
+              << "thread: " << api->threadId << " "
+              << "correlation: " << api->correlationId << std::endl;
+      rc = pthread_rwlock_unlock(&rwlock_file);
+
+      break;
+    }
+  case CUPTI_ACTIVITY_KIND_RUNTIME:
+    {
+      CUpti_ActivityAPI *api = (CUpti_ActivityAPI *) record;
+
+      rc = pthread_rwlock_wrlock(&rwlock_file);
+      cuptiGetCallbackName(CUPTI_CB_DOMAIN_RUNTIME_API, api->cbid, &api_name);
+      traceFile << "RUNTIME cbid=" <<  api->cbid << " " << "api_name=" << api_name << " "
+              << "[" << (unsigned long long) (api->start - startTimestamp) << " - " << (unsigned long long) (api->end - startTimestamp) << ", " << (unsigned long long) (api->end - api->start) << "] "
+              << "process: " << api->processId << " "
+              << "thread: " << api->threadId << " "
+              << "correlation: " << api->correlationId << std::endl;
+      rc = pthread_rwlock_unlock(&rwlock_file);
+
+      break;
+    }
+  case CUPTI_ACTIVITY_KIND_NAME:
+    {
+      CUpti_ActivityName *name = (CUpti_ActivityName *) record;
+      switch (name->objectKind)
+      {
+      case CUPTI_ACTIVITY_OBJECT_CONTEXT:
+
+        rc = pthread_rwlock_wrlock(&rwlock_file);
+        traceFile << "NAME" << "  "
+                  << getActivityObjectKindString(name->objectKind) << " "
+                  << getActivityObjectKindId(name->objectKind, &name->objectId) << " "
+                  << getActivityObjectKindString(CUPTI_ACTIVITY_OBJECT_DEVICE) << " "
+                  << getActivityObjectKindId(CUPTI_ACTIVITY_OBJECT_DEVICE, &name->objectId) << ", "
+                  << "name " << name->name << std::endl;  
+        rc = pthread_rwlock_unlock(&rwlock_file);
+
+        break;
+      case CUPTI_ACTIVITY_OBJECT_STREAM:
+
+        rc = pthread_rwlock_wrlock(&rwlock_file);
+        traceFile << "NAME" << "  "
+                  << getActivityObjectKindString(name->objectKind) << " " 
+                  << getActivityObjectKindId(name->objectKind, &name->objectId) << " "
+                  << getActivityObjectKindString(CUPTI_ACTIVITY_OBJECT_CONTEXT) << " "
+                  << getActivityObjectKindId(CUPTI_ACTIVITY_OBJECT_CONTEXT, &name->objectId) << " "
+                  << getActivityObjectKindString(CUPTI_ACTIVITY_OBJECT_DEVICE) << " "
+                  << getActivityObjectKindId(CUPTI_ACTIVITY_OBJECT_DEVICE, &name->objectId) << ", "
+                  << "name " << name->name << std::endl; 
+        rc = pthread_rwlock_unlock(&rwlock_file);
+
+        break;
+      default:
+        rc = pthread_rwlock_wrlock(&rwlock_file);
+        traceFile << "NAME  " << getActivityObjectKindString(name->objectKind) << " "
+                  << "id " << getActivityObjectKindId(name->objectKind, &name->objectId) << ", "
+                  << "name " << name->name << std::endl; 
+        rc = pthread_rwlock_unlock(&rwlock_file);
+
+        break;
+      }
+      break;
+    }
+  case CUPTI_ACTIVITY_KIND_MARKER:
+    {
+      CUpti_ActivityMarker2 *marker = (CUpti_ActivityMarker2 *) record;
+
+      rc = pthread_rwlock_wrlock(&rwlock_file);
+      traceFile << "MARKER id " << marker->id << " " 
+              << " [ " << (unsigned long long) marker->timestamp << "], "
+              << "name " << marker->name << ", "
+              << "domain " << marker->domain << std::endl;
+      rc = pthread_rwlock_unlock(&rwlock_file);
+
+      break;
+    }
+  
+  case CUPTI_ACTIVITY_KIND_OVERHEAD:
+    {
+      CUpti_ActivityOverhead *overhead = (CUpti_ActivityOverhead *) record;
+
+      rc = pthread_rwlock_wrlock(&rwlock_file);
+      traceFile << "OVERHEAD " << getActivityOverheadKindString(overhead->overheadKind) << " " 
+              << "[" << (unsigned long long) overhead->start - startTimestamp << " - " << (unsigned long long) overhead->end - startTimestamp << ", " << (unsigned long long) overhead->end - overhead->start << "] "
+              << getActivityObjectKindString(overhead->objectKind) << " "
+              << "id " << getActivityObjectKindId(overhead->objectKind, &overhead->objectId) << std::endl;
+      rc = pthread_rwlock_unlock(&rwlock_file);
+
+      break;
+    }
+  default:
+    rc = pthread_rwlock_wrlock(&rwlock_file);
+    traceFile << "  <unknown>" << std::endl;
+    rc = pthread_rwlock_unlock(&rwlock_file);
+    break;
+  }
+}
+
+/**
+ * Store Value.
+ *  
+ */
+
+static void
+storeValueActivity(CUpti_Activity *record)
+{
+  int rc;
+  unsigned short dataTypeFlag = globalTracer_pointer->getDataTypeFlag();
+  switch (record->kind)
+  {
+  case CUPTI_ACTIVITY_KIND_MEMCPY:
+    {
+      CUpti_ActivityMemcpy3 *memcpy = (CUpti_ActivityMemcpy3 *) record;
+      if ( (dataTypeFlag == 0) || (dataTypeFlag & 0x1) ) {
+        Tracer::traceData_rt traceData;
+        traceData.startTime = (unsigned long long) (memcpy->start - startTimestamp);
+        traceData.endTime = (unsigned long long) (memcpy->end - startTimestamp);
+        traceData.durationTime = (unsigned long long) (memcpy->end - memcpy->start);
+      
+        traceData.deviceId = memcpy->deviceId;
+        traceData.contextId = memcpy->contextId;
+        traceData.streamId = memcpy->streamId;
+        traceData.correlationId = memcpy->correlationId;
+
+        traceData.kind = "MEMCPY";
+        traceData.name = getMemcpyKindString((CUpti_ActivityMemcpyKind) memcpy->copyKind);
+
+        rc = pthread_rwlock_wrlock(&rwlock_traceData);
+        globalTracer_pointer->traceData_rt.push_back(traceData);
+        rc = pthread_rwlock_unlock(&rwlock_traceData);
+      }
+      
+      break;
+    }
+  case CUPTI_ACTIVITY_KIND_MEMSET:
+    {
+      CUpti_ActivityMemset2 *memset = (CUpti_ActivityMemset2 *) record;
+
+      if ( (dataTypeFlag == 0) || (dataTypeFlag & 0x1) ) {
+        Tracer::traceData_rt traceData;
+        traceData.startTime = (unsigned long long) (memset->start - startTimestamp);
+        traceData.endTime = (unsigned long long) (memset->end - startTimestamp);
+        traceData.durationTime = (unsigned long long) (memset->end - memset->start);
+      
+        traceData.deviceId = memset->deviceId;
+        traceData.contextId = memset->contextId;
+        traceData.streamId = memset->streamId;
+        traceData.correlationId = memset->correlationId;
+
+        traceData.kind = "MEMSET";
+
+        rc = pthread_rwlock_wrlock(&rwlock_traceData);
+        globalTracer_pointer->traceData_rt.push_back(traceData);
+        rc = pthread_rwlock_unlock(&rwlock_traceData);
+      }
+
+      break;
+    }
+  case CUPTI_ACTIVITY_KIND_KERNEL:
+  case CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL:
+    {
+      const char* kindString = (record->kind == CUPTI_ACTIVITY_KIND_KERNEL) ? "KERNEL" : "CONC KERNEL";
+      CUpti_ActivityKernel5 *kernel = (CUpti_ActivityKernel5 *) record;
+      
+      if ( (dataTypeFlag == 0) || (dataTypeFlag & 0x1) ) {
+        Tracer::traceData_rt traceData;
+        traceData.startTime = (unsigned long long) (kernel->start - startTimestamp);
+        traceData.endTime = (unsigned long long) (kernel->end - startTimestamp);
+        traceData.durationTime = (unsigned long long) (kernel->end - kernel->start);
+      
+        traceData.deviceId = kernel->deviceId;
+        traceData.contextId = kernel->contextId;
+        traceData.streamId = kernel->streamId;
+        traceData.correlationId = kernel->correlationId;
+
+        traceData.kind = kindString;
+
+        rc = pthread_rwlock_wrlock(&rwlock_traceData);
+        globalTracer_pointer->traceData_rt.push_back(traceData);
+        rc = pthread_rwlock_unlock(&rwlock_traceData);
+      }
+
+      break;
+    }
+  case CUPTI_ACTIVITY_KIND_DRIVER:
+    {
+      CUpti_ActivityAPI *api = (CUpti_ActivityAPI *) record;
+
+      if ( dataTypeFlag & 0x2 ) {
+        Tracer::traceData_api traceData;
+        traceData.startTime = (unsigned long long) (api->start - startTimestamp);
+        traceData.endTime = (unsigned long long) (api->end - startTimestamp);
+        traceData.durationTime = (unsigned long long) (api->end - api->start);
+      
+        traceData.processId = api->processId;
+        traceData.threadId = api->threadId;
+        traceData.correlationId = api->correlationId;
+
+        traceData.kind = "DRIVER";
+
+        rc = pthread_rwlock_wrlock(&rwlock_traceData);
+        cuptiGetCallbackName(CUPTI_CB_DOMAIN_DRIVER_API, api->cbid, &api_name);
+        traceData.name = api_name;
+        globalTracer_pointer->traceData_api.push_back(traceData);
+        rc = pthread_rwlock_unlock(&rwlock_traceData);
+      }
+
+      break;
+    }
+  case CUPTI_ACTIVITY_KIND_RUNTIME:
+    {
+      CUpti_ActivityAPI *api = (CUpti_ActivityAPI *) record;
+
+      if ( dataTypeFlag & 0x2 ) {
+        Tracer::traceData_api traceData;
+        traceData.startTime = (unsigned long long) (api->start - startTimestamp);
+        traceData.endTime = (unsigned long long) (api->end - startTimestamp);
+        traceData.durationTime = (unsigned long long) (api->end - api->start);
+      
+        traceData.processId = api->processId;
+        traceData.threadId = api->threadId;
+        traceData.correlationId = api->correlationId;
+
+        traceData.kind = "RUNTIME";
+
+        rc = pthread_rwlock_wrlock(&rwlock_traceData);
+        cuptiGetCallbackName(CUPTI_CB_DOMAIN_RUNTIME_API, api->cbid, &api_name);
+        traceData.name = api_name;
+        globalTracer_pointer->traceData_api.push_back(traceData);
+        rc = pthread_rwlock_unlock(&rwlock_traceData);
+      }
+
+      break;
+    } 
+  case CUPTI_ACTIVITY_KIND_OVERHEAD:
+    {
+      CUpti_ActivityOverhead *overhead = (CUpti_ActivityOverhead *) record;
+
+      rc = pthread_rwlock_wrlock(&rwlock_file);
+      traceFile << "OVERHEAD " << getActivityOverheadKindString(overhead->overheadKind) << " " 
+              << "[" << (unsigned long long) overhead->start - startTimestamp << " - " << (unsigned long long) overhead->end - startTimestamp << ", " << (unsigned long long) overhead->end - overhead->start << "] "
+              << getActivityObjectKindString(overhead->objectKind) << " "
+              << "id " << getActivityObjectKindId(overhead->objectKind, &overhead->objectId) << std::endl;
+      rc = pthread_rwlock_unlock(&rwlock_file);
+
+      if ( dataTypeFlag & 0x4 ) {
+        Tracer::traceData_oh traceData;
+        traceData.startTime = (unsigned long long) (overhead->start - startTimestamp);
+        traceData.endTime = (unsigned long long) (overhead->end - startTimestamp);
+        traceData.durationTime = (unsigned long long) (overhead->end - overhead->start);
+
+        traceData.kind = "OVERHEAD";
+        traceData.overheadKind = getActivityOverheadKindString(overhead->overheadKind);
+        traceData.objectKind = getActivityObjectKindString(overhead->objectKind);
+        traceData.objectId = getActivityObjectKindId(overhead->objectKind, &overhead->objectId);
+
+        rc = pthread_rwlock_wrlock(&rwlock_traceData);
+        globalTracer_pointer->traceData_oh.push_back(traceData);
+        rc = pthread_rwlock_unlock(&rwlock_traceData);
+      }
+
+      break;
+    }
+  default:
+    break;
+  }
+}
+
+/**
+ * Subscriber Function.
+ * 
+ */
+
 void CUPTIAPI bufferRequested(uint8_t **buffer, size_t *size, size_t *maxNumRecords)
 {
   uint8_t *bfr = (uint8_t *) malloc(BUF_SIZE + ALIGN_SIZE);
@@ -356,6 +736,8 @@ void CUPTIAPI bufferCompleted(CUcontext ctx, uint32_t streamId, uint8_t *buffer,
       status = cuptiActivityGetNextRecord(buffer, validSize, &record);
       if (status == CUPTI_SUCCESS) {
         printActivity(record);
+        writeFileActivity(record);
+        storeValueActivity(record);
       }
       else if (status == CUPTI_ERROR_MAX_LIMIT_REACHED)
         break;
@@ -374,6 +756,13 @@ void CUPTIAPI bufferCompleted(CUcontext ctx, uint32_t streamId, uint8_t *buffer,
 
   free(buffer);
 }
+
+
+/**
+ * User API.
+ * 
+ */
+
 
 void tracer::activityFlushAll()
 {
@@ -394,8 +783,7 @@ void tracer::initTrace()
 
   // Device activity record is created when CUDA initializes, so we
   // want to enable it before cuInit() or any CUDA runtime call.
-  unsigned long flag = 0;
-  enableActivityKind(flag);
+  enableActivityKind(this->kindFlag);
 
   // Register callbacks for buffer requests and for buffers completed by CUPTI.
   CUPTI_CALL(cuptiActivityRegisterCallbacks(bufferRequested, bufferCompleted));

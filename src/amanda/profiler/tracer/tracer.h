@@ -7,11 +7,16 @@
 
 namespace Tracer{
 
-	// This is used to store the data values during the tracing process. Only contains those
-	// types all the activities will record.
-	typedef struct traceData_st
-	{
-	
+	/**
+	 *  These are used to store the data values during the tracing process. Only contains those
+	 *  types all the activities will record.
+	 * 	traceData_rt will record runtime information, include: memcpy, memset and kernel
+	 *  traceData_api will record the invoked api, include: driver and runtime
+	 * 	traceData_oh will record the overhead
+	 * 
+	 */ 
+	typedef struct traceData_rts {
+
 		unsigned long long startTime;
 		unsigned long long endTime;
 		unsigned long long durationTime;
@@ -21,9 +26,35 @@ namespace Tracer{
 		unsigned int streamId;
 		unsigned int correlationId;
 
-		std::string domain;
+		std::string kind;
 		std::string name;
-	} traceData_t;
+	} traceData_rt;
+
+	typedef struct traceData_apis {
+
+		unsigned long long startTime;
+		unsigned long long endTime;
+		unsigned long long durationTime;
+
+		unsigned int processId;
+		unsigned int threadId;
+		unsigned int correlationId;
+
+		std::string kind;
+		std::string name;
+	} traceData_api;
+
+	typedef struct traceData_ohs {
+
+		unsigned long long startTime;
+		unsigned long long endTime;
+		unsigned long long durationTime;
+
+		std::string kind;
+		std::string overheadKind;
+		std::string objectKind;
+		unsigned int objectId;
+	}	traceData_oh;
 
 	/** 
 	 * Type of trace mode.
@@ -65,9 +96,12 @@ class tracer {
 	 */
 	Tracer::trace_Mode traceMode;
 	int traceCount = 0;
+	unsigned short dataTypeFlag;
 
 public:
-	std::vector<Tracer::traceData_t> traceData;
+	std::vector<Tracer::traceData_rt> traceData_rt;
+	std::vector<Tracer::traceData_api> traceData_api;
+	std::vector<Tracer::traceData_oh> traceData_oh;
 
 	tracer();
 	tracer(unsigned long kindFlag);
@@ -77,6 +111,14 @@ public:
 
 	void setKindFlag(unsigned long kindFlag);
 	void setFilePath(std::string filePath);
+	/**
+	 * Since traceData will cost a lot of memory, we use a flag to dertermine
+	 * which kind of data type to record in online analysis mode.
+	 * We still use the last three bits to mark. Default is only record runtime information.
+	 *  
+	 */
+	void setDataTypeFlag(unsigned short dataTypeFlag);
+
 	/**
 	 * The following two functions is used to set trace mode.
 	 * Defalut mode will be set OFFLIJNE and ONLINE if both aren't
@@ -88,6 +130,7 @@ public:
 
 	unsigned long getKindFlag();
 	std::string getFilePath();
+	unsigned short getDataTypeFlag();
 
 	/**
 	 * Flush all remaining CUPTI buffers before resetting the device.
