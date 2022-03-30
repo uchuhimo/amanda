@@ -75,3 +75,11 @@ void counter::setCountParams(int _deviceNum, std::vector<std::string> _metricNam
 void counter::clearData() {
 	this->countData.clear();
 }
+
+void counter::testClearData() {
+	Counter::countData_t _countData;
+	_countData.rangeName = "0";
+	_countData.metricName = "dram__bytes_read.sum";
+	_countData.gpuValue = 3.30;
+	this->countData.push_back(_countData);
+}

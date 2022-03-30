@@ -65,4 +65,6 @@ public:
 	void clearData();
 	void startProfiling();
 	void stopProfiling();
+
+	void testClearData();
 };
