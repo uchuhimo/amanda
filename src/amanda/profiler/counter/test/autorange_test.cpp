@@ -8,7 +8,7 @@
 #include <cuda_runtime.h>
 
 
-#include "counter.h"
+#include "../counter.h"
 #include "kernel.cuh"
 
 static int numRanges = 2;
@@ -89,7 +89,7 @@ bool runTest(int deviceNum, std::vector<std::string> metricNames)
     // stop profiling
     counter.stopProfiling();
     std::cout << "stop profiling ..." << std::endl;
-    counter.printValues();
+    // counter.printValues();
 
 
     // Copy result from device memory to host memory

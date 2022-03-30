@@ -14,10 +14,10 @@ list(APPEND CUDA_NVCC_FLAGS "-std=c++17")
 list(APPEND CUDA_NVCC_FLAGS "-v")
 
 cuda_add_executable(autorange
-    extensions.cpp
-    autorange_counter.cpp
-    counter.cpp
-    set_metrics.cpp
+    ../extensions.cpp
+    ../autorange_counter.cpp
+    ../counter.cpp
+    ../set_metrics.cpp
     autorange_test.cpp
     kernel.cu
 )

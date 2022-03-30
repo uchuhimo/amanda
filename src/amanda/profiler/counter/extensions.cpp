@@ -2,8 +2,10 @@
 #include <nvperf_cuda_host.h>
 #include <nvperf_target.h>
 #include <iostream>
+#include <fstream>
 
 #include "extensions.h"
+// #include "counter.h"
 
 namespace NV {
     namespace Metric {
@@ -251,12 +253,14 @@ namespace NV {
                 return true;
             }
 
-            bool PrintMetricValues(std::string chipName, std::vector<uint8_t> counterDataImage, std::vector<std::string> metricNames) {
+            bool GetMetricValues(std::string chipName, std::vector<uint8_t> counterDataImage, std::vector<std::string> metricNames, bool fileFlag, std::string filePath, bool dataFlag, std::vector<Counter::countData_t>& countDataValues) {
                 if (!counterDataImage.size()) {
                     std::cout << "Counter Data Image is empty!\n";
                     return false;
                 }
 
+                std::fstream countFile;
+                countFile.open(filePath, std::ios::app);
                 NVPW_CUDA_MetricsContext_Create_Params metricsContextCreateParams = { NVPW_CUDA_MetricsContext_Create_Params_STRUCT_SIZE };
                 metricsContextCreateParams.pChipName = chipName.c_str();
                 RETURN_IF_NVPW_ERROR(false, NVPW_CUDA_MetricsContext_Create(&metricsContextCreateParams));
@@ -319,11 +323,22 @@ namespace NV {
                     evalToGpuParams.ppMetricNames = &metricNamePtrs[0];
                     evalToGpuParams.pMetricValues = &gpuValues[0];
                     NVPW_MetricsContext_EvaluateToGpuValues(&evalToGpuParams);
-
+ 
                     for (size_t metricIndex = 0; metricIndex < metricNames.size(); ++metricIndex) {
                         std::cout << "rangeName: " << rangeName << "\tmetricName: " << metricNames[metricIndex] << "\tgpuValue: "  << gpuValues[metricIndex] << std::endl;
+                        if (fileFlag) {
+                            countFile << "rangeName: " << rangeName << "\tmetricName: " << metricNames[metricIndex] << "\tgpuValue: "  << gpuValues[metricIndex] << std::endl;
+                        }
+                        if (dataFlag) {
+                            Counter::countData_t countData;
+                            countData.rangeName = rangeName;
+                            countData.metricName = metricNames[metricIndex];
+                            countData.gpuValue = gpuValues[metricIndex];
+                            countDataValues.push_back(countData); 
+                        }
                     }
                 }
+                countFile.close();
                 return true;
             }
         }

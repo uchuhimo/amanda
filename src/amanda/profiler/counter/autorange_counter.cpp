@@ -250,11 +250,12 @@ void counter::stopProfiling()
     CUpti_Profiler_DeInitialize_Params profilerDeInitializeParams = {CUpti_Profiler_DeInitialize_Params_STRUCT_SIZE};
     CUPTI_API_CALL(cuptiProfilerDeInitialize(&profilerDeInitializeParams));
     DRIVER_API_CALL(cuCtxDestroy(cuContext));
-}
 
-void counter::printValues()
-{
+    bool fileFlag = true, dataFlag = true;
+    if (this->countMode == Counter::OFFLINE_ONLY) { dataFlag = false; }
+    if (this->countMode == Counter::ONLINE_ONLY) { fileFlag = false; }
+
     counterControler* controler = this->getControler();
     /* Evaluation of metrics collected in counterDataImage, this can also be done offline*/
-    NV::Metric::Eval::PrintMetricValues(controler->chipName, controler->counterDataImage, controler->metricNames);
+    NV::Metric::Eval::GetMetricValues(controler->chipName, controler->counterDataImage, controler->metricNames, fileFlag, this->filePath, dataFlag, this->countData);
 }

@@ -4,3 +4,4 @@ autorange:
 
 clean:
 	rm -rf build
+	rm -f metrics_record.txt

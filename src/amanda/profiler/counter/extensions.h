@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include "counter.h"
 
 template <typename T>
 
@@ -231,7 +232,7 @@ namespace NV {
              */
             bool GetMetricGpuValue(std::string chipName, std::vector<uint8_t> counterDataImage, std::vector<std::string> metricNames, std::vector<MetricNameValue>& metricNameValueMap);
 
-            bool PrintMetricValues(std::string chipName, std::vector<uint8_t> counterDataImage, std::vector<std::string> metricNames);
+            bool GetMetricValues(std::string chipName, std::vector<uint8_t> counterDataImage, std::vector<std::string> metricNames, bool file, std::string filePath, bool data, std::vector<Counter::countData_t>& countData);
 
             }
     }

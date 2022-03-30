@@ -1,8 +1,8 @@
+#pragma once
+
 #include <vector>
 #include <string>
 #include <iostream>
-
-#include "extensions.h"
 
 typedef struct counterControler
 {
@@ -65,5 +65,4 @@ public:
 	void clearData();
 	void startProfiling();
 	void stopProfiling();
-	void printValues();
 };
