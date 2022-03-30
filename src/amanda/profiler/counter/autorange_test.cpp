@@ -82,7 +82,6 @@ bool runTest(counterControler *controler)
     callVecSub(d_A, d_B, d_D, N);
 
 
-
     // stop profiling
     stopProfiling();
     std::cout << "stop profiling ..." << std::endl;
