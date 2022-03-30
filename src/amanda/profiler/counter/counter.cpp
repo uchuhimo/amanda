@@ -1,5 +1,9 @@
 #include "counter.h"
 
+counterControler* counter::getControler() {
+	return &this->controler;
+}
+
 counter::counter() {
 	this->filePath = "metrics_record.txt";
 	this->kindFlag = 0;

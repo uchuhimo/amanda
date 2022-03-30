@@ -192,9 +192,10 @@ bool setupProfiling(std::vector<uint8_t>& configImage,
     return true;
 }
 
-void startProfiling(counterControler* controler)
+void counter::startProfiling()
 {
     CUpti_ProfilerRange profilerRange = CUPTI_AutoRange;
+    counterControler* controler = this->getControler();
 
     DRIVER_API_CALL(cuInit(0));
     validateProfilerEnvironment(controler->deviceNum);
@@ -236,7 +237,7 @@ void startProfiling(counterControler* controler)
     }
 }
 
-void stopProfiling() 
+void counter::stopProfiling() 
 {
     CUpti_Profiler_DisableProfiling_Params disableProfilingParams = {CUpti_Profiler_DisableProfiling_Params_STRUCT_SIZE};
     CUpti_Profiler_UnsetConfig_Params unsetConfigParams = {CUpti_Profiler_UnsetConfig_Params_STRUCT_SIZE};
@@ -251,8 +252,9 @@ void stopProfiling()
     DRIVER_API_CALL(cuCtxDestroy(cuContext));
 }
 
-void printValues(counterControler *controler)
+void counter::printValues()
 {
+    counterControler* controler = this->getControler();
     /* Evaluation of metrics collected in counterDataImage, this can also be done offline*/
     NV::Metric::Eval::PrintMetricValues(controler->chipName, controler->counterDataImage, controler->metricNames);
 }

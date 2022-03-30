@@ -7,7 +7,7 @@
 typedef struct counterControler
 {
 	// Parameters needed to be set before profiling
-	int deviceNum;
+	int deviceNum = 0;
 	std::vector<std::string> metricNames;
 
 	// Profiling values 
@@ -41,11 +41,11 @@ class counter {
 
 	counterControler controler;
 	Counter::count_Mode countMode;
+	void setMetrics(unsigned long flag);
+	counterControler* getControler();
 
 public:
 	std::vector<Counter::countData_t> countData;
-	void setMetrics(unsigned long flag);
-	
 	counter();
 	counter(std::string);
 	counter(unsigned long kindFlag);
@@ -63,12 +63,7 @@ public:
 	void setCountParams(int deviceNum, std::vector<std::string> metricsNames);
 
 	void clearData();
-	// void startProfiling();
-	// void stopProfiling();
-	// void printValues();
+	void startProfiling();
+	void stopProfiling();
+	void printValues();
 };
-
-void startProfiling(counterControler *controler);
-void stopProfiling();
-
-void printValues(counterControler *controler);

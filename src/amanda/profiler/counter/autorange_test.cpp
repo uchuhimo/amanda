@@ -41,7 +41,7 @@ static void cleanUp(int *h_A, int *h_B, int *h_C, int *h_D, int *d_A, int *d_B, 
   if (h_D)
     free(h_D);}
 
-bool runTest(counterControler *controler)
+bool runTest(int deviceNum, std::vector<std::string> metricNames)
 {
 
     int N = 1024*1024*1024/4/3;
@@ -74,8 +74,12 @@ bool runTest(counterControler *controler)
     cudaMemcpy(d_A, h_A, size, cudaMemcpyHostToDevice);
     cudaMemcpy(d_B, h_B, size, cudaMemcpyHostToDevice);
 
+    // create a counter and set the parameters
+    counter counter(0);
+    counter.setCountParams(deviceNum, metricNames);
+
     // start profiling...
-    startProfiling(controler);
+    counter.startProfiling();
     std::cout << "start profiling ..." << std::endl;
 
     callVecAdd(d_A, d_B, d_C, N);
@@ -83,9 +87,9 @@ bool runTest(counterControler *controler)
 
 
     // stop profiling
-    stopProfiling();
+    counter.stopProfiling();
     std::cout << "stop profiling ..." << std::endl;
-    printValues(controler);
+    counter.printValues();
 
 
     // Copy result from device memory to host memory
@@ -137,10 +141,7 @@ int main(int argc, char* argv[])
         metricNames.push_back(METRIC_NAME);
     }
 
-    counterControler controler;
-    controler.deviceNum = deviceNum;
-    controler.metricNames = metricNames;
-    if(!runTest(&controler))
+    if(!runTest(deviceNum, metricNames))
     {
         std::cout << "Failed to run sample" << std::endl;
         exit(-1);
