@@ -1,7 +1,8 @@
-cmake_minimum_required(VERSION 2.8)
-project(ActivityTrace)
+cmake_minimum_required(VERSION 3.15...3.22)
+project(ActivityTrace CXX)
 find_package(CUDA REQUIRED)
 find_package(Threads REQUIRED)
+find_package(pybind11 REQUIRED)
 
 include_directories(
 	/usr/local/cuda/include 
@@ -15,17 +16,8 @@ link_directories(
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -g -lpthread")
 
-# Pass options to NVCC
-list(APPEND CUDA_NVCC_FLAGS "-std=c++17")
-list(APPEND CUDA_NVCC_FLAGS "-v")
-
-cuda_add_executable(activity_trace_async
-	activity_trace_test.cpp
-    activity_trace_async.cpp
-	tracer.cpp
-    kernel.cu
-)
-target_link_libraries(activity_trace_async cudart)
-target_link_libraries(activity_trace_async cuda)
-target_link_libraries(activity_trace_async nvperf_host)
-target_link_libraries(activity_trace_async cupti)
+pybind11_add_module(tracer tracer_pybind.cpp tracer.cpp activity_trace_async.cpp)
+target_link_libraries(tracer PRIVATE cudart)
+target_link_libraries(tracer PRIVATE cuda)
+target_link_libraries(tracer PRIVATE nvperf_host)
+target_link_libraries(tracer PRIVATE cupti)

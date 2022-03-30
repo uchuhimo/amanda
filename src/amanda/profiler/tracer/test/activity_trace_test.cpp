@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "tracer.h"
+#include "../tracer.h"
 #include "kernel.cuh"
 
 #define DRIVER_API_CALL(apiFuncCall)                                           \

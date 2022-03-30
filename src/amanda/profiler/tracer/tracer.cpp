@@ -11,9 +11,10 @@ tracer::tracer() {
 
 	pthread_mutex_lock(&tracer_mutex);
 	if (globalTracer_pointer != nullptr) {
+		pthread_mutex_unlock(&tracer_mutex);
 		throw std::runtime_error("There exists a tracer, and it is not allowed to creat another one.");
 	}
-	globalTracer_pointer = this; 
+	globalTracer_pointer = this;
 	pthread_mutex_unlock(&tracer_mutex);
 }
 
@@ -24,9 +25,10 @@ tracer::tracer(unsigned long _kindFlag):kindFlag(_kindFlag) {
 
 	pthread_mutex_lock(&tracer_mutex);
 	if (globalTracer_pointer != nullptr) {
+		pthread_mutex_unlock(&tracer_mutex);
 		throw std::runtime_error("There exists a tracer, and it is not allowed to creat another one.");
 	}
-	globalTracer_pointer = this; 
+	globalTracer_pointer = this;
 	pthread_mutex_unlock(&tracer_mutex);
 }
 
@@ -37,9 +39,10 @@ tracer::tracer(std::string _filePath):filePath(_filePath) {
 
 	pthread_mutex_lock(&tracer_mutex);
 	if (globalTracer_pointer != nullptr) {
+		pthread_mutex_unlock(&tracer_mutex);
 		throw std::runtime_error("There exists a tracer, and it is not allowed to creat another one.");
 	}
-	globalTracer_pointer = this; 
+	globalTracer_pointer = this;
 	pthread_mutex_unlock(&tracer_mutex);
 }
 
@@ -49,6 +52,7 @@ tracer::tracer(unsigned long _kindFlag, std::string _filePath):kindFlag(_kindFla
 
 	pthread_mutex_lock(&tracer_mutex);
 	if (globalTracer_pointer != nullptr) {
+		pthread_mutex_unlock(&tracer_mutex);
 		throw std::runtime_error("There exists a tracer, and it is not allowed to creat another one.");
 	}
 	globalTracer_pointer = this; 
