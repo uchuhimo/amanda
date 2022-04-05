@@ -3,7 +3,7 @@ from counter import counter
 
 # test: Counter::countData_t read/write
 def test_countData_struct():
-	countData = Counter.countData_t;
+	countData = Counter.countData_t();
 	countData.rangeName = "0"
 	countData.metricName = "dram__bytes_read.sum"
 	countData.gpuValue = 3.30

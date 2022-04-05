@@ -4,6 +4,9 @@
 
 namespace py = pybind11;
 
+// PYBIND11_MAKE_OPAQUE(std::vector<Counter::countData_t>);
+// using list_cd = std::vector<Counter::countData_t>;
+
 PYBIND11_MODULE(counter, m) {
 	m.doc() = "counter pybind";
 
@@ -20,6 +23,18 @@ PYBIND11_MODULE(counter, m) {
 		.def_readwrite("rangeName", &Counter::countData_t::rangeName)
 		.def_readwrite("metricName", &Counter::countData_t::metricName)
 		.def_readwrite("gpuValue", &Counter::countData_t::gpuValue);
+	
+	// py::class_<list_cd>(m, "List_cd")
+    //     .def(py::init<>())
+    //     .def("pop_back", &list_cd::pop_back)
+    //     .def("push_back", (void(list_cd::*)(const Counter::countData_t&)) & list_cd::push_back)
+    //     .def("back", (Counter::countData_t & (list_cd::*) ()) & list_cd::back)
+	// 	.def("clear", [](list_cd &v) { return v.clear(); })
+    //     .def("__len__", [](const list_cd &v) { return v.size(); })
+    //     .def(
+    //         "__iter__",
+    //         [](list_cd &v) { return py::make_iterator(v.begin(), v.end()); },
+    //         py::keep_alive<0, 1>());
 
 	// Bind the class counter
 	py::class_<counter> (m, "counter")

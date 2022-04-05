@@ -1,26 +1,19 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+#include <pybind11/stl_bind.h>
 #include "tracer.h"
 
 namespace py = pybind11;
 
 // PYBIND11_MAKE_OPAQUE(std::vector<Tracer::traceData_rt>);
 // using list_rt = std::vector<Tracer::traceData_rt>;
+// PYBIND11_MAKE_OPAQUE(std::vector<Tracer::traceData_api>);
+// using list_api = std::vector<Tracer::traceData_api>;
+// PYBIND11_MAKE_OPAQUE(std::vector<Tracer::traceData_oh>);
+// using list_oh = std::vector<Tracer::traceData_oh>;
 
 PYBIND11_MODULE(tracer, m) {
     m.doc() = "tracer pybind";
-
-    // // test_vector
-    // py::class_<list_rt>(m, "List_rt")
-    //     .def(py::init<>())
-    //     .def("pop_back", &list_rt::pop_back)
-    //     .def("push_back", (void(list_rt::*)(const Tracer::traceData_rt&)) & list_rt::push_back)
-    //     .def("back", (Tracer::traceData_rt & (list_rt::*) ()) & list_rt::back)
-    //     .def("__len__", [](const list_rt &v) { return v.size(); })
-    //     .def(
-    //         "__iter__",
-    //         [](list_rt &v) { return py::make_iterator(v.begin(), v.end()); },
-    //         py::keep_alive<0, 1>());	
 
 	//Bind the member in namespace "Tracer"
     auto mTracer = m.def_submodule("Tracer");
@@ -42,6 +35,18 @@ PYBIND11_MODULE(tracer, m) {
 		.def_readwrite("kind", &Tracer::traceData_rt::kind)
 		.def_readwrite("name", &Tracer::traceData_rt::name);
 
+    // py::class_<list_rt>(m, "List_rt")
+    //     .def(py::init<>())
+    //     .def("pop_back", &list_rt::pop_back)
+    //     .def("push_back", (void(list_rt::*)(const Tracer::traceData_rt&)) & list_rt::push_back)
+    //     .def("back", (Tracer::traceData_rt & (list_rt::*) ()) & list_rt::back)
+	// 	.def("clear", [](list_rt &v) { return v.clear(); })
+    //     .def("__len__", [](const list_rt &v) { return v.size(); })
+    //     .def(
+    //         "__iter__",
+    //         [](list_rt &v) { return py::make_iterator(v.begin(), v.end()); },
+    //         py::keep_alive<0, 1>());
+
 	py::class_<Tracer::traceData_api> (mTracer, "traceData_api")
 		.def(py::init<>())
 		.def_readwrite("startTime", &Tracer::traceData_api::startTime)
@@ -53,6 +58,18 @@ PYBIND11_MODULE(tracer, m) {
 		.def_readwrite("kind", &Tracer::traceData_api::kind)
 		.def_readwrite("name", &Tracer::traceData_api::name);
 
+	// py::class_<list_api>(m, "List_api")
+    //     .def(py::init<>())
+    //     .def("pop_back", &list_api::pop_back)
+    //     .def("push_back", (void(list_api::*)(const Tracer::traceData_api&)) & list_api::push_back)
+    //     .def("back", (Tracer::traceData_api & (list_api::*) ()) & list_api::back)
+	// 	.def("clear", [](list_api &v) { return v.clear(); })
+    //     .def("__len__", [](const list_api &v) { return v.size(); })
+    //     .def(
+    //         "__iter__",
+    //         [](list_api &v) { return py::make_iterator(v.begin(), v.end()); },
+    //         py::keep_alive<0, 1>());
+
 	py::class_<Tracer::traceData_oh> (mTracer, "traceData_oh")
 		.def(py::init<>())
 		.def_readwrite("startTime", &Tracer::traceData_oh::startTime)
@@ -62,6 +79,18 @@ PYBIND11_MODULE(tracer, m) {
 		.def_readwrite("kind", &Tracer::traceData_oh::kind)
 		.def_readwrite("overheadKind", &Tracer::traceData_oh::overheadKind)
 		.def_readwrite("objectKind", &Tracer::traceData_oh::objectKind);
+	
+	// py::class_<list_oh>(m, "List_oh")
+    //     .def(py::init<>())
+    //     .def("pop_back", &list_oh::pop_back)
+    //     .def("push_back", (void(list_oh::*)(const Tracer::traceData_oh&)) & list_oh::push_back)
+    //     .def("back", (Tracer::traceData_oh & (list_oh::*) ()) & list_oh::back)
+	// 	.def("clear", [](list_oh &v) { return v.clear(); })
+    //     .def("__len__", [](const list_oh &v) { return v.size(); })
+    //     .def(
+    //         "__iter__",
+    //         [](list_oh &v) { return py::make_iterator(v.begin(), v.end()); },
+    //         py::keep_alive<0, 1>());
 
 	// Bind the class "tracer"
 	py::class_<tracer> (m, "tracer")

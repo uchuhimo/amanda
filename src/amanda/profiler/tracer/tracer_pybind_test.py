@@ -10,7 +10,7 @@ def test_trace_Mode_enum():
 
 # test: Tracer::traceData (use traceData as an example)
 def test_traceData_struct():
-	traceData = Tracer.traceData_rt
+	traceData = Tracer.traceData_rt()
 	traceData.startTime = 1
 	traceData.deviceId = 0
 	traceData.kind = "KERNEL"
@@ -52,12 +52,13 @@ def test_trace_process():
 	_tracer.finishTrace()
 	assert not _tracer.traceData_rt
 	os.remove("activity_record.txt")
-	# traceData = Tracer.traceData_rt
+	# traceData = Tracer.traceData_rt()
 	# traceData.deviceId = 1
 	# _tracer.traceData_rt.push_back(traceData)
 	# assert _tracer.traceData_rt
-	# assert _tracer.traceData_rt[0] == traceData
 	# assert len(_tracer.traceData_rt) == 1
+	# _tracer.traceData_rt.clear()
+	# assert not _tracer.traceData_rt
 
 def test_exception():
 	_tracer_a = tracer()
