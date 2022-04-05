@@ -79,7 +79,8 @@ bool runTest(int deviceNum, std::vector<std::string> metricNames)
     counter.setCountParams(deviceNum, metricNames);
 
     // start profiling...
-    counter.startProfiling();
+    counter.startProfilingKernel();
+    // counter.startProfilingOp("Test Two Kernl");
     std::cout << "start profiling ..." << std::endl;
 
     callVecAdd(d_A, d_B, d_C, N);

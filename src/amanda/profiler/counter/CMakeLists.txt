@@ -16,7 +16,7 @@ link_directories(
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -g -lpthread")
 
-pybind11_add_module(counter counter_pybind.cpp counter.cpp autorange_counter.cpp extensions.cpp set_metrics.cpp)
+pybind11_add_module(counter counter_pybind.cpp counter.cpp range_counter.cpp extensions.cpp set_metrics.cpp)
 target_link_libraries(counter PRIVATE cudart)
 target_link_libraries(counter PRIVATE cuda)
 target_link_libraries(counter PRIVATE nvperf_host)

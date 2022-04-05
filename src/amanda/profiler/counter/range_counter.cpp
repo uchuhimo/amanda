@@ -160,7 +160,8 @@ void profilerInitialization(int deviceNum,
 bool setupProfiling(std::vector<uint8_t>& configImage,
                     std::vector<uint8_t>& counterDataScratchBuffer,
                     std::vector<uint8_t>& counterDataImage,
-                    CUpti_ProfilerRange profilerRange)
+                    CUpti_ProfilerRange profilerRange,
+                    std::string opName)
 {
     CUcontext cuContext;
     DRIVER_API_CALL(cuCtxGetCurrent(&cuContext));
@@ -168,6 +169,7 @@ bool setupProfiling(std::vector<uint8_t>& configImage,
     CUpti_Profiler_BeginSession_Params beginSessionParams = {CUpti_Profiler_BeginSession_Params_STRUCT_SIZE};
     CUpti_Profiler_SetConfig_Params setConfigParams = {CUpti_Profiler_SetConfig_Params_STRUCT_SIZE};
     CUpti_Profiler_EnableProfiling_Params enableProfilingParams = {CUpti_Profiler_EnableProfiling_Params_STRUCT_SIZE};
+    CUpti_Profiler_PushRange_Params pushRangeParams = {CUpti_Profiler_PushRange_Params_STRUCT_SIZE};
 
     beginSessionParams.ctx = NULL;
     beginSessionParams.counterDataImageSize = counterDataImage.size();
@@ -175,8 +177,12 @@ bool setupProfiling(std::vector<uint8_t>& configImage,
     beginSessionParams.counterDataScratchBufferSize = counterDataScratchBuffer.size();
     beginSessionParams.pCounterDataScratchBuffer = &counterDataScratchBuffer[0];
     beginSessionParams.range = profilerRange;
-    // KernelReplay
-    beginSessionParams.replayMode = CUPTI_KernelReplay;
+    if (profilerRange == CUPTI_UserRange) {
+        beginSessionParams.replayMode = CUPTI_UserReplay;
+    }
+    else {
+       beginSessionParams.replayMode = CUPTI_KernelReplay; 
+    }
     beginSessionParams.maxRangesPerPass = numRanges;
     beginSessionParams.maxLaunchesPerPass = numRanges;
 
@@ -185,17 +191,34 @@ bool setupProfiling(std::vector<uint8_t>& configImage,
     setConfigParams.pConfig = &configImage[0];
     setConfigParams.configSize = configImage.size();
 
-    printf("CUPTI_KernelReplay\r\n");
-    setConfigParams.passIndex = 0;
-    CUPTI_API_CALL(cuptiProfilerSetConfig(&setConfigParams));
-    CUPTI_API_CALL(cuptiProfilerEnableProfiling(&enableProfilingParams));
+    // printf("CUPTI_KernelReplay\r\n");
+    if (profilerRange == CUPTI_AutoRange) {
+        setConfigParams.passIndex = 0;
+        CUPTI_API_CALL(cuptiProfilerSetConfig(&setConfigParams));
+        CUPTI_API_CALL(cuptiProfilerEnableProfiling(&enableProfilingParams));
+    }
+    else if (profilerRange == CUPTI_UserRange) {
+        setConfigParams.passIndex = 0;
+        setConfigParams.minNestingLevel = 1;
+        setConfigParams.numNestingLevels = 1;
+        CUPTI_API_CALL(cuptiProfilerSetConfig(&setConfigParams));
+
+        CUpti_Profiler_BeginPass_Params beginPassParams = {CUpti_Profiler_BeginPass_Params_STRUCT_SIZE};
+        CUPTI_API_CALL(cuptiProfilerBeginPass(&beginPassParams));
+        // CUPTI_API_CALL(cuptiProfilerEnableProfiling(&enableProfilingParams));
+        pushRangeParams.pRangeName = opName.c_str();
+        CUPTI_API_CALL(cuptiProfilerPushRange(&pushRangeParams));
+    }
+    
     return true;
 }
 
-void counter::startProfiling()
+void startProfiling(counterControler* controler, bool userRange, std::string opName)
 {
     CUpti_ProfilerRange profilerRange = CUPTI_AutoRange;
-    counterControler* controler = this->getControler();
+    if (userRange) {
+        profilerRange = CUPTI_UserRange;
+    }
 
     DRIVER_API_CALL(cuInit(0));
     validateProfilerEnvironment(controler->deviceNum);
@@ -230,16 +253,43 @@ void counter::startProfiling()
         exit(-1);
     }
 
-    if(!setupProfiling(controler->configImage, controler->counterDataScratchBuffer, controler->counterDataImage, profilerRange))
+    if(!setupProfiling(controler->configImage, controler->counterDataScratchBuffer, controler->counterDataImage, profilerRange, opName))
     {
         std::cout << "Failed to setup profiling" << std::endl;
         exit(-1);
     }
 }
 
+void counter::startProfilingKernel() {
+    this->countRange = Counter::AutoRange;
+    counterControler* controler = this->getControler();
+    std::string opName = "KERNEL";
+    startProfiling(controler, false, opName);
+}
+
+void counter::startProfilingOp(std::string opName) {
+    this->countRange = Counter::UserRange;
+    counterControler* controler = this->getControler();
+    startProfiling(controler, true, opName);
+}
+
 void counter::stopProfiling() 
 {
-    CUpti_Profiler_DisableProfiling_Params disableProfilingParams = {CUpti_Profiler_DisableProfiling_Params_STRUCT_SIZE};
+    if(this->countRange == Counter::UserRange) {
+        CUpti_Profiler_PopRange_Params popRangeParams = {CUpti_Profiler_PopRange_Params_STRUCT_SIZE};
+        CUPTI_API_CALL(cuptiProfilerPopRange(&popRangeParams));
+        // CUpti_Profiler_DisableProfiling_Params disableProfilingParams = {CUpti_Profiler_DisableProfiling_Params_STRUCT_SIZE};
+        // CUPTI_API_CALL(cuptiProfilerDisableProfiling(&disableProfilingParams)); 
+        CUpti_Profiler_EndPass_Params endPassParams = {CUpti_Profiler_EndPass_Params_STRUCT_SIZE};
+        CUPTI_API_CALL(cuptiProfilerEndPass(&endPassParams));
+        CUpti_Profiler_FlushCounterData_Params flushCounterDataParams = {CUpti_Profiler_FlushCounterData_Params_STRUCT_SIZE};
+        CUPTI_API_CALL(cuptiProfilerFlushCounterData(&flushCounterDataParams));
+    }
+    else {
+        CUpti_Profiler_DisableProfiling_Params disableProfilingParams = {CUpti_Profiler_DisableProfiling_Params_STRUCT_SIZE};
+        CUPTI_API_CALL(cuptiProfilerDisableProfiling(&disableProfilingParams));         
+    }
+
     CUpti_Profiler_UnsetConfig_Params unsetConfigParams = {CUpti_Profiler_UnsetConfig_Params_STRUCT_SIZE};
     CUPTI_API_CALL(cuptiProfilerUnsetConfig(&unsetConfigParams));
     CUpti_Profiler_EndSession_Params endSessionParams = {CUpti_Profiler_EndSession_Params_STRUCT_SIZE};

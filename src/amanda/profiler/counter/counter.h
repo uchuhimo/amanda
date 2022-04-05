@@ -33,6 +33,11 @@ namespace Counter {
 		OFFLINE_ONLY = 1,
 		ONLINE_ONLY = 2,
 	} count_Mode;
+
+	typedef enum {
+		AutoRange = 0,
+		UserRange = 1,
+	} count_Range;
 };
 
 class counter {
@@ -41,6 +46,7 @@ class counter {
 
 	counterControler controler;
 	Counter::count_Mode countMode;
+	Counter::count_Range countRange;
 	void setMetrics(unsigned long flag);
 	counterControler* getControler();
 
@@ -63,7 +69,8 @@ public:
 	void setCountParams(int deviceNum, std::vector<std::string> metricsNames);
 
 	void clearData();
-	void startProfiling();
+	void startProfilingKernel();
+	void startProfilingOp(std::string opName);
 	void stopProfiling();
 
 	void testClearData();

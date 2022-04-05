@@ -54,7 +54,8 @@ PYBIND11_MODULE(counter, m) {
 		.def("setCountDevice", &counter::setCountDevice)
 		.def("setCountParams", &counter::setCountParams)
 		.def("clearData", &counter::clearData)
-		.def("startProfiling", &counter::startProfiling)
+		.def("startProfilingKernel", &counter::startProfilingKernel)
+		.def("startProfilingOp", &counter::startProfilingOp)
 		.def("stopProfiling", &counter::stopProfiling)
 		.def("testClearData", &counter::testClearData);
 }
