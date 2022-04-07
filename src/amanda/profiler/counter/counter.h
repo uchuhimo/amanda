@@ -51,6 +51,7 @@ class counter {
 	counterControler* getControler();
 
 public:
+	int opCount = 0;
 	std::vector<Counter::countData_t> countData;
 	counter();
 	counter(std::string);
@@ -69,7 +70,7 @@ public:
 	void setCountParams(int deviceNum, std::vector<std::string> metricsNames);
 
 	void clearData();
-	void startProfilingKernel();
+	void startProfilingKernel(std::string opName);
 	void startProfilingOp(std::string opName);
 	void stopProfiling();
 

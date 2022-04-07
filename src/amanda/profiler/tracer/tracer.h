@@ -102,6 +102,8 @@ public:
 	std::vector<Tracer::traceData_rt> traceData_rt;
 	std::vector<Tracer::traceData_api> traceData_api;
 	std::vector<Tracer::traceData_oh> traceData_oh;
+	std::vector<unsigned long long> startTimeLists;
+	std::vector<unsigned long long> endTimeLists;
 
 	tracer();
 	tracer(unsigned long kindFlag);
@@ -130,6 +132,7 @@ public:
 
 	unsigned long getKindFlag();
 	std::string getFilePath();
+	Tracer::trace_Mode getTraceMode();
 	unsigned short getDataTypeFlag();
 
 	/**
@@ -138,6 +141,7 @@ public:
 	 * 
 	 */
 	void activityFlushAll();
+	void clearData();
 
 	/**
 	 * Init and finish tracing process.

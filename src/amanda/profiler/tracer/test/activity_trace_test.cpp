@@ -35,7 +35,7 @@ main(int argc, char *argv[])
 
   // initialize the activity trace
   // make sure activity is enabled before any CUDA API
-  tracer tracer(0);
+  tracer tracer;
   tracer.initTrace();
 
   DRIVER_API_CALL(cuInit(0));

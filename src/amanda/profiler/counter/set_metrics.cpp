@@ -44,7 +44,7 @@
  *  smsp__sass_thread_inst_executed_op_ffma_pred_on.sum.per_second => 0x1 << 20
  * 	smsp__sass_thread_inst_executed_op_fmul_pred_on.sum.per_second => 0x1 << 21
  *  
- * per_cycle_elapsed
+ *  per_cycle_elapsed
  *  smsp__sass_thread_inst_executed_op_dadd_pred_on.sum.per_cycle_elapsed => 0x1 << 22
  *  smsp__sass_thread_inst_executed_op_dfma_pred_on.sum.per_cycle_elapsed => 0x1 << 23
  * 	smsp__sass_thread_inst_executed_op_dmul_pred_on.sum.per_cycle_elapsed => 0x1 << 24
@@ -55,7 +55,7 @@
  *  smsp__sass_thread_inst_executed_op_ffma_pred_on.sum.per_cycle_elapsed => 0x1 << 29
  * 	smsp__sass_thread_inst_executed_op_fmul_pred_on.sum.per_cycle_elapsed => 0x1 << 30
  * 
- * per_cycle_active
+ *  per_cycle_active
  *  smsp__sass_thread_inst_executed_op_dadd_pred_on.sum.per_cycle_active => 0x1 << 31
  *  smsp__sass_thread_inst_executed_op_dfma_pred_on.sum.per_cycle_active => 0x1 << 32
  * 	smsp__sass_thread_inst_executed_op_dmul_pred_on.sum.per_cycle_active => 0x1 << 33
@@ -64,7 +64,13 @@
  * 	smsp__sass_thread_inst_executed_op_hmul_pred_on.sum.per_cycle_active => 0x1 << 36
  *  smsp__sass_thread_inst_executed_op_fadd_pred_on.sum.per_cycle_active => 0x1 << 37
  *  smsp__sass_thread_inst_executed_op_ffma_pred_on.sum.per_cycle_active => 0x1 << 38
- * 	smsp__sass_thread_inst_executed_op_fmul_pred_on.sum.per_cycle_active => 0x1 << 39  
+ * 	smsp__sass_thread_inst_executed_op_fmul_pred_on.sum.per_cycle_active => 0x1 << 39
+ * 
+ *  cycles
+ *  active_cycles: sm__cycles_active.sum => 0x1 << 40
+ *  active_cycles_sys: 	sys__cycles_active.sum => 0x1 << 41
+ *  elapsed_cycles: sm__cycles_elapsed.sum => 0x1 << 42
+ *  elapsed_cycles_sys: sys__cycles_elapsed.sum => 0x1 << 43
  * 
  */
 
@@ -116,6 +122,11 @@ static void initAllMetrics() {
 	allMetrics.push_back("smsp__sass_thread_inst_executed_op_fadd_pred_on.sum.per_cycle_active");
 	allMetrics.push_back("smsp__sass_thread_inst_executed_op_ffma_pred_on.sum.per_cycle_active");
 	allMetrics.push_back("smsp__sass_thread_inst_executed_op_fmul_pred_on.sum.per_cycle_active");
+
+	allMetrics.push_back("sm__cycles_active.sum");
+	allMetrics.push_back("sys__cycles_active.sum");
+	allMetrics.push_back("sm__cycles_elapsed.sum");
+	allMetrics.push_back("sys__cycles_elapsed.sum");		
 } 
 
 void counter::setMetrics(unsigned long flag) {
@@ -130,8 +141,9 @@ void counter::setMetrics(unsigned long flag) {
 
 	int len = allMetrics.size();
 	this->controler.metricNames.clear();
-	for (int i = 0; i < allMetrics.size(); ++i) {
-		if (flag & (0x1 << i)) {
+	for (int i = 0; i < len; ++i) {
+		long long c_flag = (long long)1 << i;
+		if (flag & c_flag) {
 			this->controler.metricNames.push_back(allMetrics[i]);
 		}
 	}

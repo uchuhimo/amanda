@@ -78,18 +78,29 @@ bool runTest(int deviceNum, std::vector<std::string> metricNames)
     counter counter(0);
     counter.setCountParams(deviceNum, metricNames);
 
-    // start profiling...
-    counter.startProfilingKernel();
+    // start profiling
+    counter.startProfilingKernel("KERNEL1");
     // counter.startProfilingOp("Test Two Kernl");
     std::cout << "start profiling ..." << std::endl;
 
     callVecAdd(d_A, d_B, d_C, N);
     callVecSub(d_A, d_B, d_D, N);
 
+    // stop profiling
+    counter.stopProfiling();
+    std::cout << "stop profiling ..." << std::endl;
+
+    // start profiling: test for continuous operation
+    counter.startProfilingKernel("KERNEL2");
+    std::cout << "start profiling ..." << std::endl;
+
+    callVecAdd(d_A, d_B, d_C, N);
+    callVecSub(d_A, d_B, d_D, N);
 
     // stop profiling
     counter.stopProfiling();
     std::cout << "stop profiling ..." << std::endl;
+
     // counter.printValues();
 
 

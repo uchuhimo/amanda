@@ -3,11 +3,14 @@
 #include <nvperf_host.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
+#include <fstream>
+#include <pthread.h>
 
 #include "extensions.h"
 #include "counter.h"
 
-static int numRanges = 2;
+static int numRanges = 1024;
+static pthread_mutex_t opCount_mutex = PTHREAD_MUTEX_INITIALIZER;
 #define METRIC_NAME "smsp__warps_launched.avg"
 
 #define NVPW_API_CALL(apiFuncCall)                                             \
@@ -209,12 +212,14 @@ bool setupProfiling(std::vector<uint8_t>& configImage,
         pushRangeParams.pRangeName = opName.c_str();
         CUPTI_API_CALL(cuptiProfilerPushRange(&pushRangeParams));
     }
-    
+
     return true;
 }
 
 void startProfiling(counterControler* controler, bool userRange, std::string opName)
 {
+    std::cout << "START OP: " << opName << std::endl;
+
     CUpti_ProfilerRange profilerRange = CUPTI_AutoRange;
     if (userRange) {
         profilerRange = CUPTI_UserRange;
@@ -224,9 +229,7 @@ void startProfiling(counterControler* controler, bool userRange, std::string opN
     validateProfilerEnvironment(controler->deviceNum);
     
     CUdevice cuDevice;
-    CUcontext cuContext;
     DRIVER_API_CALL(cuDeviceGet(&cuDevice, controler->deviceNum));
-    DRIVER_API_CALL(cuCtxCreate(&cuContext, 0, cuDevice));
     profilerInitialization(controler->deviceNum, controler->chipName, &controler->counterAvailabilityImage);
 
     if (controler->metricNames.size()) {
@@ -260,52 +263,81 @@ void startProfiling(counterControler* controler, bool userRange, std::string opN
     }
 }
 
-void counter::startProfilingKernel() {
+void counter::startProfilingKernel(std::string opName) {
     this->countRange = Counter::AutoRange;
     counterControler* controler = this->getControler();
-    std::string opName = "KERNEL";
-    startProfiling(controler, false, opName);
+    
+    if (this->countMode == Counter::OFFLINE_AND_ONLINE || this->countMode == Counter::ONLINE_ONLY) {
+        Counter::countData_t newOp;
+        newOp.rangeName = "NEW OP";
+        newOp.metricName = opName;
+        this->countData.push_back(newOp);
+    }
+    if (this->countMode == Counter::OFFLINE_AND_ONLINE || this->countMode == Counter::ONLINE_ONLY) {
+        std::fstream countFile;
+        countFile.open(this->filePath, std::ios::app);
+        countFile << "New Op: " << opName << std::endl;
+        countFile.close();
+    }
+
+    int rc = pthread_mutex_lock(&opCount_mutex);
+    this->opCount++;
+    if (this->opCount == 1) {
+        startProfiling(controler, false, opName);
+    }
+    rc = pthread_mutex_unlock(&opCount_mutex);
+    std::cout << "Start Profiling!" << std::endl;
 }
 
 void counter::startProfilingOp(std::string opName) {
     this->countRange = Counter::UserRange;
     counterControler* controler = this->getControler();
-    startProfiling(controler, true, opName);
+
+    int rc = pthread_mutex_lock(&opCount_mutex);
+    this->opCount++;
+    if (this->opCount == 1) {
+        startProfiling(controler, false, opName);
+    }
+    rc = pthread_mutex_unlock(&opCount_mutex);
+    std::cout << "Start Profiling!" << std::endl;
 }
 
 void counter::stopProfiling() 
 {
-    if(this->countRange == Counter::UserRange) {
-        CUpti_Profiler_PopRange_Params popRangeParams = {CUpti_Profiler_PopRange_Params_STRUCT_SIZE};
-        CUPTI_API_CALL(cuptiProfilerPopRange(&popRangeParams));
-        // CUpti_Profiler_DisableProfiling_Params disableProfilingParams = {CUpti_Profiler_DisableProfiling_Params_STRUCT_SIZE};
-        // CUPTI_API_CALL(cuptiProfilerDisableProfiling(&disableProfilingParams)); 
-        CUpti_Profiler_EndPass_Params endPassParams = {CUpti_Profiler_EndPass_Params_STRUCT_SIZE};
-        CUPTI_API_CALL(cuptiProfilerEndPass(&endPassParams));
-        CUpti_Profiler_FlushCounterData_Params flushCounterDataParams = {CUpti_Profiler_FlushCounterData_Params_STRUCT_SIZE};
-        CUPTI_API_CALL(cuptiProfilerFlushCounterData(&flushCounterDataParams));
+    int rc = pthread_mutex_lock(&opCount_mutex);
+    this->opCount--;
+    if (this->opCount == 0) {
+       std::cout << "Stop Profiling!" << std::endl;
+        if(this->countRange == Counter::UserRange) {
+            CUpti_Profiler_PopRange_Params popRangeParams = {CUpti_Profiler_PopRange_Params_STRUCT_SIZE};
+            CUPTI_API_CALL(cuptiProfilerPopRange(&popRangeParams));
+            CUpti_Profiler_DisableProfiling_Params disableProfilingParams = {CUpti_Profiler_DisableProfiling_Params_STRUCT_SIZE};
+            CUPTI_API_CALL(cuptiProfilerDisableProfiling(&disableProfilingParams)); 
+            CUpti_Profiler_EndPass_Params endPassParams = {CUpti_Profiler_EndPass_Params_STRUCT_SIZE};
+            CUPTI_API_CALL(cuptiProfilerEndPass(&endPassParams));
+            CUpti_Profiler_FlushCounterData_Params flushCounterDataParams = {CUpti_Profiler_FlushCounterData_Params_STRUCT_SIZE};
+            CUPTI_API_CALL(cuptiProfilerFlushCounterData(&flushCounterDataParams));
+        }
+        else {
+            CUpti_Profiler_DisableProfiling_Params disableProfilingParams = {CUpti_Profiler_DisableProfiling_Params_STRUCT_SIZE};
+            CUPTI_API_CALL(cuptiProfilerDisableProfiling(&disableProfilingParams));         
+        }
+
+        CUpti_Profiler_UnsetConfig_Params unsetConfigParams = {CUpti_Profiler_UnsetConfig_Params_STRUCT_SIZE};
+        CUPTI_API_CALL(cuptiProfilerUnsetConfig(&unsetConfigParams));
+        CUpti_Profiler_EndSession_Params endSessionParams = {CUpti_Profiler_EndSession_Params_STRUCT_SIZE};
+        CUPTI_API_CALL(cuptiProfilerEndSession(&endSessionParams));
+
+        CUpti_Profiler_DeInitialize_Params profilerDeInitializeParams = {CUpti_Profiler_DeInitialize_Params_STRUCT_SIZE};
+        CUPTI_API_CALL(cuptiProfilerDeInitialize(&profilerDeInitializeParams));
+
+        bool fileFlag = true, dataFlag = true;
+        if (this->countMode == Counter::OFFLINE_ONLY) { dataFlag = false; }
+        if (this->countMode == Counter::ONLINE_ONLY) { fileFlag = false; }
+
+        counterControler* controler = this->getControler();
+        /* Evaluation of metrics collected in counterDataImage, this can also be done offline*/
+        NV::Metric::Eval::GetMetricValues(controler->chipName, controler->counterDataImage, controler->metricNames, fileFlag, this->filePath, dataFlag, this->countData); 
     }
-    else {
-        CUpti_Profiler_DisableProfiling_Params disableProfilingParams = {CUpti_Profiler_DisableProfiling_Params_STRUCT_SIZE};
-        CUPTI_API_CALL(cuptiProfilerDisableProfiling(&disableProfilingParams));         
-    }
-
-    CUpti_Profiler_UnsetConfig_Params unsetConfigParams = {CUpti_Profiler_UnsetConfig_Params_STRUCT_SIZE};
-    CUPTI_API_CALL(cuptiProfilerUnsetConfig(&unsetConfigParams));
-    CUpti_Profiler_EndSession_Params endSessionParams = {CUpti_Profiler_EndSession_Params_STRUCT_SIZE};
-    CUPTI_API_CALL(cuptiProfilerEndSession(&endSessionParams));
-
-    CUcontext cuContext;
-    DRIVER_API_CALL(cuCtxGetCurrent(&cuContext));
-    CUpti_Profiler_DeInitialize_Params profilerDeInitializeParams = {CUpti_Profiler_DeInitialize_Params_STRUCT_SIZE};
-    CUPTI_API_CALL(cuptiProfilerDeInitialize(&profilerDeInitializeParams));
-    DRIVER_API_CALL(cuCtxDestroy(cuContext));
-
-    bool fileFlag = true, dataFlag = true;
-    if (this->countMode == Counter::OFFLINE_ONLY) { dataFlag = false; }
-    if (this->countMode == Counter::ONLINE_ONLY) { fileFlag = false; }
-
-    counterControler* controler = this->getControler();
-    /* Evaluation of metrics collected in counterDataImage, this can also be done offline*/
-    NV::Metric::Eval::GetMetricValues(controler->chipName, controler->counterDataImage, controler->metricNames, fileFlag, this->filePath, dataFlag, this->countData);
+    rc = pthread_mutex_unlock(&opCount_mutex);
 }

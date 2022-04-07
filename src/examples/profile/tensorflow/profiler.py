@@ -12,10 +12,10 @@ from examples.profile.tensorflow.utils import from_attr_proto
 class Profiler(amanda.Tool):
     def __init__(self):
         super().__init__(namespace="tensorflow")
-        # self.add_inst_for_op(
-        #     self.forward_instrumentation,
-        #     require_outputs=True,
-        # )
+        self.add_inst_for_op(
+            self.forward_instrumentation,
+            require_outputs=True,
+        )
         # self.add_inst_for_op(
         #     self.backward_instrumentation,
         #     backward=True,
@@ -23,6 +23,9 @@ class Profiler(amanda.Tool):
         # )
         self.start_time = None
         self.trace = []
+
+        self.before_cnt = 0
+        self.after_cnt = 0
 
     def export_chrome_trace(self, path):
         with open(ensure_dir(path), "w") as file:
@@ -39,26 +42,32 @@ class Profiler(amanda.Tool):
             },
         }
         event["args"]["id"] = op.name
-        context.insert_before_op(
-            self.record_before_op,
-            inputs=[
+
+        op_inputs = [
                 index
                 for index, tensor in enumerate(context.get_inputs())
                 if not tensor.dtype._is_ref_dtype
-            ],
-            event=event,
-            op=op,
-        )
-        context.insert_after_op(
-            self.record_after_op,
-            outputs=[
+            ]
+        op_outputs = [
                 index
                 for index, tensor in enumerate(context.get_outputs())
                 if not tensor.dtype._is_ref_dtype
-            ],
-            event=event,
-            op=op,
-        )
+            ]
+
+        if not len(op_outputs)==0:
+            context.insert_before_op(
+                self.record_before_op,
+                inputs=op_inputs,
+                event=event,
+                op=op,
+            )
+        if not len(op_inputs)==0:
+            context.insert_after_op(
+                self.record_after_op,
+                outputs=op_outputs,
+                event=event,
+                op=op,
+            )
 
     def backward_instrumentation(self, context: amanda.OpContext):
         bw_op = context.get_backward_op()
@@ -100,6 +109,7 @@ class Profiler(amanda.Tool):
             event["pid"] = os.getpid()
             event["ph"] = "X"
             event["ts"] = time.perf_counter() * 1000 - self.start_time
+            self.before_cnt += 1
             return inputs
 
         new_inputs = tf.py_function(
@@ -117,6 +127,7 @@ class Profiler(amanda.Tool):
                     time.perf_counter() * 1000 - event["ts"] - self.start_time
                 )
                 self.trace.append(event)
+            self.after_cnt += 1
             return outputs
 
         with tf.control_dependencies([op]):

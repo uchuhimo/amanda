@@ -1,12 +1,9 @@
 #include "counter.h"
 
-counterControler* counter::getControler() {
-	return &this->controler;
-}
-
 counter::counter() {
 	this->filePath = "metrics_record.txt";
 	this->kindFlag = 0;
+	this->opCount = 0;
 	this->countMode = Counter::OFFLINE_AND_ONLINE;
 	
 	this->setMetrics(0);
@@ -14,6 +11,7 @@ counter::counter() {
 
 counter::counter(std::string _filePath):filePath(_filePath) {
 	this->kindFlag = 0;
+	this->opCount = 0;
 	this->countMode = Counter::OFFLINE_AND_ONLINE;
 
 	this->setMetrics(0);
@@ -21,12 +19,14 @@ counter::counter(std::string _filePath):filePath(_filePath) {
 
 counter::counter(unsigned long _kindFlag):kindFlag(_kindFlag) {
 	this->filePath = "metrics_record.txt";
+	this->opCount = 0;
 	this->countMode = Counter::OFFLINE_AND_ONLINE;
 
 	this->setMetrics(_kindFlag);
 }
 
 counter::counter(unsigned long _kindFlag, std::string _filePath):kindFlag(_kindFlag), filePath(_filePath) {
+	this->opCount = 0;
 	this->countMode = Counter::OFFLINE_AND_ONLINE;
 
 	this->setMetrics(_kindFlag);
@@ -36,6 +36,10 @@ counter::~counter() {}
 
 void counter::setFilePath(std::string _filePath) {
 	this->filePath = _filePath; 
+}
+
+counterControler* counter::getControler() {
+	return &this->controler;
 }
 
 void counter::setKindFlag(unsigned long _kindFlag) {

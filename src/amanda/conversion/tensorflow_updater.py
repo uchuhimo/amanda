@@ -160,7 +160,7 @@ def get_iterator_inits(graph):
 
 
 def get_all_variables(graph):
-    return graph.get_collection(tf.GraphKeys.GLOBAL_VARIABLES) + graph.get_collection(
+    return graph.get_collection(tf.compat.v1.GraphKeys.GLOBAL_VARIABLES) + graph.get_collection(
         tf.GraphKeys.LOCAL_VARIABLES
     )
 
@@ -184,7 +184,7 @@ class TensorFlowAdapter:
 
     def clone(self, graph):
         original_last_id = graph._last_id
-        meta_graph_def = tf.train.export_meta_graph(graph=graph)
+        meta_graph_def = tf.compat.v1.train.export_meta_graph(graph=graph)
         new_graph = tf.Graph()
         with new_graph.as_default():
             import_scoped_meta_graph(meta_graph_def)
@@ -203,7 +203,7 @@ class TensorFlowAdapter:
         with session.graph.as_default(), session.as_default():
             all_variables = get_all_variables(session.graph)
             uninitialized_variables = session.run(
-                tf.report_uninitialized_variables(all_variables)
+                tf.compat.v1.report_uninitialized_variables(all_variables)
             )
             initialized_variables = set(
                 map(lambda variable: variable.op.name, all_variables)

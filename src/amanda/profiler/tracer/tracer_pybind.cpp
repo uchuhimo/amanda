@@ -104,6 +104,8 @@ PYBIND11_MODULE(tracer, m) {
 		.def_readwrite("traceData_rt", &tracer::traceData_rt)
 		.def_readwrite("traceData_api", &tracer::traceData_api)
 		.def_readwrite("traceData_oh", &tracer::traceData_oh)
+		.def_readwrite("startTimeLists", &tracer::startTimeLists)
+		.def_readwrite("endTimeLists", &tracer::endTimeLists)
 		.def("setKindFlag", &tracer::setKindFlag)
 		.def("getKindFlag", &tracer::getKindFlag)
 		.def("setFilePath", &tracer::setFilePath)
@@ -112,7 +114,8 @@ PYBIND11_MODULE(tracer, m) {
 		.def("getDataTypeFlag", &tracer::getDataTypeFlag)
 		.def("onlineAnalysisOnly", &tracer::onlineAnalysisOnly)
 		.def("offlineAnalysisOnly", &tracer::offlineAnalysisOnly)
-		.def("activityFluashAll", &tracer::activityFlushAll)
+		.def("activityFlushAll", &tracer::activityFlushAll)
+		.def("clearData", &tracer::clearData)
 		.def("initTrace", &tracer::initTrace)
 		.def("finishTrace", &tracer::finishTrace);
 

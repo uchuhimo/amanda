@@ -66,13 +66,18 @@ tracer::~tracer() {
 }
 
 void tracer::setKindFlag(unsigned long _kindFlag) {
-	this->kindFlag = kindFlag;
+	this->kindFlag = _kindFlag;
 }
 
 void tracer::setFilePath(std::string _filePath) {
 	this->filePath = _filePath;
 }
 
+/**
+ * 0x1 Runtime
+ * 0x2 API
+ * 0x4 Overhead 
+ */
 void tracer::setDataTypeFlag(unsigned short _dataTypeFlag) {
 	this->dataTypeFlag = (_dataTypeFlag & 0x7);
 }
@@ -93,6 +98,18 @@ std::string tracer::getFilePath() {
 	return this->filePath;
 }
 
+Tracer::trace_Mode tracer::getTraceMode() {
+	return this->traceMode;
+}
+
 unsigned short tracer::getDataTypeFlag() {
 	return this->dataTypeFlag;
+}
+
+void tracer::clearData() {
+	this->traceData_rt.clear();
+	this->traceData_api.clear();
+	this->traceData_oh.clear();
+	this->startTimeLists.clear();
+	this->endTimeLists.clear();
 }

@@ -18,6 +18,7 @@
 // Timestamp at trace initialization time. Used to normalized other
 // timestamps
 static uint64_t startTimestamp;
+static uint64_t endTimestamp;
 static std::fstream traceFile;
 static pthread_mutex_t traceCount_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_rwlock_t rwlock_file;
@@ -49,6 +50,7 @@ static const char* api_name;
   } while (0)
 
 // Buffer that stored the trace data
+// #define BUF_SIZE (sizeof(CUpti_ActivityAPI))
 #define BUF_SIZE (32 * 1024)
 #define ALIGN_SIZE (8)
 #define ALIGN_BUFFER(buffer, align)                                            \
@@ -203,8 +205,8 @@ printActivity(CUpti_Activity *record)
       CUpti_ActivityMemcpy3 *memcpy = (CUpti_ActivityMemcpy3 *) record;
       printf("MEMCPY %s [ %llu - %llu, %llu ] device %u, context %u, stream %u, correlation %u/r%u\n",
              getMemcpyKindString((CUpti_ActivityMemcpyKind) memcpy->copyKind),
-             (unsigned long long) (memcpy->start - startTimestamp),
-             (unsigned long long) (memcpy->end - startTimestamp),
+             (unsigned long long) memcpy->start,
+             (unsigned long long) memcpy->end,
              (unsigned long long) (memcpy->end - memcpy->start),
              memcpy->deviceId, memcpy->contextId, memcpy->streamId,
              memcpy->correlationId, memcpy->runtimeCorrelationId);
@@ -215,8 +217,8 @@ printActivity(CUpti_Activity *record)
       CUpti_ActivityMemset2 *memset = (CUpti_ActivityMemset2 *) record;
       printf("MEMSET value=%u [ %llu - %llu, %llu ] device %u, context %u, stream %u, correlation %u\n",
              memset->value,
-             (unsigned long long) (memset->start - startTimestamp),
-             (unsigned long long) (memset->end - startTimestamp),
+             (unsigned long long) memset->start,
+             (unsigned long long) memset->end,
              (unsigned long long) (memset->end - memset->start),
              memset->deviceId, memset->contextId, memset->streamId,
              memset->correlationId);
@@ -230,8 +232,8 @@ printActivity(CUpti_Activity *record)
       printf("%s \"%s\" [ %llu - %llu, %llu ] device %u, context %u, stream %u, correlation %u",
              kindString,
              kernel->name,
-             (unsigned long long) (kernel->start - startTimestamp),
-             (unsigned long long) (kernel->end - startTimestamp),
+             (unsigned long long) kernel->start,
+             (unsigned long long) kernel->end,
              (unsigned long long) (kernel->end - kernel->start),
              kernel->deviceId, kernel->contextId, kernel->streamId,
              kernel->correlationId);
@@ -247,8 +249,8 @@ printActivity(CUpti_Activity *record)
       CUpti_ActivityAPI *api = (CUpti_ActivityAPI *) record;
       printf("DRIVER cbid=%u [ %llu - %llu, %llu ] process %u, thread %u, correlation %u\n",
              api->cbid,
-             (unsigned long long) (api->start - startTimestamp),
-             (unsigned long long) (api->end - startTimestamp),
+             (unsigned long long) api->start,
+             (unsigned long long) api->end,
              (unsigned long long) (api->end - api->start),
              api->processId, api->threadId, api->correlationId);
       break;
@@ -258,8 +260,8 @@ printActivity(CUpti_Activity *record)
       CUpti_ActivityAPI *api = (CUpti_ActivityAPI *) record;
       printf("RUNTIME cbid=%u [ %llu - %llu, %llu ] process %u, thread %u, correlation %u\n",
              api->cbid,
-             (unsigned long long) (api->start - startTimestamp),
-             (unsigned long long) (api->end - startTimestamp),
+             (unsigned long long) api->start,
+             (unsigned long long) api->end,
              (unsigned long long) (api->end - api->start),
              api->processId, api->threadId, api->correlationId);
       break;
@@ -317,9 +319,9 @@ printActivity(CUpti_Activity *record)
       CUpti_ActivityOverhead *overhead = (CUpti_ActivityOverhead *) record;
       printf("OVERHEAD %s [ %llu, %llu, %llu ] %s id %u\n",
              getActivityOverheadKindString(overhead->overheadKind),
-             (unsigned long long) overhead->start - startTimestamp,
-             (unsigned long long) overhead->end - startTimestamp,
-             (unsigned long long) overhead->end - overhead->start,
+             (unsigned long long) overhead->start,
+             (unsigned long long) overhead->end,
+             (unsigned long long) (overhead->end - overhead->start),
              getActivityObjectKindString(overhead->objectKind),
              getActivityObjectKindId(overhead->objectKind, &overhead->objectId));
       break;
@@ -386,7 +388,7 @@ writeFileActivity(CUpti_Activity *record)
 
       rc = pthread_rwlock_wrlock(&rwlock_file);
       traceFile << "MEMCPY " << getMemcpyKindString((CUpti_ActivityMemcpyKind) memcpy->copyKind) << " "
-              << "[" << (unsigned long long) (memcpy->start - startTimestamp) << " - " << (unsigned long long) (memcpy->end - startTimestamp) << ", " << (unsigned long long) (memcpy->end - memcpy->start) << "] "
+              << "[" << (unsigned long long) memcpy->start << " - " << (unsigned long long) memcpy->end << ", " << (unsigned long long) (memcpy->end - memcpy->start) << "] "
               << "device: " << memcpy->deviceId << " "
               << "context: " << memcpy->contextId << " "
               << "stream: " << memcpy->streamId << " "
@@ -401,7 +403,7 @@ writeFileActivity(CUpti_Activity *record)
 
       rc = pthread_rwlock_wrlock(&rwlock_file);
       traceFile <<  "MEMSET value=" << memset->value << " "
-              << "[" << (unsigned long long) (memset->start - startTimestamp) << " - " << (unsigned long long) (memset->end - startTimestamp) << ", " << (unsigned long long) (memset->end - memset->start) << "] "
+              << "[" << (unsigned long long) memset->start << " - " << (unsigned long long) memset->end << ", " << (unsigned long long) (memset->end - memset->start) << "] "
               << "device: " << memset->deviceId << " "
               << "context: " << memset->contextId << " "
               << "stream: " << memset->streamId << " "
@@ -418,7 +420,7 @@ writeFileActivity(CUpti_Activity *record)
       
       rc = pthread_rwlock_wrlock(&rwlock_file);
       traceFile << kindString << " " << kernel->name << " "
-              << "[" << (unsigned long long)(kernel->start - startTimestamp) << " - " << (unsigned long long)(kernel->end - startTimestamp) << ", " << (unsigned long long)(kernel->start - kernel->end) << "] "
+              << "[" << (unsigned long long)kernel->start << " - " << (unsigned long long)kernel->end << ", " << (unsigned long long)(kernel->end - kernel->start) << "] "
               << "device: " << kernel->deviceId << " "
               << "context: " << kernel->contextId << " "
               << "stream: " << kernel->streamId << " "
@@ -434,11 +436,10 @@ writeFileActivity(CUpti_Activity *record)
     {
       CUpti_ActivityAPI *api = (CUpti_ActivityAPI *) record;
       
-
       rc = pthread_rwlock_wrlock(&rwlock_file);
       cuptiGetCallbackName(CUPTI_CB_DOMAIN_DRIVER_API, api->cbid, &api_name);
       traceFile << "DRIVER cbid=" <<  api->cbid << " " << "api_name=" << api_name << " "
-              << "[" << (unsigned long long) (api->start - startTimestamp) << " - " << (unsigned long long) (api->end - startTimestamp) << ", " << (unsigned long long) (api->end - api->start) << "] "
+              << "[" << (unsigned long long) api->start << " - " << (unsigned long long) api->end << ", " << (unsigned long long) (api->end - api->start) << "] "
               << "process: " << api->processId << " "
               << "thread: " << api->threadId << " "
               << "correlation: " << api->correlationId << std::endl;
@@ -453,7 +454,7 @@ writeFileActivity(CUpti_Activity *record)
       rc = pthread_rwlock_wrlock(&rwlock_file);
       cuptiGetCallbackName(CUPTI_CB_DOMAIN_RUNTIME_API, api->cbid, &api_name);
       traceFile << "RUNTIME cbid=" <<  api->cbid << " " << "api_name=" << api_name << " "
-              << "[" << (unsigned long long) (api->start - startTimestamp) << " - " << (unsigned long long) (api->end - startTimestamp) << ", " << (unsigned long long) (api->end - api->start) << "] "
+              << "[" << (unsigned long long) api->start << " - " << (unsigned long long) api->end << ", " << (unsigned long long) (api->end - api->start) << "] "
               << "process: " << api->processId << " "
               << "thread: " << api->threadId << " "
               << "correlation: " << api->correlationId << std::endl;
@@ -523,7 +524,7 @@ writeFileActivity(CUpti_Activity *record)
 
       rc = pthread_rwlock_wrlock(&rwlock_file);
       traceFile << "OVERHEAD " << getActivityOverheadKindString(overhead->overheadKind) << " " 
-              << "[" << (unsigned long long) overhead->start - startTimestamp << " - " << (unsigned long long) overhead->end - startTimestamp << ", " << (unsigned long long) overhead->end - overhead->start << "] "
+              << "[" << (unsigned long long) overhead->start << " - " << (unsigned long long) overhead->end << ", " << (unsigned long long) (overhead->end - overhead->start) << "] "
               << getActivityObjectKindString(overhead->objectKind) << " "
               << "id " << getActivityObjectKindId(overhead->objectKind, &overhead->objectId) << std::endl;
       rc = pthread_rwlock_unlock(&rwlock_file);
@@ -555,8 +556,8 @@ storeValueActivity(CUpti_Activity *record)
       CUpti_ActivityMemcpy3 *memcpy = (CUpti_ActivityMemcpy3 *) record;
       if ( (dataTypeFlag == 0) || (dataTypeFlag & 0x1) ) {
         Tracer::traceData_rt traceData;
-        traceData.startTime = (unsigned long long) (memcpy->start - startTimestamp);
-        traceData.endTime = (unsigned long long) (memcpy->end - startTimestamp);
+        traceData.startTime = (unsigned long long) memcpy->start;
+        traceData.endTime = (unsigned long long) memcpy->end;
         traceData.durationTime = (unsigned long long) (memcpy->end - memcpy->start);
       
         traceData.deviceId = memcpy->deviceId;
@@ -580,8 +581,8 @@ storeValueActivity(CUpti_Activity *record)
 
       if ( (dataTypeFlag == 0) || (dataTypeFlag & 0x1) ) {
         Tracer::traceData_rt traceData;
-        traceData.startTime = (unsigned long long) (memset->start - startTimestamp);
-        traceData.endTime = (unsigned long long) (memset->end - startTimestamp);
+        traceData.startTime = (unsigned long long) memset->start;
+        traceData.endTime = (unsigned long long) memset->end;
         traceData.durationTime = (unsigned long long) (memset->end - memset->start);
       
         traceData.deviceId = memset->deviceId;
@@ -606,8 +607,8 @@ storeValueActivity(CUpti_Activity *record)
       
       if ( (dataTypeFlag == 0) || (dataTypeFlag & 0x1) ) {
         Tracer::traceData_rt traceData;
-        traceData.startTime = (unsigned long long) (kernel->start - startTimestamp);
-        traceData.endTime = (unsigned long long) (kernel->end - startTimestamp);
+        traceData.startTime = (unsigned long long) kernel->start;
+        traceData.endTime = (unsigned long long) kernel->end;
         traceData.durationTime = (unsigned long long) (kernel->end - kernel->start);
       
         traceData.deviceId = kernel->deviceId;
@@ -616,6 +617,7 @@ storeValueActivity(CUpti_Activity *record)
         traceData.correlationId = kernel->correlationId;
 
         traceData.kind = kindString;
+        traceData.name = kernel->name;
 
         rc = pthread_rwlock_wrlock(&rwlock_traceData);
         globalTracer_pointer->traceData_rt.push_back(traceData);
@@ -628,10 +630,10 @@ storeValueActivity(CUpti_Activity *record)
     {
       CUpti_ActivityAPI *api = (CUpti_ActivityAPI *) record;
 
-      if ( dataTypeFlag & 0x2 ) {
+      if ( (dataTypeFlag == 0) || (dataTypeFlag & 0x2) ) {
         Tracer::traceData_api traceData;
-        traceData.startTime = (unsigned long long) (api->start - startTimestamp);
-        traceData.endTime = (unsigned long long) (api->end - startTimestamp);
+        traceData.startTime = (unsigned long long) api->start;
+        traceData.endTime = (unsigned long long) api->end;
         traceData.durationTime = (unsigned long long) (api->end - api->start);
       
         traceData.processId = api->processId;
@@ -653,10 +655,10 @@ storeValueActivity(CUpti_Activity *record)
     {
       CUpti_ActivityAPI *api = (CUpti_ActivityAPI *) record;
 
-      if ( dataTypeFlag & 0x2 ) {
+      if ( (dataTypeFlag == 0) || (dataTypeFlag & 0x2) ) {
         Tracer::traceData_api traceData;
-        traceData.startTime = (unsigned long long) (api->start - startTimestamp);
-        traceData.endTime = (unsigned long long) (api->end - startTimestamp);
+        traceData.startTime = (unsigned long long) api->start;
+        traceData.endTime = (unsigned long long) api->end;
         traceData.durationTime = (unsigned long long) (api->end - api->start);
       
         traceData.processId = api->processId;
@@ -678,17 +680,10 @@ storeValueActivity(CUpti_Activity *record)
     {
       CUpti_ActivityOverhead *overhead = (CUpti_ActivityOverhead *) record;
 
-      rc = pthread_rwlock_wrlock(&rwlock_file);
-      traceFile << "OVERHEAD " << getActivityOverheadKindString(overhead->overheadKind) << " " 
-              << "[" << (unsigned long long) overhead->start - startTimestamp << " - " << (unsigned long long) overhead->end - startTimestamp << ", " << (unsigned long long) overhead->end - overhead->start << "] "
-              << getActivityObjectKindString(overhead->objectKind) << " "
-              << "id " << getActivityObjectKindId(overhead->objectKind, &overhead->objectId) << std::endl;
-      rc = pthread_rwlock_unlock(&rwlock_file);
-
-      if ( dataTypeFlag & 0x4 ) {
+      if ( (dataTypeFlag == 0) || (dataTypeFlag & 0x4) ) {
         Tracer::traceData_oh traceData;
-        traceData.startTime = (unsigned long long) (overhead->start - startTimestamp);
-        traceData.endTime = (unsigned long long) (overhead->end - startTimestamp);
+        traceData.startTime = (unsigned long long) overhead->start;
+        traceData.endTime = (unsigned long long) overhead->end;
         traceData.durationTime = (unsigned long long) (overhead->end - overhead->start);
 
         traceData.kind = "OVERHEAD";
@@ -736,8 +731,12 @@ void CUPTIAPI bufferCompleted(CUcontext ctx, uint32_t streamId, uint8_t *buffer,
       status = cuptiActivityGetNextRecord(buffer, validSize, &record);
       if (status == CUPTI_SUCCESS) {
         printActivity(record);
-        writeFileActivity(record);
-        storeValueActivity(record);
+        if (globalTracer_pointer->getTraceMode() == Tracer::OFFLINE_AND_ONLINE | globalTracer_pointer->getTraceMode() == Tracer::OFFLINE_ONLY) {
+          writeFileActivity(record);
+        }
+        if (globalTracer_pointer->getTraceMode() == Tracer::OFFLINE_AND_ONLINE | globalTracer_pointer->getTraceMode() == Tracer::ONLINE_ONLY) {
+          storeValueActivity(record);
+        }
       }
       else if (status == CUPTI_ERROR_MAX_LIMIT_REACHED)
         break;
@@ -794,20 +793,35 @@ void tracer::initTrace()
   // e.g. to be applied to all device buffer allocations (see documentation).
   CUPTI_CALL(cuptiActivityGetAttribute(CUPTI_ACTIVITY_ATTR_DEVICE_BUFFER_SIZE, &attrValueSize, &attrValue));
   printf("%s = %llu\n", "CUPTI_ACTIVITY_ATTR_DEVICE_BUFFER_SIZE", (long long unsigned)attrValue);
-  attrValue *= 2;
-  CUPTI_CALL(cuptiActivitySetAttribute(CUPTI_ACTIVITY_ATTR_DEVICE_BUFFER_SIZE, &attrValueSize, &attrValue));
 
   CUPTI_CALL(cuptiActivityGetAttribute(CUPTI_ACTIVITY_ATTR_DEVICE_BUFFER_POOL_LIMIT, &attrValueSize, &attrValue));
   printf("%s = %llu\n", "CUPTI_ACTIVITY_ATTR_DEVICE_BUFFER_POOL_LIMIT", (long long unsigned)attrValue);
-  attrValue *= 2;
-  CUPTI_CALL(cuptiActivitySetAttribute(CUPTI_ACTIVITY_ATTR_DEVICE_BUFFER_POOL_LIMIT, &attrValueSize, &attrValue));
+
+  CUPTI_CALL(cuptiActivityGetAttribute(CUPTI_ACTIVITY_ATTR_PROFILING_SEMAPHORE_POOL_SIZE, &attrValueSize, &attrValue));
+  printf("%s = %llu\n", "CUPTI_ACTIVITY_ATTR_DEVICE_BUFFER_POOL_SIZE", (long long unsigned)attrValue);
+
+  CUPTI_CALL(cuptiActivityGetAttribute(CUPTI_ACTIVITY_ATTR_PROFILING_SEMAPHORE_POOL_LIMIT, &attrValueSize, &attrValue));
+  printf("%s = %llu\n", "CUPTI_ACTIVITY_ATTR_DEVICE_BUFFER_POOL_LIMIT", (long long unsigned)attrValue);
 
   CUPTI_CALL(cuptiGetTimestamp(&startTimestamp));
+  traceFile << "Update startTimeStamp: " << startTimestamp << " thread: " << pthread_self() << std::endl;
+  std::cout << "Update startTimeStamp: " << startTimestamp << " thread: " << pthread_self() << std::endl;
+  if (this->traceMode == Tracer::OFFLINE_AND_ONLINE || this->traceMode == Tracer::ONLINE_ONLY){
+    this->startTimeLists.push_back((unsigned long long)startTimestamp);
+  }  
 }
 
 void tracer::finishTrace()
 {
-   CUPTI_CALL(cuptiActivityFlushAll(1));
+   CUPTI_CALL(cuptiActivityFlushAll(0));
+
+   CUPTI_CALL(cuptiGetTimestamp(&endTimestamp));
+   if (this->traceMode == Tracer::OFFLINE_AND_ONLINE || this->traceMode == Tracer::ONLINE_ONLY){
+    this->endTimeLists.push_back((unsigned long long)endTimestamp);
+   }
+   traceFile << "Update endTimeStamp: " << endTimestamp << " thread: " << pthread_self() << std::endl;
+   std::cout << "Update endTimeStamp: " << endTimestamp << " thread: " << pthread_self() << std::endl;
+
    int rc = pthread_mutex_lock(&traceCount_mutex);
    this->traceCount--;
    if (this->traceCount == 0) {
