@@ -11,9 +11,17 @@ class amandaCounter(amanda.Tool):
 		self.add_inst_for_op(self.forward_instrumentation)
 		self.counter = counter.counter(kindFlag, filePath)
 		self.opCount = 0
+		self.opList = []
 
 	def forward_instrumentation(self, context: amanda.OpContext):
 		op = context.get_op()
+
+		self.opCount += 1
+		self.opList.append(op.__name__)
+
+		# if self.opCount > 10:
+		# 	return
+
 		context.insert_before_op(
 			self.start_profiling,
 			opName = op.__name__
@@ -56,4 +64,6 @@ class amandaCounter(amanda.Tool):
 		return self.counter.countData
 
 	def clearData(self):
+		self.opCount = 0
+		self.opList.clear()
 		self.counter.clearData()

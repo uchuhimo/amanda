@@ -31,12 +31,12 @@ def main():
 	numTotalDisorder = 0
 	numTotalOrder = 0
 	print("Len of timeList:", len(timeLists_start), "opCount:", tracer.opCount)
-	timeIndex = 0
+	timeIndex = 1
 	for x in data_api:
-		time = timeLists_start[timeIndex]
-		if (x.startTime < time):
+		time = timeLists_start[timeIndex - 1]
+		if (timeIndex < len(timeLists_start) and x.startTime > timeLists_start[timeIndex]):
 			timeIndex = timeIndex + 1
-			time = timeLists_start[timeIndex]
+			time = timeLists_start[timeIndex - 1]
 
 		if x.name == "cudaLaunchKernel_v7000":
 			if (x.startTime < time):

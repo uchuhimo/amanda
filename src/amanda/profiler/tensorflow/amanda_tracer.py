@@ -91,7 +91,7 @@ class amandaTracer(amanda.Tool):
 		self.tracer.setFilePath(filePath)
 
 	def getFilePath(self):
-		return self.getFilePath()
+		return self.tracer.getFilePath()
 	
 	def setDataTypeFlag(self, dataTypeFlag):
 		self.tracer.setDataTypeFlag(dataTypeFlag)

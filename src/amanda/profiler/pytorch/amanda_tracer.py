@@ -10,12 +10,19 @@ class amandaTracer(amanda.Tool):
 		super().__init__(namespace="pytorch")
 		self.add_inst_for_op(self.forward_instrumentation)
 		self.opCount = 0
+		self.opList=[]
 		self.tracer = tracer.tracer(kindFlag, filePath)
 
 
 	def forward_instrumentation(self, context: amanda.OpContext):
 		op = context.get_op()
+
 		self.opCount += 1
+		self.opList.append(op.__name__)
+
+		# if self.opCount > 10:
+		# 	return
+		
 		context.insert_before_op(
 			self.init_trace,
 		)
@@ -39,7 +46,7 @@ class amandaTracer(amanda.Tool):
 		self.tracer.setFilePath(filePath)
 
 	def getFilePath(self):
-		return self.getFilePath()
+		return self.tracer.getFilePath()
 	
 	def setDataTypeFlag(self, dataTypeFlag):
 		self.tracer.setDataTypeFlag(dataTypeFlag)
@@ -57,6 +64,8 @@ class amandaTracer(amanda.Tool):
 		self.tracer.activityFlushAll()
 
 	def clearData(self):
+		self.opCount = 0
+		self.opList.clear()
 		self.tracer.clearData()
 
 	def getTraceDataRt(self):
