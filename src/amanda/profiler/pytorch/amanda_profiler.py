@@ -1,8 +1,10 @@
+import sys
+
 from amanda_tracer import amandaTracer
 from amanda_counter import amandaCounter
 
 from utils import setConfigsMetric
-from pytorch.metrics import kernelInfo
+from pytorch.metrics import kernelInfo, kernelRoofline
 
 class amandaProfiler():
 	def __init__(self, metric) -> None:
@@ -19,11 +21,14 @@ class amandaProfiler():
 		self.traceDataOh = []
 		self.countData = []
 
-	def setConfigs(self, metric, onlineOnly=False, offlineOnly=False):
+		self.supplyInfo = []
+
+	def setConfigs(self, metric, supplyInfo, onlineOnly=False, offlineOnly=False):
 		self.__metric = metric
 		self.tracer.clearData()
 		self.counter.clearData()
 
+		self.supplyInfo = supplyInfo
 		setConfigsMetric(metric, self.tracer, self.counter)
 
 		if onlineOnly == True:
@@ -43,6 +48,14 @@ class amandaProfiler():
 			self.countData = self.counter.getCountData()
 			kernelInfo(self.opList, self.startTimeList, self.traceDataApi, self.traceDataRt, self.countData)
 			return
+
+		if self.__metric == "KernelRoofline":
+			self.countData = self.counter.getCountData()
+			assert len(self.supplyInfo) == 3, "Please provide correct hardware parameters"
+			kernelRoofline(self.supplyInfo, self.countData)
+			return
+
+		sys.exit("Profiler.Metric: " + self.__metric + " not supported")
 		
 
 
