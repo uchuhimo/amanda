@@ -77,6 +77,7 @@ bool runTest(int deviceNum, std::vector<std::string> metricNames)
     // create a counter and set the parameters
     counter counter(0);
     counter.setCountParams(deviceNum, metricNames);
+    // counter.setKindFlag(0x1c05 | (unsigned long)0x1 << 42);
 
     // start profiling
     counter.startProfilingKernel("KERNEL1");

@@ -1,7 +1,7 @@
 import amanda
 import torch
 import torchvision
-from amanda_profiler import amandaProfiler
+from pytorch.profiler import Profiler
 
 def main():
 
@@ -13,7 +13,7 @@ def main():
 	metric = "KernelRoofline"
 	# Nvidia Geforce RTX 2080 Ti: 1350MHz, 13.45 Single-Precision TFlops, 616GB/s
 	supplyInfo = [1350, 13.45, 616]
-	profiler = amandaProfiler(metric)
+	profiler = Profiler(metric)
 	profiler.setConfigs(metric=metric, supplyInfo=supplyInfo)
 
 	with amanda.tool.apply(profiler.counter):

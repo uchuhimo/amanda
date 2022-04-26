@@ -1,22 +1,8 @@
-import heapq
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
-
-def findTopKKernel(infoList, k):
-	heap = []
-	for i in range(k):
-		heapq.heappush(heap, (infoList[i][6], infoList[i]))
-	for i in range(k, len(infoList)):
-		heapq.heappushpop(heap, (infoList[i][6], infoList[i]))
-	
-	ansList = []
-	for i in range(k):
-		item = heapq.heappop(heap)
-		ansList.append(item[1])
-	ansList.reverse()
-	return ansList
+from utils import findTopKKernelTracer, findTopKKernelCounter
 
 def drawRoofline(hardwareTFlops, hardwareIntensity, X, Y):
 	maxright=0
@@ -64,9 +50,9 @@ def drawRoofline(hardwareTFlops, hardwareIntensity, X, Y):
 	plt.savefig("./Experiments/kernelRoofline_result.png")
 
 
-# Now Information: OpIndex, OpName, KernelIndex, KernelName, cudaLaunchKernelDuration, kernelExecutionDuration, dramRead, dramWrite, SFOp, elapsedCycles
-def kernelInfo(opList, timeList, apiList, rtList, dataList):
 
+# TOP-20 Tracer Kernel Information, return ansListTracer for mapping
+def kernelInfoTracer(opList, timeList, apiList, rtList):
 	# Filter apiList and rtList, only reserve cudaLaunchKernel and CONC KERNEL / KERNEL
 	launchKernelApiList = []
 	kernelList = []
@@ -77,7 +63,7 @@ def kernelInfo(opList, timeList, apiList, rtList, dataList):
 		if x.kind == "KERNEL" or x.kind == "CONC KERNEL":
 			kernelList.append(x)
 
-	# Match kernel and op
+	# Tracer match kernel and op
 	infoList = []
 	opIndex = 0
 	kernelIndex = 0
@@ -101,36 +87,68 @@ def kernelInfo(opList, timeList, apiList, rtList, dataList):
 		kernelIndex += 1
 
 	# Find Top-K kernel according to kernel execution time
-	k = min(10, len(kernelList))
-	ansList = findTopKKernel(infoList, k)
-	
-	# Add Counter Data
-	opPosition=[]
+	k = min(20, len(kernelList))
+	ansListTracer = findTopKKernelTracer(infoList, k)
+	resTracer = pd.DataFrame(ansListTracer)
+	resTracer.columns = ['OpIndex', 'OpName', 'KernelIndex', 'KernelType', 'KernelName', 'LaunchKernelTime(ns)', 'KernelExecutionTime(ns)']
+	print("Number of tracer records: " + str(len(infoList)))
+	print(resTracer)
+	resTracer.to_csv("./Experiments/kernelInfoTracer_result.csv", index=False, sep=',')
+
+	return ansListTracer
+
+
+
+# TOP-20 Counter Kernel Information, return opPosition for mapping
+def kernelInfoCounter(dataList, flopCount=True):
+	# Filter Count Data, aggregate the information
+	opPosition = []
+	opKernelNum = []
 	for i in range(len(dataList)):
 		if dataList[i].rangeName == "NEW OP":
 			opPosition.append(i)
+
+	numValue = 6
+	if flopCount == False:
+		numValue = 3
+	for i in range(len(opPosition) - 1):
+		kernelNum = (opPosition[i+1] - opPosition[i] -1) / numValue
+		opKernelNum.append(kernelNum)
+	kernelNum = (len(dataList) - opPosition[-1] - 1) / numValue
+	opKernelNum.append(kernelNum)
+
+	infoList = []
+	for i in range(len(opPosition)):
+		for j in range(int(opKernelNum[i])):
+			opName = dataList[opPosition[i]].metricName
+			kernelPosition = j * numValue + opPosition[i] + 1
+			dramRead = dataList[kernelPosition].gpuValue / 1e6
+			dramWrite = dataList[kernelPosition+1].gpuValue / 1e6
+			if flopCount == True:
+				cyclesElapsed = dataList[kernelPosition+5].gpuValue / 1e6		
+				spAdd = dataList[kernelPosition+2].gpuValue / 1e6
+				spFma = dataList[kernelPosition+3].gpuValue / 1e6
+				spMul = dataList[kernelPosition+4].gpuValue / 1e6
+				infoList.append([i, opName, j, cyclesElapsed, dramRead, dramWrite, spAdd, spFma, spMul])
 			
-	for i in range(k):
-		# kernelPosition = opPosition[opIndex] + matricsNum * kernelIndex + 1
-		kernelPosition = opPosition[ansList[i][0]] + 6 * ansList[i][2] + 1
-		dramRead = dataList[kernelPosition].gpuValue / 1e6
-		dramWrite = dataList[kernelPosition+1].gpuValue / 1e6
-		spAdd = dataList[kernelPosition+2].gpuValue
-		spFma = dataList[kernelPosition+3].gpuValue
-		spMul = dataList[kernelPosition+4].gpuValue
-		spOp = (spAdd + spMul + spFma * 2) / 1e6
-		cyclesElapsed = dataList[kernelPosition+5].gpuValue / 1e6
+			else:
+				cyclesElapsed = dataList[kernelPosition+2].gpuValue / 1e6
+				infoList.append([i, opName, j, cyclesElapsed, dramRead, dramWrite])
 
-		ansList[i].append(round(dramRead,2))
-		ansList[i].append(round(dramWrite,2))
-		ansList[i].append(round(spOp,2))
-		ansList[i].append(round(cyclesElapsed,2))
+	# Find Top-K kernel according to kernel execution time
+	k = min(20, len(infoList))
+	ansListCounter = findTopKKernelCounter(infoList, k)
+	resCounter = pd.DataFrame(ansListCounter)
+	if flopCount == True:
+		resCounter.columns = ['OpIndex', 'OpName', 'KernelIndex', 'cyclesElapsed', 'dramRead', 'dramWrite', 'spAdd', 'spFma', 'spMul']
+	else:
+		resCounter.columns = ['OpIndex', 'OpName', 'KernelIndex', 'cyclesElapsed', 'dramRead', 'dramWrite']
 
-	res = pd.DataFrame(ansList)
-	res.columns = ['OpIndex', 'OpName', 'KernelIndex', 'KernelType', 'KernelName', 'LaunchKernelTime(ns)', 'KernelExecutionTime(ns)', 'DramRead(MB)',
-					'DramWrite(MB)', 'SpOps(M)', 'CyclesElapsed(M)']
-	print(res)
-	res.to_csv("./Experiments/kernelInfo_result.csv", index=False, sep=',')
+	print("Number of counter records: " + str(len(infoList)))
+	print(resCounter)
+	resCounter.to_csv("./Experiments/kernelInfoCounter_result.csv", index=False, sep=',')
+
+	return opPosition, opKernelNum
 
 # Kernel Roofline Analysis:
 # supplyInfo: [Frequency(MHz), Peak-Performance(TFlops), Throughput(GB/s)]

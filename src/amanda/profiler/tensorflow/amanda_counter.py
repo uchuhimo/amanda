@@ -20,10 +20,12 @@ class amandaCounter(amanda.Tool):
 		self.beforeCount = 0
 		self.afterCount = 0
 		self.counter = counter.counter(kindFlag, filePath)
+		self.opList = []
 
 	def forward_instrumentation(self, context: amanda.OpContext):
-		op = context.get_op()
+		op = context.get_op()		
 		self.opCount += 1
+
 		if op.type in ["Identify", "Const"]:
 			return
 
@@ -39,6 +41,8 @@ class amandaCounter(amanda.Tool):
 			]
 
 		if len(op_outputs) != 0 and len(op_inputs) != 0:
+		# if len(op_outputs) != 0 and len(op_inputs) != 0 and op.name.find("Relu") != -1:	
+			self.opList.append(op.name)
 			context.insert_before_op(
 				self.start_profile,
 				inputs=op_inputs,
@@ -55,7 +59,6 @@ class amandaCounter(amanda.Tool):
 		def extract_fn(*inputs):
 			self.counter.startProfilingKernel(op.name)
 			self.beforeCount += 1
-			# print("Start Profiling Op: ", op.name)
 			return inputs
 		
 		new_inputs = tf.py_function(
@@ -70,7 +73,6 @@ class amandaCounter(amanda.Tool):
 		def extract_fn(*outputs):
 			self.counter.stopProfiling()
 			self.afterCount += 1
-			# print("Stop Profiling Op: ", op.name)
 			return outputs
 		
 		with tf.control_dependencies([op]):

@@ -4,9 +4,10 @@ from amanda_tracer import amandaTracer
 from amanda_counter import amandaCounter
 
 from utils import setConfigsMetric
-from pytorch.metrics import kernelInfo, kernelRoofline
+from metrics import kernelRoofline
+from torchMetrics import kernelInfo
 
-class amandaProfiler():
+class Profiler():
 	def __init__(self, metric) -> None:
 		self.__metric = metric
 

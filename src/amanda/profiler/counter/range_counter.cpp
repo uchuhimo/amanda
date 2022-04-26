@@ -208,7 +208,7 @@ bool setupProfiling(std::vector<uint8_t>& configImage,
 
         CUpti_Profiler_BeginPass_Params beginPassParams = {CUpti_Profiler_BeginPass_Params_STRUCT_SIZE};
         CUPTI_API_CALL(cuptiProfilerBeginPass(&beginPassParams));
-        // CUPTI_API_CALL(cuptiProfilerEnableProfiling(&enableProfilingParams));
+        CUPTI_API_CALL(cuptiProfilerEnableProfiling(&enableProfilingParams));
         pushRangeParams.pRangeName = opName.c_str();
         CUPTI_API_CALL(cuptiProfilerPushRange(&pushRangeParams));
     }
@@ -320,7 +320,9 @@ void counter::stopProfiling()
         }
         else {
             CUpti_Profiler_DisableProfiling_Params disableProfilingParams = {CUpti_Profiler_DisableProfiling_Params_STRUCT_SIZE};
-            CUPTI_API_CALL(cuptiProfilerDisableProfiling(&disableProfilingParams));         
+            CUPTI_API_CALL(cuptiProfilerDisableProfiling(&disableProfilingParams));
+            CUpti_Profiler_FlushCounterData_Params flushCounterDataParams = {CUpti_Profiler_FlushCounterData_Params_STRUCT_SIZE};
+            CUPTI_API_CALL(cuptiProfilerFlushCounterData(&flushCounterDataParams));         
         }
 
         CUpti_Profiler_UnsetConfig_Params unsetConfigParams = {CUpti_Profiler_UnsetConfig_Params_STRUCT_SIZE};

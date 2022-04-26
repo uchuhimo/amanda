@@ -1,7 +1,36 @@
 import pathlib
 import sys
+import heapq
 
-def setConfigsMetric(metric, tracer, counter):
+def findTopKKernelTracer(infoList, k):
+	heap = []
+	for i in range(k):
+		heapq.heappush(heap, (infoList[i][6], infoList[i]))
+	for i in range(k, len(infoList)):
+		heapq.heappushpop(heap, (infoList[i][6], infoList[i]))
+	
+	ansList = []
+	for i in range(k):
+		item = heapq.heappop(heap)
+		ansList.append(item[1])
+	ansList.reverse()
+	return ansList
+
+def findTopKKernelCounter(infoList, k):
+	heap = []
+	for i in range(k):
+		heapq.heappush(heap, (infoList[i][3], infoList[i]))
+	for i in range(k, len(infoList)):
+		heapq.heappushpop(heap, (infoList[i][3], infoList[i]))
+	
+	ansList = []
+	for i in range(k):
+		item = heapq.heappop(heap)
+		ansList.append(item[1])
+	ansList.reverse()
+	return ansList	
+
+def setConfigsMetric(metric, tracer, counter, flopCount=True):
 
 	pathlib.Path("Experiments").mkdir(parents=True, exist_ok=True)
 
@@ -9,7 +38,7 @@ def setConfigsMetric(metric, tracer, counter):
 	if metric == "KernelInfo":
 		# RUNTIME API => 0x1 << 5
 		# CONC KERNEL => 0x1 << 10
-		tracer.setKindFlag(0x1 << 5 | 0x1 << 10)
+		tracer.setKindFlag(0x1 << 5 | 0x1 << 3)
 		tracer.setFilePath("./Experiments/activity_records.txt")
 
 		# dram_read_bytes: dram__bytes_read.sum => 0x1 << 0
@@ -29,12 +58,15 @@ def setConfigsMetric(metric, tracer, counter):
  		# flop_count_sp_mul: smsp__sass_thread_inst_executed_op_fmul_pred_on.sum => 0x1 << 12
 
 		# elapsed_cycles: sm__cycles_elapsed.sum => 0x1 << 42
-		counter.setKindFlag(0x1C05 | 0x1 << 42)
+		if flopCount == True:
+			counter.setKindFlag(0x1c05 | 0x1 << 42)
+		else:
+			counter.setKindFlag(0x5 | 0x1 << 42)
 		counter.setFilePath("./Experiments/kernel_metrics.txt")
 		return
 	
 	# set configs for kernel roofline analysis
-	if metric == "KernelRoofline":
+	if metric == "KernelRoofline" and flopCount != False:
 		counter.setKindFlag(0x1C05 | 0x1 << 42)
 		counter.setFilePath("./Experiments/kernel_metrics.txt")
 		return

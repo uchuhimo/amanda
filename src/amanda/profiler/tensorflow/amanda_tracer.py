@@ -19,6 +19,7 @@ class amandaTracer(amanda.Tool):
 		self.beforeCount = 0
 		self.afterCount = 0
 		self.tracer = tracer.tracer(kindFlag, filePath)
+		self.opList = []
 
 	def forward_instrumentation(self, context: amanda.OpContext):
 		op = context.get_op()
@@ -38,6 +39,8 @@ class amandaTracer(amanda.Tool):
 			]
 
 		if len(op_outputs) != 0 and len(op_inputs) != 0:
+		# if len(op_outputs) != 0 and len(op_inputs) != 0 and op.name.find("Relu") != -1:	
+			self.opList.append(op.name)
 			context.insert_before_op(
 				self.init_trace,
 				inputs=op_inputs,
@@ -54,7 +57,6 @@ class amandaTracer(amanda.Tool):
 		def extract_fn(*inputs):
 			self.tracer.initTrace()
 			self.beforeCount += 1
-			print("Init Trace Op: ", op.name)
 			return inputs
 		
 		new_inputs = tf.py_function(
@@ -69,7 +71,6 @@ class amandaTracer(amanda.Tool):
 		def extract_fn(*outputs):
 			self.tracer.finishTrace()
 			self.afterCount += 1
-			print("Finish Trace Op: ", op.name)
 			return outputs
 		
 		with tf.control_dependencies([op]):
@@ -109,6 +110,7 @@ class amandaTracer(amanda.Tool):
 		self.tracer.activityFlushAll()
 
 	def clearData(self):
+		self.opList.clear()
 		self.tracer.clearData()
 
 	def getTraceDataRt(self):
