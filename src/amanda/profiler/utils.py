@@ -2,26 +2,12 @@ import pathlib
 import sys
 import heapq
 
-def findTopKKernelTracer(infoList, k):
+def findTopK(infoList, k, key):
 	heap = []
 	for i in range(k):
-		heapq.heappush(heap, (infoList[i][6], infoList[i]))
+		heapq.heappush(heap, (infoList[i][key], infoList[i]))
 	for i in range(k, len(infoList)):
-		heapq.heappushpop(heap, (infoList[i][6], infoList[i]))
-	
-	ansList = []
-	for i in range(k):
-		item = heapq.heappop(heap)
-		ansList.append(item[1])
-	ansList.reverse()
-	return ansList
-
-def findTopKKernelCounter(infoList, k):
-	heap = []
-	for i in range(k):
-		heapq.heappush(heap, (infoList[i][3], infoList[i]))
-	for i in range(k, len(infoList)):
-		heapq.heappushpop(heap, (infoList[i][3], infoList[i]))
+		heapq.heappushpop(heap, (infoList[i][key], infoList[i]))
 	
 	ansList = []
 	for i in range(k):
@@ -66,8 +52,19 @@ def setConfigsMetric(metric, tracer, counter, flopCount=True):
 		return
 	
 	# set configs for kernel roofline analysis
-	if metric == "KernelRoofline" and flopCount != False:
+	if metric == "KernelRoofline" and flopCount:
 		counter.setKindFlag(0x1C05 | 0x1 << 42)
+		counter.setFilePath("./Experiments/kernel_metrics.txt")
+		return
+
+	# set configs for op information
+	if metric == "OpInfo":
+		tracer.setKindFlag(0x1 << 5 | 0x1 << 3)
+		tracer.setFilePath("./Experiments/activity_records.txt")
+		if flopCount:
+			counter.setKindFlag(0x1C05 | 0x1 << 42)
+		else:
+			counter.setKindFlag(0x5 | 0x42 << 42)
 		counter.setFilePath("./Experiments/kernel_metrics.txt")
 		return
 	

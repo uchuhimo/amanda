@@ -16,13 +16,12 @@ class amandaTracer(amanda.Tool):
 
 	def forward_instrumentation(self, context: amanda.OpContext):
 		op = context.get_op()
-
 		self.opCount += 1
-		self.opList.append(op.__name__)
 
 		# if self.opCount > 10:
 		# 	return
-		
+
+		self.opList.append(op.__name__)		
 		context.insert_before_op(
 			self.init_trace,
 		)
@@ -34,6 +33,7 @@ class amandaTracer(amanda.Tool):
 		self.tracer.initTrace()
 
 	def finish_trace(self, *output):
+		self.tracer.activityFlushAll()
 		self.tracer.finishTrace()
 
 	def setKindFlag(self, kindFlag):

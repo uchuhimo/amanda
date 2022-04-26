@@ -5,7 +5,7 @@ from amanda_counter import amandaCounter
 
 from utils import setConfigsMetric
 from metrics import kernelRoofline
-from torchMetrics import kernelInfo
+from torchMetrics import kernelInfo, opInfo
 
 class Profiler():
 	def __init__(self, metric) -> None:
@@ -26,6 +26,7 @@ class Profiler():
 
 	def setConfigs(self, metric, supplyInfo, onlineOnly=False, offlineOnly=False):
 		self.__metric = metric
+		self.tracer.activityFlushAll()
 		self.tracer.clearData()
 		self.counter.clearData()
 
@@ -42,6 +43,7 @@ class Profiler():
 
 	def showResults(self):
 		if self.__metric == "KernelInfo":
+			self.tracer.activityFlushAll()
 			self.opList = self.tracer.opList
 			self.startTimeList = self.tracer.getStartTimeLists()
 			self.traceDataRt = self.tracer.getTraceDataRt()
@@ -54,6 +56,17 @@ class Profiler():
 			self.countData = self.counter.getCountData()
 			assert len(self.supplyInfo) == 3, "Please provide correct hardware parameters"
 			kernelRoofline(self.supplyInfo, self.countData)
+			return
+		
+		if self.__metric == "OpInfo":
+			self.tracer.activityFlushAll()
+			self.opList = self.tracer.opList
+			self.startTimeList = self.tracer.getStartTimeLists()
+			self.endTimeList = self.tracer.getEndTimeLists()
+			self.traceDataApi = self.tracer.getTraceDataApi()
+			self.traceDataRt = self.tracer.getTraceDataRt()
+			self.countData = self.counter.getCountData()
+			opInfo(self.opList, self.startTimeList, self.endTimeList, self.traceDataApi, self.traceDataRt, self.countData)
 			return
 
 		sys.exit("Profiler.Metric: " + self.__metric + " not supported")

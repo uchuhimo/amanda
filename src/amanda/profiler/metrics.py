@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
-from utils import findTopKKernelTracer, findTopKKernelCounter
+from utils import findTopK
 
 def drawRoofline(hardwareTFlops, hardwareIntensity, X, Y):
 	maxright=0
@@ -88,7 +88,7 @@ def kernelInfoTracer(opList, timeList, apiList, rtList):
 
 	# Find Top-K kernel according to kernel execution time
 	k = min(20, len(kernelList))
-	ansListTracer = findTopKKernelTracer(infoList, k)
+	ansListTracer = findTopK(infoList, k, key = 6)
 	resTracer = pd.DataFrame(ansListTracer)
 	resTracer.columns = ['OpIndex', 'OpName', 'KernelIndex', 'KernelType', 'KernelName', 'LaunchKernelTime(ns)', 'KernelExecutionTime(ns)']
 	print("Number of tracer records: " + str(len(infoList)))
@@ -137,7 +137,7 @@ def kernelInfoCounter(dataList, flopCount=True):
 
 	# Find Top-K kernel according to kernel execution time
 	k = min(20, len(infoList))
-	ansListCounter = findTopKKernelCounter(infoList, k)
+	ansListCounter = findTopK(infoList, k, key = 3)
 	resCounter = pd.DataFrame(ansListCounter)
 	if flopCount == True:
 		resCounter.columns = ['OpIndex', 'OpName', 'KernelIndex', 'cyclesElapsed', 'dramRead', 'dramWrite', 'spAdd', 'spFma', 'spMul']
@@ -182,3 +182,136 @@ def kernelRoofline(supplyInfo, countData):
 		kernelX.append(intensity)
 
 	drawRoofline(hardwareTFlops, hardwareIntensity, kernelX, kernelY)
+
+
+
+# TOP-20 Tracer OP Information [key: executionTime], return ansListTracer for mapping
+# Information collected by tracer: OpIndex, OpName, TotalExecutionTime, MaxKernelIndex, MaxKernelName, MaxKernelExecutionTime, kernelNumTracer 
+def opInfoTracer(opList, startTimeList, endTimeList, apiList, rtList):
+	# Filter cudaLaunchKernel and kernel
+	launchKernelApiList = []
+	kernelList = []
+	for x in apiList:
+		if x.name == "cudaLaunchKernel_v7000":
+			launchKernelApiList.append(x)
+	for x in rtList:
+		if x.kind == "KERNEL" or x.kind == "CONC KERNEL":
+			kernelList.append(x)
+
+	# Calculate number of kernels for each op
+	kernelNumList = []
+	kernelCount = 0
+	opIndex = 0
+	kernelIndex = 0
+	timeListLen = len(startTimeList)
+	
+	while opIndex < timeListLen - 1 and startTimeList[opIndex] < launchKernelApiList[0].startTime and startTimeList[opIndex+1] < launchKernelApiList[0].startTime:
+		kernelNumList.append(0)
+		opIndex += 1
+
+	while kernelIndex < len(launchKernelApiList):
+		if (opIndex < timeListLen - 1 and launchKernelApiList[kernelIndex].startTime > startTimeList[opIndex + 1]):
+			kernelNumList.append(kernelCount)
+			opIndex += 1
+			kernelCount = 0
+			continue
+		kernelCount += 1
+		kernelIndex += 1
+	kernelNumList.append(kernelCount)
+
+	while opIndex < timeListLen - 1:
+		kernelNumList.append(0)
+		opIndex += 1
+	
+	for i in range(len(opList)):
+		print(opList[i])
+		print(kernelNumList[i])
+
+	# Get information for each op
+	kernelCount = 0
+	infoList = []
+	for i in range(len(opList)):
+		executionTime = endTimeList[i] - startTimeList[i]
+		maxExeTime = 0
+		maxIndex = 0
+		for j in range(kernelCount, kernelCount+kernelNumList[i]):
+			if kernelList[j].durationTime > maxExeTime:
+				maxExeTime = kernelList[j].durationTime
+				maxIndex = j
+
+		if kernelNumList[i] != 0:
+			infoList.append([i, opList[i], executionTime, maxIndex-kernelCount, kernelList[maxIndex].name, maxExeTime, kernelNumList[i]])
+		else:
+			infoList.append([i, opList[i], executionTime, -1, "NONE", 0, 0])
+		kernelCount += kernelNumList[i]
+	
+	# TOP-20, use executionTime as key
+	k = min(20, len(infoList))
+	ansListTracer = findTopK(infoList, k, 2)
+	resTracer = pd.DataFrame(ansListTracer)
+	resTracer.columns = ['OpIndex', 'OpName', 'opExecutionTime', 'MaxKernelIndex', 'MaxKernelName', 'MaxKernelExecutionTime(ns)', 'KernelNumTracer']
+	print("Number of tracer records: " + str(len(infoList)))
+	print(resTracer)
+	resTracer.to_csv("./Experiments/opInfoTracer_result.csv", index=False, sep=',')
+	
+	return ansListTracer
+
+
+
+
+def opInfoCounter(dataList, flopCount=True):
+	# Filter Count Data, aggregate the information
+	opPosition = []
+	opKernelNum = []
+	for i in range(len(dataList)):
+		if dataList[i].rangeName == "NEW OP":
+			opPosition.append(i)
+
+	numValue = 6
+	if flopCount == False:
+		numValue = 3
+	for i in range(len(opPosition) - 1):
+		kernelNum = (opPosition[i+1] - opPosition[i] -1) / numValue
+		opKernelNum.append(kernelNum)
+	kernelNum = (len(dataList) - opPosition[-1] - 1) / numValue
+	opKernelNum.append(kernelNum)
+
+	infoList = []
+	for i in range(len(opPosition)):
+		totalDramRead = 0
+		totalDramWrite = 0
+		totalCyclesElapsed = 0
+		totalFlopCount = 0
+		for j in range(int(opKernelNum[i])):
+			kernelPosition = j * numValue + opPosition[i] + 1
+			totalDramRead += dataList[kernelPosition].gpuValue / 1e6
+			totalDramWrite += dataList[kernelPosition+1].gpuValue / 1e6
+			if flopCount == True:
+				totalCyclesElapsed += dataList[kernelPosition+5].gpuValue / 1e6		
+				spAdd = dataList[kernelPosition+2].gpuValue / 1e6
+				spFma = dataList[kernelPosition+3].gpuValue / 1e6
+				spMul = dataList[kernelPosition+4].gpuValue / 1e6
+				totalFlopCount += spAdd + spMul + spFma * 2
+			
+			else:
+				totalCyclesElapsed += dataList[kernelPosition+2].gpuValue / 1e6
+
+		if flopCount:
+			infoList.append([i, dataList[opPosition[i]].metricName, int(opKernelNum[i]), round(totalCyclesElapsed,2), round(totalDramRead,2), round(totalDramWrite,2), round(totalFlopCount,2)])
+		else:
+			infoList.append([i, dataList[opPosition[i]].metricName, int(opKernelNum[i]), round(totalCyclesElapsed,2), round(totalDramRead,2), round(totalDramWrite,2)])	
+
+	# Find Top-K kernel according to kernel execution time
+	k = min(20, len(infoList))
+	ansListCounter = findTopK(infoList, k, key = 3)
+	resCounter = pd.DataFrame(ansListCounter)
+	if flopCount == True:
+		resCounter.columns = ['OpIndex', 'OpName', 'KernelNumCounter', 'TotalCyclesElapsed', 'TotalDramRead', 'TotalDramWrite', 'TotalFlopCount']
+	else:
+		resCounter.columns = ['OpIndex', 'OpName', 'KernelNumCounter', 'TotalCyclesElapsed', 'TotalDramRead', 'TotalDramWrite']
+
+	print("Number of counter records: " + str(len(infoList)))
+	print(resCounter)
+	resCounter.to_csv("./Experiments/opInfoCounter_result.csv", index=False, sep=',')
+
+	return infoList	

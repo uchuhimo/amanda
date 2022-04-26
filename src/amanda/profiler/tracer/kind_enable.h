@@ -156,3 +156,60 @@ void enableActivityKind(unsigned long flag) {
 		CUPTI_CALL(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_OVERHEAD));
 	}
 }
+
+
+void disableActivityKind(unsigned long flag) {
+
+	if (flag == 0) {
+		CUPTI_CALL(cuptiActivityDisable(CUPTI_ACTIVITY_KIND_MEMCPY));
+		CUPTI_CALL(cuptiActivityDisable(CUPTI_ACTIVITY_KIND_MEMSET));
+		CUPTI_CALL(cuptiActivityDisable(CUPTI_ACTIVITY_KIND_DRIVER));
+		CUPTI_CALL(cuptiActivityDisable(CUPTI_ACTIVITY_KIND_RUNTIME));
+		CUPTI_CALL(cuptiActivityDisable(CUPTI_ACTIVITY_KIND_DEVICE));
+		CUPTI_CALL(cuptiActivityDisable(CUPTI_ACTIVITY_KIND_CONTEXT));
+		CUPTI_CALL(cuptiActivityDisable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL));
+		CUPTI_CALL(cuptiActivityDisable(CUPTI_ACTIVITY_KIND_NAME));
+		CUPTI_CALL(cuptiActivityDisable(CUPTI_ACTIVITY_KIND_MARKER));
+		CUPTI_CALL(cuptiActivityDisable(CUPTI_ACTIVITY_KIND_OVERHEAD));
+		return;
+	}
+
+	if (flag > (0x1 << 17)) {
+		std::cout << "[WARNING] Only part of first 17 activities are supported now! " << std::endl;
+		std::cout << "[WARNING] The results may not be what your expected." << std::endl;
+	}
+
+	if (flag & (0x1 << 1)) {
+		CUPTI_CALL(cuptiActivityDisable(CUPTI_ACTIVITY_KIND_MEMCPY));	
+	}
+	if (flag & (0x1 << 2)) {
+		CUPTI_CALL(cuptiActivityDisable(CUPTI_ACTIVITY_KIND_MEMSET));
+	}
+	if (flag & (0x1 << 3)) {
+		CUPTI_CALL(cuptiActivityDisable(CUPTI_ACTIVITY_KIND_KERNEL));
+	}
+	if (flag & (0x1 << 4)) {
+		CUPTI_CALL(cuptiActivityDisable(CUPTI_ACTIVITY_KIND_DRIVER));
+	}
+	if (flag & (0x1 << 5)) {
+		CUPTI_CALL(cuptiActivityDisable(CUPTI_ACTIVITY_KIND_RUNTIME));
+	}
+	if (flag & (0x1 << 8)) {
+		CUPTI_CALL(cuptiActivityDisable(CUPTI_ACTIVITY_KIND_DEVICE));
+	}
+	if (flag & (0x1 << 9)) {
+		CUPTI_CALL(cuptiActivityDisable(CUPTI_ACTIVITY_KIND_CONTEXT));
+	}
+	if (flag & (0x1 << 10)) {
+		CUPTI_CALL(cuptiActivityDisable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL));
+	}
+	if (flag & (0x1 << 11)) {
+		CUPTI_CALL(cuptiActivityDisable(CUPTI_ACTIVITY_KIND_NAME));
+	}
+	if (flag & (0x1 << 12)) {
+		CUPTI_CALL(cuptiActivityDisable(CUPTI_ACTIVITY_KIND_MARKER));
+	}
+	if (flag & (0x1 << 17)) {
+		CUPTI_CALL(cuptiActivityDisable(CUPTI_ACTIVITY_KIND_OVERHEAD));
+	}
+}

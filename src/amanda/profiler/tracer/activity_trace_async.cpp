@@ -812,8 +812,9 @@ void tracer::initTrace()
 }
 
 void tracer::finishTrace()
-{
+{   
    CUPTI_CALL(cuptiActivityFlushAll(0));
+   disableActivityKind(this->kindFlag);
 
    CUPTI_CALL(cuptiGetTimestamp(&endTimestamp));
    if (this->traceMode == Tracer::OFFLINE_AND_ONLINE || this->traceMode == Tracer::ONLINE_ONLY){
