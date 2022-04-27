@@ -67,5 +67,11 @@ def setConfigsMetric(metric, tracer, counter, flopCount=True):
 			counter.setKindFlag(0x5 | 0x42 << 42)
 		counter.setFilePath("./Experiments/kernel_metrics.txt")
 		return
+
+	# set configs for op roofline analysis
+	if metric == "OpRoofline" and flopCount:
+		counter.setKindFlag(0x1C05 | 0x1 << 42)
+		counter.setFilePath("./Experiments/kernel_metrics.txt")
+		return
 	
 	sys.exit("Invalid Metric")

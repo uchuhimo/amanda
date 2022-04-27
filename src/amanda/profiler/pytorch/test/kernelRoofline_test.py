@@ -1,14 +1,17 @@
+import sys
+
 import amanda
 import torch
 import torchvision
-from pytorch.profiler import Profiler
+
+sys.path.append("..")
+from profiler import Profiler
 
 def main():
 
 	device = "cuda"
-
 	model = torchvision.models.resnet50().to(device)
-	x = torch.rand((32, 3, 227, 227)).to(device)
+	x = torch.rand((64, 3, 227, 227)).to(device)
 
 	metric = "KernelRoofline"
 	# Nvidia Geforce RTX 2080 Ti: 1350MHz, 13.45 Single-Precision TFlops, 616GB/s

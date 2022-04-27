@@ -4,7 +4,7 @@ from amanda_tracer import amandaTracer
 from amanda_counter import amandaCounter
 
 from utils import setConfigsMetric
-from metrics import kernelRoofline
+from metrics import kernelRoofline, opRoofline
 from torchMetrics import kernelInfo, opInfo
 
 class Profiler():
@@ -67,6 +67,12 @@ class Profiler():
 			self.traceDataRt = self.tracer.getTraceDataRt()
 			self.countData = self.counter.getCountData()
 			opInfo(self.opList, self.startTimeList, self.endTimeList, self.traceDataApi, self.traceDataRt, self.countData)
+			return
+
+		if self.__metric == "OpRoofline":
+			self.countData = self.counter.getCountData()
+			assert len(self.supplyInfo) == 3, "Please provide correct hardware parameters"
+			opRoofline(self.supplyInfo, self.countData)
 			return
 
 		sys.exit("Profiler.Metric: " + self.__metric + " not supported")

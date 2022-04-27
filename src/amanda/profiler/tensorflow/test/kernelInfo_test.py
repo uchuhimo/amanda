@@ -1,8 +1,11 @@
+import sys
+
 import amanda
 import tensorflow as tf
-
-from profiler import Profiler
 from examples.common.tensorflow.model.resnet_50 import ResNet50
+
+sys.path.append("..")
+from profiler import Profiler
 
 def main():
 

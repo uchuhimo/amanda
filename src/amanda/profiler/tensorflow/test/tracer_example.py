@@ -1,10 +1,13 @@
+import sys
+
 from torch import int32
 import amanda
 import tensorflow as tf
 from tensorflow.python.client import timeline
-
-from amanda_tracer import amandaTracer
 from examples.common.tensorflow.model.resnet_50 import ResNet50
+
+sys.path.append("..")
+from amanda_tracer import amandaTracer
 
 def main():
 

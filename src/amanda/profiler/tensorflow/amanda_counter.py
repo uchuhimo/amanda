@@ -4,7 +4,7 @@ import sys
 import tensorflow as tf
 
 import amanda
-sys.path.append('../')
+sys.path.append('../..')
 from counter import counter
 
 

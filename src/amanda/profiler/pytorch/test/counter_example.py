@@ -1,8 +1,10 @@
 from asyncore import file_dispatcher
 import amanda
 import torch
+import sys
 import torchvision
 
+sys.path.append("..")
 from amanda_counter import amandaCounter
 
 def main():

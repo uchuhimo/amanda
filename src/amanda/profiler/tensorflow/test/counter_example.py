@@ -1,10 +1,12 @@
 import os
+import sys
 import amanda
 import tensorflow as tf
 from tensorflow.python.client import timeline
-
-from amanda_counter import amandaCounter
 from examples.common.tensorflow.model.resnet_50 import ResNet50
+
+sys.path.append("..")
+from amanda_counter import amandaCounter
 
 def main():
 

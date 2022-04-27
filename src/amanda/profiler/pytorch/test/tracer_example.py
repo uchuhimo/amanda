@@ -1,8 +1,10 @@
 from sklearn.preprocessing import KernelCenterer
 import amanda
 import torch
+import sys
 import torchvision
 
+sys.path.append("..")
 from amanda_tracer import amandaTracer
 
 def main():

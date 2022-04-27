@@ -2,7 +2,7 @@ import sys
 
 import amanda
 
-sys.path.append('../')
+sys.path.append('../..')
 from tracer import tracer
 
 class amandaTracer(amanda.Tool):

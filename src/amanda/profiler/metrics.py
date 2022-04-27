@@ -1,10 +1,11 @@
+from itertools import count
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 from utils import findTopK
 
-def drawRoofline(hardwareTFlops, hardwareIntensity, X, Y):
+def drawRoofline(hardwareTFlops, hardwareIntensity, X, Y, op=False):
 	maxright=0
 	for x in X:
 		if x > maxright:
@@ -47,7 +48,10 @@ def drawRoofline(hardwareTFlops, hardwareIntensity, X, Y):
 	for i in range(len(X)):
 		ax.scatter(X[i], Y[i], color="black", alpha=1, zorder=2, s=10)
 
-	plt.savefig("./Experiments/kernelRoofline_result.png")
+	if op == True:
+		plt.savefig("./Experiments/opRoofline_result.png")
+	else:
+		plt.savefig("./Experiments/kernelRoofline_result.png")
 
 
 
@@ -175,9 +179,12 @@ def kernelRoofline(supplyInfo, countData):
 		spOp = spAdd + spMul + spFma * 2
 		cyclesElapsed = dataList[index+5].gpuValue
 
+		# n*1e-6M / 1350MHz s
 		time = cyclesElapsed / (supplyInfo[0] * 1024 * 1024)
-		tflops = (spOp / time) / (1024 * 1024 * 1024)
+		# (n / ts) * 1e-12
+		tflops = (spOp / time) / (1024 * 1024 * 1024 * 1024)
 		kernelY.append(round(tflops, 2))
+		# n / mB
 		intensity = spOp / (dramRead + dramWrite)
 		kernelX.append(intensity)
 
@@ -314,4 +321,57 @@ def opInfoCounter(dataList, flopCount=True):
 	print(resCounter)
 	resCounter.to_csv("./Experiments/opInfoCounter_result.csv", index=False, sep=',')
 
-	return infoList	
+	return infoList
+
+# Op Roofline Analysis:
+# supplyInfo: [Frequency(MHz), Peak-Performance(TFlops), Throughput(GB/s)]
+def opRoofline(supplyInfo, countData):
+
+	# hardware TFLOPS & Intersity
+	hardwareTFlops = supplyInfo[1]
+	hardwareIntensity = (hardwareTFlops * 1000) / supplyInfo[2]
+
+	# Filter Count Data, aggregate the information
+	opPosition = []
+	opKernelNum = []
+	for i in range(len(countData)):
+		if countData[i].rangeName == "NEW OP":
+			opPosition.append(i)
+
+	for i in range(len(opPosition) - 1):
+		kernelNum = (opPosition[i+1] - opPosition[i] -1) / 6
+		opKernelNum.append(kernelNum)
+	kernelNum = (len(countData) - opPosition[-1] - 1) / 6
+	opKernelNum.append(kernelNum)
+
+	opX = []
+	opY = []
+	numValue = 6
+	for i in range(len(opPosition)):
+		if opKernelNum[i] == 0:
+			continue
+
+		totalDramRead = 0
+		totalDramWrite = 0
+		totalCyclesElapsed = 0
+		totalFlopCount = 0
+		for j in range(int(opKernelNum[i])):
+			kernelPosition = j * numValue + opPosition[i] + 1
+			totalDramRead += countData[kernelPosition].gpuValue
+			totalDramWrite += countData[kernelPosition+1].gpuValue
+			totalCyclesElapsed += countData[kernelPosition+5].gpuValue		
+			spAdd = countData[kernelPosition+2].gpuValue
+			spFma = countData[kernelPosition+3].gpuValue
+			spMul = countData[kernelPosition+4].gpuValue
+			totalFlopCount += spAdd + spMul + spFma * 2
+		
+		# nM / 1350MHz s
+		time = totalCyclesElapsed / (supplyInfo[0] * 1024 * 1024)
+		# (nM / ts) * 1e-6 T  
+		tflops = (totalFlopCount / time) / (1024 * 1024 * 1024 * 1024)
+		opY.append(round(tflops, 2))
+		# nM / mMB
+		intensity = totalFlopCount / (totalDramRead + totalDramWrite)
+		opX.append(intensity)
+
+	drawRoofline(hardwareTFlops, hardwareIntensity, opX, opY)	

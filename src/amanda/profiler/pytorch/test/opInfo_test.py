@@ -1,6 +1,10 @@
+import sys
+
 import amanda
 import torch
 import torchvision
+
+sys.path.append("..")
 from profiler import Profiler
 
 def main():
