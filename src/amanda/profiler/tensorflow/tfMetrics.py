@@ -1,7 +1,9 @@
 import pandas as pd
-from metrics import kernelInfoTracer, kernelInfoCounter
+from metrics import kernelInfoTracer, kernelInfoCounter, opInfoTracer, opInfoCounter
 
-# Now Information: kernelInfoTracer, kernelInfoCounter
+# Now Information: kernelInfoTracer, kernelInfoCounter, and Mapping
+# ['OpIndex', 'OpName', 'KernelIndex', 'KernelType', 'KernelName', 'LaunchKernelTime(ns)', 'KernelExecutionTime(ns)', 'KernelNum',
+#					'DramRead(MB)', 'DramWrite(MB)', 'CyclesElapsed(M)']
 def kernelInfo(opListTracer, opListCounter, timeList, apiList, rtList, dataList):
 	
 	ansListTracer = kernelInfoTracer(opListTracer, timeList, apiList, rtList)
@@ -42,4 +44,31 @@ def kernelInfo(opListTracer, opListCounter, timeList, apiList, rtList, dataList)
 					'DramRead(MB)', 'DramWrite(MB)', 'CyclesElapsed(M)']
 	print(res)
 	res.to_csv("./Experiments/kernelInfo_result.csv", index=False, sep=',')
+
+
+
+
+# Now information: opInfoTracer, opInfoCounter, and Mapping
+# ['OpIndex', 'OpName', 'opExecutionTime', 'MaxKernelIndex', 'MaxKernelName', 'MaxKernelExecutionTime(ns)', 'KernelNumTracer',
+#					'KernelNumCounter', 'TotalCyclesElapsed', 'TotalDramRead', 'TotalDramWrite']
+def opInfo(opListTracer, opListCounter, startTimeList, endTimeList, apiList, rtList, dataList):
+
+	ansListTracer = opInfoTracer(opListTracer, startTimeList, endTimeList, apiList, rtList)
+	infoListCounter = opInfoCounter(dataList, flopCount=False)
+
+	def findOp(opName, infoListCounter):
+		for i in range(len(infoListCounter)):
+			if infoListCounter[i][1] == opName:
+				return i
 	
+	# Mapping by the op name
+	for i in range(len(ansListTracer)):
+		opName = ansListTracer[i][1]
+		index = findOp(opName, infoListCounter)
+		ansListTracer[i] += infoListCounter[index][2:]
+
+	res = pd.DataFrame(ansListTracer)
+	res.columns = ['OpIndex', 'OpName', 'opExecutionTime', 'MaxKernelIndex', 'MaxKernelName', 'MaxKernelExecutionTime(ns)', 'KernelNumTracer',
+					'KernelNumCounter', 'TotalCyclesElapsed', 'TotalDramRead', 'TotalDramWrite']
+	print(res)
+	res.to_csv("./Experiments/opInfo_result.csv", index=False, sep=',')

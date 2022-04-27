@@ -54,7 +54,6 @@ def opInfo(opList, startTimeList, endTimeList, apiList, rtList, dataList):
 		opIndex = ansListTracer[i][0]
 		counterInfo = opInfoCounterList[opIndex]
 		ansListTracer[i] += counterInfo[2:]
-		print(ansListTracer[i])
 
 	res = pd.DataFrame(ansListTracer)
 	res.columns = ['OpIndex', 'OpName', 'opExecutionTime', 'MaxKernelIndex', 'MaxKernelName', 'MaxKernelExecutionTime(ns)', 'KernelNumTracer',

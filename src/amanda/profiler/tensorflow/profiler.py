@@ -5,8 +5,7 @@ from amanda_tracer import amandaTracer
 from amanda_counter import amandaCounter
 
 from utils import setConfigsMetric
-from metrics import kernelRoofline
-from tfMetrics import kernelInfo
+from tfMetrics import kernelInfo, opInfo
 
 class Profiler():
 	def __init__(self, metric) -> None:
@@ -18,7 +17,8 @@ class Profiler():
 		self.opListTracer = []
 		self.opListCounter = []
 
-		self.timeList = []
+		self.startTimeList = []
+		self.endTimeList = []
 		self.traceDataApi = []
 		self.traceDataRt = []
 		self.traceDataOh = []
@@ -60,17 +60,22 @@ class Profiler():
 		if self.__metric == "KernelInfo":
 			self.opListTracer = self.tracer.opList
 			self.opListCounter = self.counter.opList
-			self.timeList = self.tracer.getStartTimeLists()
+			self.startTimeList = self.tracer.getStartTimeLists()
 			self.traceDataRt = self.tracer.getTraceDataRt()
 			self.traceDataApi = self.tracer.getTraceDataApi()
 			self.countData = self.counter.getCountData()
-			kernelInfo(self.opListTracer, self.opListCounter, self.timeList, self.traceDataApi, self.traceDataRt, self.countData)
+			kernelInfo(self.opListTracer, self.opListCounter, self.startTimeList, self.traceDataApi, self.traceDataRt, self.countData)
 			return
 
-		if self.__metric == "KernelRoofline":
+		if self.__metric == "OpInfo":
+			self.opListTracer = self.tracer.opList
+			self.opListCounter = self.counter.opList
+			self.startTimeList = self.tracer.getStartTimeLists()
+			self.endTimeList = self.tracer.getEndTimeLists()
+			self.traceDataRt = self.tracer.getTraceDataRt()
+			self.traceDataApi = self.tracer.getTraceDataApi()
 			self.countData = self.counter.getCountData()
-			assert len(self.supplyInfo) == 3, "Please provide correct hardware parameters"
-			kernelRoofline(self.supplyInfo, self.countData)
+			opInfo(self.opListTracer, self.opListCounter, self.startTimeList, self.endTimeList, self.traceDataApi, self.traceDataRt, self.countData)
 			return
 
 		sys.exit("Profiler.Metric: " + self.__metric + " not supported")

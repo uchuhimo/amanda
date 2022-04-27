@@ -38,8 +38,8 @@ class amandaTracer(amanda.Tool):
 				if not tensor.dtype._is_ref_dtype
 			]
 
-		# if len(op_outputs) != 0 and len(op_inputs) != 0:
-		if len(op_outputs) != 0 and len(op_inputs) != 0 and op.name.find("conv2d/Conv2D") != -1:	
+		if len(op_outputs) != 0 and len(op_inputs) != 0:
+		# if len(op_outputs) != 0 and len(op_inputs) != 0 and op.name.find("Relu") != -1:	
 			self.opList.append(op.name)
 			context.insert_before_op(
 				self.init_trace,
