@@ -50,6 +50,19 @@ def setConfigsMetric(metric, tracer, counter, flopCount=True):
 			counter.setKindFlag(0x5 | 0x1 << 42)
 		counter.setFilePath("./Experiments/kernel_metrics.txt")
 		return
+
+	if metric == "KernelInfoTracer":
+		tracer.setKindFlag(0x1 << 5 | 0x1 << 3)
+		tracer.setFilePath("./Experiments/activity_records.txt")
+		return
+
+	if metric == "KernelInfoCounter":
+		if flopCount == True:
+			counter.setKindFlag(0x1c05 | 0x1 << 42)
+		else:
+			counter.setKindFlag(0x5 | 0x1 << 42)
+		counter.setFilePath("./Experiments/kernel_metrics.txt")
+		return	
 	
 	# set configs for kernel roofline analysis
 	if metric == "KernelRoofline" and flopCount:
@@ -61,6 +74,21 @@ def setConfigsMetric(metric, tracer, counter, flopCount=True):
 	if metric == "OpInfo":
 		tracer.setKindFlag(0x1 << 5 | 0x1 << 3)
 		tracer.setFilePath("./Experiments/activity_records.txt")
+		if flopCount:
+			counter.setKindFlag(0x1C05 | 0x1 << 42)
+		else:
+			counter.setKindFlag(0x5 | 0x42 << 42)
+		counter.setFilePath("./Experiments/kernel_metrics.txt")
+		return
+
+	# set configs for op information collected in tracer
+	if metric == "OpInfoTracer":
+		tracer.setKindFlag(0x1 << 5 | 0x1 << 3)
+		tracer.setFilePath("./Experiments/activity_records.txt")
+		return
+	
+	# set configs for op information collected in counter
+	if metric == "OpInfoCounter":
 		if flopCount:
 			counter.setKindFlag(0x1C05 | 0x1 << 42)
 		else:

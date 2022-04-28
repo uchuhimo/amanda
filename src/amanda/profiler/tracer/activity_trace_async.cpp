@@ -792,16 +792,24 @@ void tracer::initTrace()
   // Some attributes require to be set before any CUDA context is created to be effective,
   // e.g. to be applied to all device buffer allocations (see documentation).
   CUPTI_CALL(cuptiActivityGetAttribute(CUPTI_ACTIVITY_ATTR_DEVICE_BUFFER_SIZE, &attrValueSize, &attrValue));
-  printf("%s = %llu\n", "CUPTI_ACTIVITY_ATTR_DEVICE_BUFFER_SIZE", (long long unsigned)attrValue);
+  // printf("%s = %llu\n", "CUPTI_ACTIVITY_ATTR_DEVICE_BUFFER_SIZE", (long long unsigned)attrValue);
+  attrValue *= 2;
+  CUPTI_CALL(cuptiActivitySetAttribute(CUPTI_ACTIVITY_ATTR_DEVICE_BUFFER_SIZE, &attrValueSize, &attrValue));
 
   CUPTI_CALL(cuptiActivityGetAttribute(CUPTI_ACTIVITY_ATTR_DEVICE_BUFFER_POOL_LIMIT, &attrValueSize, &attrValue));
-  printf("%s = %llu\n", "CUPTI_ACTIVITY_ATTR_DEVICE_BUFFER_POOL_LIMIT", (long long unsigned)attrValue);
+  // printf("%s = %llu\n", "CUPTI_ACTIVITY_ATTR_DEVICE_BUFFER_POOL_LIMIT", (long long unsigned)attrValue);
+  attrValue *= 2;
+  CUPTI_CALL(cuptiActivitySetAttribute(CUPTI_ACTIVITY_ATTR_DEVICE_BUFFER_POOL_LIMIT, &attrValueSize, &attrValue));
 
   CUPTI_CALL(cuptiActivityGetAttribute(CUPTI_ACTIVITY_ATTR_PROFILING_SEMAPHORE_POOL_SIZE, &attrValueSize, &attrValue));
-  printf("%s = %llu\n", "CUPTI_ACTIVITY_ATTR_DEVICE_BUFFER_POOL_SIZE", (long long unsigned)attrValue);
+  // printf("%s = %llu\n", "CUPTI_ACTIVITY_ATTR_DEVICE_BUFFER_POOL_SIZE", (long long unsigned)attrValue);
+  attrValue *= 2;
+  CUPTI_CALL(cuptiActivitySetAttribute(CUPTI_ACTIVITY_ATTR_DEVICE_BUFFER_POOL_LIMIT, &attrValueSize, &attrValue));
 
   CUPTI_CALL(cuptiActivityGetAttribute(CUPTI_ACTIVITY_ATTR_PROFILING_SEMAPHORE_POOL_LIMIT, &attrValueSize, &attrValue));
-  printf("%s = %llu\n", "CUPTI_ACTIVITY_ATTR_DEVICE_BUFFER_POOL_LIMIT", (long long unsigned)attrValue);
+  // printf("%s = %llu\n", "CUPTI_ACTIVITY_ATTR_DEVICE_BUFFER_POOL_LIMIT", (long long unsigned)attrValue);
+  attrValue *= 2;
+  CUPTI_CALL(cuptiActivitySetAttribute(CUPTI_ACTIVITY_ATTR_DEVICE_BUFFER_POOL_LIMIT, &attrValueSize, &attrValue));
 
   CUPTI_CALL(cuptiGetTimestamp(&startTimestamp));
   traceFile << "Update startTimeStamp: " << startTimestamp << " thread: " << pthread_self() << std::endl;

@@ -5,7 +5,7 @@ import tensorflow as tf
 from examples.common.tensorflow.model.resnet_50 import ResNet50
 
 sys.path.append("..")
-from profiler import Profiler
+from amanda_profiler import amandaProfiler
 
 def main():
 
@@ -13,8 +13,8 @@ def main():
 	x = tf.random.uniform(shape = [1, 224, 224, 3])
 	y = model(x)
 
-	metric = "KernelInfo"
-	profiler = Profiler(metric)
+	metric = "KernelInfoTracer"
+	profiler = amandaProfiler(metric)
 	profiler.setConfigs(metric=metric, supplyInfo=[])
 
 	session_ = profiler.createSessionCounter()

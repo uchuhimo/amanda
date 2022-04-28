@@ -41,7 +41,7 @@ def kernelInfo(opList, timeList, apiList, rtList, dataList):
 	res.to_csv("./Experiments/kernelInfo_result.csv", index=False, sep=',')
 
 
-# Now Information: OpIndex, OpName, TotalExecutionTime, MaxKernelIndex, MaxKernelName, MaxKernelExecutionTime, kernelNumTracer, kernelNumCounter, TotalDramRead, TotalDramWrite, TotalSFOp, TotalElapsedCycles
+# Now Information: OpIndex, OpName, TotalExecutionTime, MaxKernelIndex, MaxKernelName, MaxKernelExecutionTime, kernelNumTracer, kernelNumCounter, TotalElapsedCycles, TotalDramRead, TotalDramWrite, TotalSFOp
 def opInfo(opList, startTimeList, endTimeList, apiList, rtList, dataList):
 
 	# Information collected by tracer: OpIndex, OpName, TotalExecutionTime, MaxKernelIndex, MaxKernelName, MaxKernelExecutionTime, kernelNumTracer 

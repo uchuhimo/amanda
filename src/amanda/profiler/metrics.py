@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
+from torch import take
 from utils import findTopK
 
 def drawRoofline(hardwareTFlops, hardwareIntensity, X, Y, op=False):
@@ -67,28 +68,32 @@ def kernelInfoTracer(opList, timeList, apiList, rtList):
 		if x.kind == "KERNEL" or x.kind == "CONC KERNEL":
 			kernelList.append(x)
 
+	infoTime = []
+	for i in range(len(opList)):
+		infoTime.append(["OP", opList[i], timeList[i]])
+	for i in range(len(launchKernelApiList)):
+		infoTime.append(["KERNEL", launchKernelApiList[i].name, launchKernelApiList[i].startTime])
+
+	def takeTime(elem):
+		return elem[2]
+
+	infoTime.sort(key=takeTime)
+
 	# Tracer match kernel and op
 	infoList = []
-	opIndex = 0
+	opIndex = -1
 	kernelIndex = 0
-	timeListLen = len(timeList)
-	for i in range(len(launchKernelApiList)):
-		record = []
-		if (opIndex < timeListLen - 1 and launchKernelApiList[i].startTime > timeList[opIndex + 1]):
+	kernelNum = 0
+	for i in range(len(infoTime)):
+		if infoTime[i][0] == "OP":
 			opIndex += 1
 			kernelIndex = 0
-		
-		record.append(opIndex)
-		record.append(opList[opIndex])
-
-		record.append(kernelIndex)
-		record.append(kernelList[i].kind)
-		record.append(kernelList[i].name)
-		record.append(launchKernelApiList[i].durationTime)
-		record.append(kernelList[i].durationTime)
-
-		infoList.append(record)
-		kernelIndex += 1
+		else:
+			infoList.append([opIndex, opList[opIndex], kernelIndex, kernelList[kernelNum].kind,
+							kernelList[kernelNum].name, launchKernelApiList[kernelNum].durationTime,
+							kernelList[kernelNum].durationTime])
+			kernelIndex += 1
+			kernelNum += 1
 
 	# Find Top-K kernel according to kernel execution time
 	k = min(20, len(kernelList))
@@ -206,33 +211,26 @@ def opInfoTracer(opList, startTimeList, endTimeList, apiList, rtList):
 			kernelList.append(x)
 
 	# Calculate number of kernels for each op
-	kernelNumList = []
-	kernelCount = 0
-	opIndex = 0
-	kernelIndex = 0
-	timeListLen = len(startTimeList)
-	
-	while opIndex < timeListLen - 1 and startTimeList[opIndex] < launchKernelApiList[0].startTime and startTimeList[opIndex+1] < launchKernelApiList[0].startTime:
-		kernelNumList.append(0)
-		opIndex += 1
-
-	while kernelIndex < len(launchKernelApiList):
-		if (opIndex < timeListLen - 1 and launchKernelApiList[kernelIndex].startTime > startTimeList[opIndex + 1]):
-			kernelNumList.append(kernelCount)
-			opIndex += 1
-			kernelCount = 0
-			continue
-		kernelCount += 1
-		kernelIndex += 1
-	kernelNumList.append(kernelCount)
-
-	while opIndex < timeListLen - 1:
-		kernelNumList.append(0)
-		opIndex += 1
-	
+	infoTime = []
 	for i in range(len(opList)):
-		print(opList[i])
-		print(kernelNumList[i])
+		infoTime.append(["OP", opList[i], startTimeList[i]])
+	for i in range(len(launchKernelApiList)):
+		infoTime.append(["KERNEL", launchKernelApiList[i].name, launchKernelApiList[i].startTime])
+
+	def takeTime(elem):
+		return elem[2]
+	infoTime.sort(key=takeTime)
+
+	kernelNumList = []
+	kernelCountOp = 0
+	for i in range(len(infoTime)):
+		if infoTime[i][0] == "OP":
+			kernelNumList.append(kernelCountOp)
+			kernelCountOp = 0
+		else:
+			kernelCountOp += 1
+	kernelNumList.append(kernelCountOp)
+	kernelNumList = kernelNumList[1:]
 
 	# Get information for each op
 	kernelCount = 0

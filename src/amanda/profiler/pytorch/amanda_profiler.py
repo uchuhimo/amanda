@@ -7,7 +7,7 @@ from utils import setConfigsMetric
 from metrics import kernelRoofline, opRoofline
 from torchMetrics import kernelInfo, opInfo
 
-class Profiler():
+class amandaProfiler():
 	def __init__(self, metric) -> None:
 		self.__metric = metric
 

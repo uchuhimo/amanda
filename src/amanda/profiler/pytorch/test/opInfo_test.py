@@ -5,7 +5,7 @@ import torch
 import torchvision
 
 sys.path.append("..")
-from profiler import Profiler
+from amanda_profiler import amandaProfiler
 
 def main():
 
@@ -15,7 +15,7 @@ def main():
 	x = torch.rand((32, 3, 227, 227)).to(device)
 
 	metric = "OpInfo"
-	profiler = Profiler(metric)
+	profiler = amandaProfiler(metric)
 	profiler.setConfigs(metric=metric, supplyInfo=[])
 
 	with amanda.tool.apply(profiler.counter):

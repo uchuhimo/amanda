@@ -17,9 +17,6 @@ class amandaCounter(amanda.Tool):
 		op = context.get_op()
 		self.opCount += 1
 
-		# if self.opCount > 10:
-		# 	return
-
 		self.opList.append(op.__name__)
 		context.insert_before_op(
 			self.start_profiling,

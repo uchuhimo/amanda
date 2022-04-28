@@ -38,7 +38,7 @@ class amandaTracer(amanda.Tool):
 				if not tensor.dtype._is_ref_dtype
 			]
 
-		if len(op_outputs) != 0 and len(op_inputs) != 0:
+		if len(op_outputs) != 0 and len(op_inputs) != 0 and op.name.find("Initializer") == -1:
 		# if len(op_outputs) != 0 and len(op_inputs) != 0 and op.name.find("Relu") != -1:	
 			self.opList.append(op.name)
 			context.insert_before_op(
@@ -55,6 +55,7 @@ class amandaTracer(amanda.Tool):
 
 	def init_trace(self, *inputs, op):
 		def extract_fn(*inputs):
+			self.activityFlushAll()
 			self.tracer.initTrace()
 			self.beforeCount += 1
 			return inputs
@@ -70,6 +71,7 @@ class amandaTracer(amanda.Tool):
 	def finish_trace(self, *outputs, op):	
 		def extract_fn(*outputs):
 			self.tracer.finishTrace()
+			self.tracer.activityFlushAll()
 			self.afterCount += 1
 			return outputs
 		
