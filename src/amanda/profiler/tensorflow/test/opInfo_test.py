@@ -13,7 +13,7 @@ def main():
 	x = tf.random.uniform(shape = [16, 224, 224, 3])
 	y = model(x)
 
-	metric = "OpInfo"
+	metric = "OpInfoCounter"
 	profiler = amandaProfiler(metric)
 	profiler.setConfigs(metric=metric, supplyInfo=[])
 
@@ -23,11 +23,11 @@ def main():
 		session_.run(y)
 	session_.close()	
 	
-	session = profiler.createSessionTracer()
-	with amanda.tool.apply(profiler.tracer):
-		session.run(tf.initialize_all_variables())
-		session.run(y)
-	session.close()	
+	# session = profiler.createSessionTracer()
+	# with amanda.tool.apply(profiler.tracer):
+	# 	session.run(tf.initialize_all_variables())
+	# 	session.run(y)
+	# session.close()	
 
 	profiler.showResults()
 

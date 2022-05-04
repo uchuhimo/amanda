@@ -372,4 +372,4 @@ def opRoofline(supplyInfo, countData):
 		intensity = totalFlopCount / (totalDramRead + totalDramWrite)
 		opX.append(intensity)
 
-	drawRoofline(hardwareTFlops, hardwareIntensity, opX, opY)	
+	drawRoofline(hardwareTFlops, hardwareIntensity, opX, opY, op = True)	
