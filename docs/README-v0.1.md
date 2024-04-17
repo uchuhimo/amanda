@@ -39,62 +39,6 @@ python src/amanda/tools/debugging/insert_debug_op_tensorflow.py
 
 ## Usage
 
-### Basic Instrumentation
-
-Import Amanda
-
-```python
-import amanda
-```
-
-Declare instrumentation tool
-
-```python
-class CountConvTool(amanda.Tool):
-    def __init__(self):
-        super().__init__()
-        self.counter = 0
-        self.add_inst_for_op(self.callback)
-
-    def callback(self, context: amanda.OpContext):
-        op = context.get_op()
-        if op.__name__ == "conv2d":
-            context.insert_before_op(self.counter_op)
-
-    def counter_op(self, *inputs):
-        self.counter += 1
-        return inputs
-```
-
-Apply instrumentation tool to model execution
-
-```python
-import torch
-from torchvision.models import resnet50
-
-tool = CountConvTool()
-with amanda.apply(tool):
-    model = resnet50()
-    x = torch.rand((2, 3, 227, 227))
-    model(x)
-    print(tool.counter)
-```
-
-<!-- ### Notebook -->
-
-### Examples
-
-We provide the following examples of DNN analysis and optimization tasks.
-
-| Task | Type | TensorFlow | PyTorch | Mapping |
-| --- | --- | --- | --- | --- |
-| [tracing](src/examples/trace/) | analysis | :white_check_mark:  | :white_check_mark: | :white_large_square: |
-| [profiler](src/examples/profile/) | analysis | :white_check_mark:  | :white_check_mark: | :white_large_square: |
-| [FLOPs profiler](src/examples/flops_profiler/) | analysis | :white_check_mark:  | :white_check_mark: | :white_check_mark: |
-| [effective path](src/examples/effective_path/) | analysis | :white_check_mark:  | :white_large_square: | :white_large_square: |
-| [error injection](src/examples/effective_path/) | analysis | :white_large_square:  | :white_check_mark: | :white_large_square: |
-| [pruning](src/examples/pruning/) | optimization | :white_check_mark:  | :white_check_mark: | :white_large_square: |
-
 ### CLI
 
 The usage of `amanda`:

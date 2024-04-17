@@ -43,7 +43,6 @@ class CountConvTool(amanda.Tool):
 def main():
 
     logger.remove()
-    # logger.add(sys.stderr, level="DEBUG")
     logger.add(sys.stderr, level="INFO")
 
     torch.manual_seed(42)
@@ -104,71 +103,25 @@ def main():
     total_step = len(train_loader)
 
     tool = PruneTool()
-    # tool = None
-    # tool = CountConvTool()
-    counter = 0
 
-    total_time = 0
-    total_cnt = 0
-
-    from amanda.conversion import pytorch_updater
-
-    # pytorch_updater._debug_cache = True
-    # with amanda.tool.apply(tool), amanda.disabled():
-    with amanda.tool.apply(tool), amanda.cache_disabled():
-        # with amanda.tool.apply(tool):
+    with amanda.tool.apply(tool):
         for epoch in range(num_epochs):
 
             for i, (images, labels) in enumerate(train_loader):
 
-                # with Timer(verbose=True) as t, amanda.enabled():
-                with Timer(verbose=True) as t:
+                model.train()
+                images = images.to(device)
+                labels = labels.to(device)
 
-                    # with amanda.tool.apply(tool):
-                    # with amanda.tool.apply(tool), amanda.cache_disabled():
-                    # with amanda.tool.apply(
-                    #     tool
-                    # ), amanda.cache_disabled(), amanda.disabled():
+                # Forward pass
+                outputs = model(images)
+                loss = criterion(outputs, labels)
 
-                    print(f"batch {i}")
-                    model.train()
-                    images = images.to(device)
-                    labels = labels.to(device)
+                # Backward and optimize
+                optimizer.zero_grad()
+                loss.backward()
 
-                    # Forward pass
-                    outputs = model(images)
-                    loss = criterion(outputs, labels)
-
-                    # Backward and optimize
-                    optimizer.zero_grad()
-                    loss.backward()
-
-                    optimizer.step()
-
-                # print("num of conv2d:", tool.counter - counter)
-                # counter = tool.counter
-                if i == 1:
-                    pytorch_updater._should_hit = True
-                    # pytorch_updater._skip_actions = True
-                # if i >= 2:
-                #     exit(0)
-                if i < 5:
-                    pass
-                # elif i < 25:
-                elif i < 250:
-                    # elif i < 1000:
-                    total_time += t.elapsed
-                    total_cnt += 1
-                else:
-                    print(f"avg time with warmup {total_time/total_cnt}")
-
-                    # pr.disable()
-                    # s = io.StringIO()
-                    # ps = pstats.Stats(pr, stream=s).sort_stats('cumtime')
-                    # ps.print_stats()
-                    # pr.dump_stats('tmp/main.prof')
-
-                    return
+                optimizer.step()
 
                 if (i + 1) % 100 == 0:
                     print(

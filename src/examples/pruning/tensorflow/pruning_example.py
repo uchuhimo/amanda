@@ -73,7 +73,6 @@ def train(
             batch_size=batch_size,
             num_epochs=epochs_between_evals,
         )
-        input = input.take(100)
         return input
 
     # Set up training hook that logs the training accuracy every 100 steps.
@@ -86,13 +85,9 @@ def train(
 
 
 def main():
-    # tool = PruningTool()
-    tool = None
-    with amanda.tool.apply(tool), amanda.disabled():
+    tool = PruningTool()
+    with amanda.tool.apply(tool):
         train()
-        with Timer(verbose=True) as t:
-            train()
-
 
 if __name__ == "__main__":
     main()

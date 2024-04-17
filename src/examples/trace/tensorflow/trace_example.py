@@ -12,7 +12,6 @@ def main():
     x = tf.random.uniform(shape=[8, 224, 224, 3])
 
     tool = TraceTool(output_dir="tmp/trace_resnet50_tf/tracetool.txt")
-    # tool = None
 
     with amanda.tool.apply(tool), amanda.cache.cache_disabled():
         y = model(x)

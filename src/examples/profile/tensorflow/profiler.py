@@ -12,15 +12,15 @@ from examples.profile.tensorflow.utils import from_attr_proto
 class Profiler(amanda.Tool):
     def __init__(self):
         super().__init__(namespace="tensorflow")
-        # self.add_inst_for_op(
-        #     self.forward_instrumentation,
-        #     require_outputs=True,
-        # )
-        # self.add_inst_for_op(
-        #     self.backward_instrumentation,
-        #     backward=True,
-        #     require_outputs=True,
-        # )
+        self.add_inst_for_op(
+            self.forward_instrumentation,
+            require_outputs=True,
+        )
+        self.add_inst_for_op(
+            self.backward_instrumentation,
+            backward=True,
+            require_outputs=True,
+        )
         self.start_time = None
         self.trace = []
 
