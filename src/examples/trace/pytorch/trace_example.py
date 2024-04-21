@@ -15,7 +15,7 @@ def main():
 
     tool = TraceTool(output_dir="tmp/trace_resnet50/tracetool.txt")
 
-    with amanda.tool.apply(tool):
+    with amanda.tool.apply(tool), amanda.cache.cache_disabled():
 
         y = model(x)
         y.backward(torch.rand_like(y))
